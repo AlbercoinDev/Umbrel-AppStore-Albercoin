@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  server:
+    build: .
+    container_name: umbrel-tunnel
+    restart: unless-stopped
+    ports:
+      - "${APP_UMBREL_TUNNEL_PORT:-8080}:8080"
+    volumes:
+      - ${APP_DATA_DIR}:/data
+    environment:
+      LISTEN_ADDR: ":8080"
+      DATA_DIR: "/data"
+      UI_AUTH_USER: "admin"
+      UI_AUTH_PASS: "umbrel"
+      WG_INTERFACE: "umbreltun"
+    cap_add:
+      - NET_ADMIN
+      - SYS_PTRACE
+      - NET_RAW
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    devices:
+      - "/dev/net/tun:/dev/net/tun"

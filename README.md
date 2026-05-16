@@ -24,7 +24,7 @@ Expón cualquier app de tu Umbrel en internet (clearnet) a través de un túnel 
 **Requiere:** Un VPS con Ubuntu/Debian donde instalar el servidor Umbrel Tunnel.
 
 ```bash
-curl -sL https://github.com/AlbercoinDev/umbreltunnel/raw/main/vps-server/install.sh | bash
+curl -sL https://github.com/AlbercoinDev/umbreltunnel/raw/main/install.sh | bash
 ```
 
 [Ver repositorio VPS →](https://github.com/AlbercoinDev/umbreltunnel)

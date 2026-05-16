@@ -8,7 +8,7 @@ services:
     volumes:
       - ${APP_DATA_DIR}:/data
     environment:
-      LISTEN_ADDR: ":8080"
+      LISTEN_ADDR: ":3652"
       DATA_DIR: "/data"
       UI_AUTH_USER: ""
       UI_AUTH_PASS: ""

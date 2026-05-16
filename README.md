@@ -22,4 +22,9 @@ Expón cualquier app de tu Umbrel en internet (clearnet) a través de un túnel 
 - Descarga o copia tu configuración WireGuard
 
 **Requiere:** Un VPS con Ubuntu/Debian donde instalar el servidor Umbrel Tunnel.
-[Ver instrucciones VPS →](https://github.com/AlbercoinDev/umbreltunnel)
+
+```bash
+curl -sL https://github.com/AlbercoinDev/umbreltunnel/raw/main/vps-server/install.sh | bash
+```
+
+[Ver repositorio VPS →](https://github.com/AlbercoinDev/umbreltunnel)

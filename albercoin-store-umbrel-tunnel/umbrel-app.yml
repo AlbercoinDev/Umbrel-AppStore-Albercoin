@@ -46,7 +46,7 @@ website: https://github.com/AlbercoinDev/Tienda-Umbrel-Albercoin
 dependencies: []
 repo: https://github.com/AlbercoinDev/umbreltunnel
 support: https://github.com/AlbercoinDev/Tienda-Umbrel-Albercoin/issues
-port: 8080
+port: 3652
 gallery: []
 path: ""
 defaultUsername: ""

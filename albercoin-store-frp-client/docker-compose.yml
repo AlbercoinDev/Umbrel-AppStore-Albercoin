@@ -4,6 +4,7 @@ services:
   frp_manager:
     build: .
     network_mode: host
+    pid: "host"
     volumes:
       - "${APP_DATA_DIR}:/app/data"
       - "/etc/frp:/etc/frp"
@@ -12,6 +13,7 @@ services:
   frpc_client:
     image: fatedier/frpc:v0.54.0
     network_mode: host
+    pid: "host"
     depends_on:
       - frp_manager
     volumes:

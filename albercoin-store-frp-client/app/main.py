@@ -4,6 +4,8 @@ import signal
 import subprocess
 import tempfile
 import shutil
+import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -19,15 +21,7 @@ DB_PATH = BASE_DIR / "data" / "db.json"
 FRPC_CONFIG_PATH = Path("/etc/frp/frpc.toml")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-
-@app.on_event("startup")
-async def _ensure_frpc_config():
-    FRPC_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if FRPC_CONFIG_PATH.is_dir():
-        FRPC_CONFIG_PATH.rmdir()
-    if not FRPC_CONFIG_PATH.exists():
-        config = _load_config()
-        _atomic_write_frpc(config)
+FRPC_PROCESS = None
 
 
 class Proxy(BaseModel):
@@ -139,25 +133,60 @@ def _sync_with_vps(config: AppConfig) -> None:
         )
 
 
+def _start_frpc() -> None:
+    global FRPC_PROCESS
+    if not shutil.which("frpc"):
+        return
+    if FRPC_PROCESS is not None and FRPC_PROCESS.poll() is None:
+        return
+    FRPC_PROCESS = subprocess.Popen(
+        ["frpc", "-c", str(FRPC_CONFIG_PATH)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def _restart_frpc() -> None:
-    try:
-        subprocess.run(
-            ["pkill", "-HUP", "frpc"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-        pass
-    try:
-        subprocess.run(
-            ["pkill", "frpc"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-        pass
+    global FRPC_PROCESS
+    if FRPC_PROCESS is not None and FRPC_PROCESS.poll() is None:
+        try:
+            FRPC_PROCESS.send_signal(signal.SIGHUP)
+            return
+        except Exception:
+            pass
+    if FRPC_PROCESS is not None:
+        try:
+            FRPC_PROCESS.kill()
+            FRPC_PROCESS.wait(timeout=5)
+        except Exception:
+            pass
+    _start_frpc()
+
+
+def _monitor_frpc() -> None:
+    global FRPC_PROCESS
+    while True:
+        time.sleep(10)
+        if FRPC_PROCESS is not None and FRPC_PROCESS.poll() is not None:
+            _start_frpc()
+
+
+@app.on_event("startup")
+async def _ensure_frpc_config():
+    global FRPC_PROCESS
+    FRPC_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if FRPC_CONFIG_PATH.is_dir():
+        try:
+            FRPC_CONFIG_PATH.rmdir()
+        except OSError:
+            shutil.rmtree(FRPC_CONFIG_PATH, ignore_errors=True)
+    if not FRPC_CONFIG_PATH.exists():
+        config = _load_config()
+        if not config.vps_domain:
+            config.vps_domain = "0.0.0.0"
+        _atomic_write_frpc(config)
+    _start_frpc()
+    threading.Thread(target=_monitor_frpc, daemon=True).start()
 
 
 @app.get("/", response_class=HTMLResponse)

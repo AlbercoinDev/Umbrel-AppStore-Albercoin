@@ -1,21 +1,10 @@
 version: "3.7"
 
 services:
-  frp_manager:
+  main:
     build: .
     network_mode: host
-    pid: "host"
+    restart: unless-stopped
     volumes:
       - "${APP_DATA_DIR}:/app/data"
       - "/etc/frp:/etc/frp"
-    restart: unless-stopped
-
-  frpc_client:
-    image: fatedier/frpc:v0.54.0
-    network_mode: host
-    pid: "host"
-    depends_on:
-      - frp_manager
-    volumes:
-      - "/etc/frp:/etc/frp"
-    restart: unless-stopped

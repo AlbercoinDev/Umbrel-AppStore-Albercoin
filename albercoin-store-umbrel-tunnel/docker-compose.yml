@@ -3,7 +3,7 @@ version: "3.8"
 services:
   app_proxy:
     environment:
-      APP_HOST: albercoin-store-umbrel-tunnel_server_1
+      APP_HOST: server
       APP_PORT: 8080
 
   server:
@@ -15,8 +15,8 @@ services:
     environment:
       LISTEN_ADDR: ":8080"
       DATA_DIR: "/data"
-      UI_AUTH_USER: "admin"
-      UI_AUTH_PASS: "umbrel"
+      UI_AUTH_USER: ""
+      UI_AUTH_PASS: ""
       WG_INTERFACE: "umbreltun"
     cap_add:
       - NET_ADMIN

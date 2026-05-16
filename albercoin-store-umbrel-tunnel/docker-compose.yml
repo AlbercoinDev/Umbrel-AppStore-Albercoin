@@ -1,6 +1,12 @@
 version: "3.7"
 
 services:
+  app_proxy:
+    environment:
+      APP_HOST: albercoin-store-umbrel-tunnel_server_1
+      APP_PORT: 3652
+      APP_PROTOCOL: http
+
   server:
     image: ghcr.io/albercoindev/umbrel-tunnel:latest
     restart: on-failure

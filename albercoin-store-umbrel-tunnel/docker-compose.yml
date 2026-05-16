@@ -1,12 +1,15 @@
 version: "3.8"
 
 services:
+  app_proxy:
+    environment:
+      APP_HOST: albercoin-store-umbrel-tunnel_server_1
+      APP_PORT: 8080
+
   server:
     build: .
     container_name: albercoin-store-umbrel-tunnel
     restart: unless-stopped
-    ports:
-      - "${APP_ALBERCOIN_STORE_UMBREL_TUNNEL_PORT:-8080}:8080"
     volumes:
       - ${APP_DATA_DIR}:/data
     environment:

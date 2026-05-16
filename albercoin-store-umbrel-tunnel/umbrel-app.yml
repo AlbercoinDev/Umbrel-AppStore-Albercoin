@@ -48,7 +48,7 @@ repo: https://github.com/AlbercoinDev/umbreltunnel
 support: https://github.com/AlbercoinDev/Tienda-Umbrel-Albercoin/issues
 port: 3652
 gallery: []
-path: "/"
+path: ""
 defaultUsername: ""
 defaultPassword: ""
 submitter: AlbercoinDev

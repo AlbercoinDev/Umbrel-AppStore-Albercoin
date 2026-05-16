@@ -6,6 +6,7 @@ services:
       APP_HOST: albercoin-store-umbrel-tunnel_server_1
       APP_PROTOCOL: http
       APP_PORT: 3652
+      PROXY_AUTH_ADD: "false"
 
   server:
     image: ghcr.io/albercoindev/umbrel-tunnel:latest

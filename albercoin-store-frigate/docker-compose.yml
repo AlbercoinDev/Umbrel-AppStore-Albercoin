@@ -1,0 +1,135 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: semillabitcoin-frigate_web_1
+      APP_PORT: 8080
+
+  web:
+    build: ./web
+    restart: on-failure
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - ${APP_DATA_DIR}/icon.png:/app/static/icon.png:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      FRIGATE_DATA_DIR: "/data"
+      FRIGATE_SERVER_CONTAINER: "semillabitcoin-frigate_server_1"
+      FRIGATE_TOR_ADDRESS: "${APP_FRIGATE_RPC_HIDDEN_SERVICE}"
+      FRIGATE_VERSION: "${APP_VERSION}"
+      FRIGATE_NETWORK: ${APP_BITCOIN_NETWORK:-mainnet}
+      APP_BITCOIN_NODE_IP: ${APP_BITCOIN_NODE_IP}
+      APP_BITCOIN_RPC_PORT: ${APP_BITCOIN_RPC_PORT}
+      APP_BITCOIN_ZMQ_SEQUENCE_PORT: ${APP_BITCOIN_ZMQ_SEQUENCE_PORT}
+      APP_ELECTRS_NODE_IP: ${APP_ELECTRS_NODE_IP}
+      APP_ELECTRS_NODE_PORT: ${APP_ELECTRS_NODE_PORT}
+
+  init:
+    image: alpine:3.20
+    user: "0:0"
+    restart: "no"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      APP_BITCOIN_NETWORK: ${APP_BITCOIN_NETWORK:-mainnet}
+      APP_BITCOIN_NODE_IP: ${APP_BITCOIN_NODE_IP}
+      APP_BITCOIN_RPC_PORT: ${APP_BITCOIN_RPC_PORT}
+      APP_BITCOIN_ZMQ_SEQUENCE_PORT: ${APP_BITCOIN_ZMQ_SEQUENCE_PORT}
+      APP_ELECTRS_NODE_IP: ${APP_ELECTRS_NODE_IP}
+      APP_ELECTRS_NODE_PORT: ${APP_ELECTRS_NODE_PORT}
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /data/frigate-home /data/db
+        touch /data/frigate.log
+        if [ ! -f /data/frigate-settings.json ]; then
+          cat > /data/frigate-settings.json <<'JSON'
+        {
+          "profile": "balanced",
+          "cacheSize": "2M",
+          "computeBackend": "CPU",
+          "dbThreads": "2",
+          "memoryLimit": "3GB",
+          "batchSize": "100000",
+          "rpcBatchSize": "50",
+          "rpcRequestTimeoutSeconds": "120",
+          "maxLabels": "10",
+          "maxSubscriptions": "100",
+          "tcpPort": "57001"
+        }
+        JSON
+        fi
+        if [ ! -f /data/frigate-home/config.toml ]; then
+          cat > /data/frigate-home/config.toml <<EOF_CONFIG
+        # Frigate configuration generated on first Umbrel start.
+        # Later changes are managed by the web panel.
+
+        [core]
+        connect = true
+        server = "http://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_RPC_PORT}"
+        authType = "COOKIE"
+        dataDir = "/data/.bitcoin"
+        zmqSequenceEndpoint = "tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
+        rpcRequestTimeoutSeconds = 120
+        rpcBatchSize = 50
+
+        [index]
+        cacheSize = "2M"
+
+        [scan]
+        batchSize = 100000
+        computeBackend = "CPU"
+        dbThreads = 2
+        memoryLimit = "3GB"
+        maxLabels = 10
+        maxSubscriptions = 100
+
+        [server]
+        tcp = "tcp://0.0.0.0:57001"
+        backendElectrumServer = "tcp://${APP_ELECTRS_NODE_IP}:${APP_ELECTRS_NODE_PORT}"
+        EOF_CONFIG
+        fi
+        chown -R 1000:1000 /data
+        chmod 755 /data /data/frigate-home /data/db
+        chmod 644 /data/frigate.log /data/frigate-home/config.toml /data/frigate-settings.json
+
+  server:
+    image: ghcr.io/4rkad/frigate-umbrel:1.5.2-5@sha256:122338455a8ccb367b199e033ab135fbf3280913ddd66cae8357b7de8ac9f3bf
+    user: "0:0"
+    restart: on-failure
+    stop_grace_period: 1m
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    ports:
+      - "57001:57001"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - ${APP_DATA_DIR}/data/frigate-home:/root/.frigate
+      - ${APP_BITCOIN_DATA_DIR}:/data/.bitcoin:ro
+    environment:
+      HOME: "/root"
+      APP_BITCOIN_NODE_IP: ${APP_BITCOIN_NODE_IP}
+      APP_BITCOIN_RPC_PORT: ${APP_BITCOIN_RPC_PORT}
+      APP_BITCOIN_ZMQ_SEQUENCE_PORT: ${APP_BITCOIN_ZMQ_SEQUENCE_PORT}
+      FRIGATE_BITCOIN_DATA_DIR: "/data/.bitcoin"
+      FRIGATE_BACKEND_ELECTRUM: "tcp://${APP_ELECTRS_NODE_IP}:${APP_ELECTRS_NODE_PORT}"
+      FRIGATE_NETWORK: ${APP_BITCOIN_NETWORK:-mainnet}
+      FRIGATE_PORT: "57001"
+
+  tor:
+    image: getumbrel/tor:0.4.7.8@sha256:2ace83f22501f58857fa9b403009f595137fa2e7986c4fda79d82a8119072b6a
+    user: "1000:1000"
+    restart: on-failure
+    volumes:
+      - ${TOR_DATA_DIR}:/data
+    environment:
+      HOME: "/tmp"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /data/app-semillabitcoin-frigate/main && chmod 700 /data/app-semillabitcoin-frigate/main && printf 'HiddenServiceDir /data/app-semillabitcoin-frigate/main\\nHiddenServicePort 57001 semillabitcoin-frigate_server_1:57001\\n' > /tmp/torrc && exec tor -f /tmp/torrc"]

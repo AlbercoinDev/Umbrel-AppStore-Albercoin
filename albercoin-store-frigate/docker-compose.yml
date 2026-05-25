@@ -1,0 +1,46 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: $APP_ALBERCOIN_STORE_FRIGATE_IP
+      APP_PORT: 2107
+
+  app:
+    build: .
+    restart: on-failure
+    stop_grace_period: 2m
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - ${APP_BITCOIN_DATA_DIR}:/bitcoin:ro
+      - ${TOR_DATA_DIR}:/tor-data:ro
+    ports:
+      - "${APP_ALBERCOIN_STORE_FRIGATE_NODE_PORT}:${APP_ALBERCOIN_STORE_FRIGATE_NODE_PORT}"
+    environment:
+      PORT: "2107"
+      DEVICE_DOMAIN_NAME: "${DEVICE_DOMAIN_NAME}"
+      FRIGATE_NETWORK: "${APP_BITCOIN_NETWORK}"
+      FRIGATE_TCP_PORT: "${APP_ALBERCOIN_STORE_FRIGATE_NODE_PORT}"
+      FRIGATE_HIDDEN_SERVICE_FILE: "/tor-data/app-albercoin-store-frigate-frigate/hostname"
+      BITCOIN_RPC_HOST: "${APP_BITCOIN_NODE_IP}"
+      BITCOIN_RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
+      BITCOIN_RPC_USER: "${APP_BITCOIN_RPC_USER}"
+      BITCOIN_RPC_PASS: "${APP_BITCOIN_RPC_PASS}"
+      BITCOIN_ZMQ_SEQUENCE_ENDPOINT: "tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
+      ELECTRUM_BACKEND_SERVER: "tcp://${APP_ELECTRS_NODE_IP}:${APP_ELECTRS_NODE_PORT}"
+    networks:
+      default:
+        ipv4_address: $APP_ALBERCOIN_STORE_FRIGATE_IP
+
+  tor:
+    image: getumbrel/tor:0.4.7.8@sha256:2ace83f22501f58857fa9b403009f595137fa2e7986c4fda79d82a8119072b6a
+    user: "1000:1000"
+    restart: on-failure
+    volumes:
+      - ./torrc:/etc/tor/torrc:ro
+      - ${TOR_DATA_DIR}:/data
+    environment:
+      HOME: "/tmp"
+    networks:
+      default:
+        ipv4_address: $APP_ALBERCOIN_STORE_FRIGATE_TOR_PROXY_IP

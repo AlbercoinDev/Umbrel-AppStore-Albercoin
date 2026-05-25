@@ -5,15 +5,12 @@ LOG="/data/api.log"
 echo "--- $(date) ---" >> "$LOG"
 
 export CONFIG_ENV="${CONFIG_ENV:-/data/config.env}"
-export APP_ID="${APP_ID:-albercoin-store-frigate}"
-export INIT_SCRIPT="${INIT_SCRIPT:-/init.sh}"
+APP_ID="${APP_ID:-albercoin-store-frigate}"
+INIT_SCRIPT="${INIT_SCRIPT:-/init.sh}"
 
-# Create CGI scripts for Busybox httpd (built-in, no packages needed)
-mkdir -p /tmp/httpd/cgi-bin
-
-# GET /api/save?KEY=VAL&... → httpd runs cgi-bin/save
-# Uses GET + query params to avoid POST body issues with Busybox httpd CGI.
-cat > /tmp/httpd/cgi-bin/save << 'CGI'
+# Handler script — runs per-connection via tcpsvd
+# stdin/stdout = TCP socket directly (no FILE* buffering concerns for dd reads)
+cat > /tmp/handler.sh << 'SCRIPT'
 #!/bin/sh
 
 CONFIG_ENV="${CONFIG_ENV:-/data/config.env}"
@@ -21,53 +18,60 @@ APP_ID="${APP_ID:-albercoin-store-frigate}"
 INIT_SCRIPT="${INIT_SCRIPT:-/init.sh}"
 LOG="/data/api.log"
 
-echo "Content-Type: application/json"
-echo "Access-Control-Allow-Origin: *"
-echo ""
+respond() {
+    msg=$(printf 'HTTP/1.1 %s\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\n\r\n%s' "$1" "${#2}" "$2")
+    printf '%s\r\n' "$msg"
+}
 
-if [ -z "$QUERY_STRING" ]; then
-    echo '{"status":"error","message":"no query params"}'
+# Read raw HTTP request via dd read() syscall — no FILE buffering
+raw=$(dd bs=8192 count=1 2>/dev/null)
+input=$(echo "$raw" | tr -d '\r')
+
+request_line=$(echo "$input" | sed -n '1p')
+method=$(echo "$request_line" | cut -d' ' -f1)
+path_full=$(echo "$request_line" | cut -d' ' -f2)
+path=$(echo "$path_full" | cut -d? -f1)
+query=$(echo "$path_full" | cut -d? -f2-)
+
+if [ "$method" = "GET" ] && [ "$path" = "/save" ]; then
+    if [ -z "$query" ]; then
+        respond "400 Bad Request" '{"status":"error","message":"no params"}'
+        exit 0
+    fi
+
+    echo "$query" | tr '&' '\n' | sed 's/=/="/; s/$/"/' > "$CONFIG_ENV"
+    chmod 644 "$CONFIG_ENV"
+
+    if [ -f "$INIT_SCRIPT" ]; then
+        sh "$INIT_SCRIPT" 2>>"$LOG" || true
+    fi
+
+    respond "200 OK" '{"status":"ok","message":"Settings saved, server restarting..."}'
+
+    # Restart server via Docker socket (if socat was installed by background job)
+    if [ -S /var/run/docker.sock ] && command -v socat >/dev/null 2>&1; then
+        (
+            sleep 1
+            CONTAINER="${APP_ID}_server_1"
+            timeout 15 sh -c 'printf "POST /containers/%s/restart HTTP/1.0\r\nHost: localhost\r\n\r\n" "$1" | socat - UNIX-CONNECT:/var/run/docker.sock' _ "$CONTAINER" >/dev/null 2>&1 || echo "restart failed" >> "$LOG"
+        ) &
+    fi
+
     exit 0
+elif [ "$method" = "GET" ] && [ "$path" = "/health" ]; then
+    respond "200 OK" '{"status":"healthy"}'
+else
+    respond "404 Not Found" '{"status":"error","message":"not found"}'
 fi
+SCRIPT
+chmod +x /tmp/handler.sh
 
-# Convert QUERY_STRING (KEY=VAL&KEY=VAL) to KEY="VAL"\nKEY="VAL"
-echo "$QUERY_STRING" | tr '&' '\n' | sed 's/=/="/; s/$/"/' > "$CONFIG_ENV"
-chmod 644 "$CONFIG_ENV"
-
-# Run init script to regenerate config files
-if [ -f "$INIT_SCRIPT" ]; then
-    sh "$INIT_SCRIPT" 2>>"$LOG" || true
-fi
-
-echo '{"status":"ok","message":"Settings saved, server restarting..."}'
-
-# Restart server container via Docker socket (if socat was installed)
-if [ -S /var/run/docker.sock ] && command -v socat >/dev/null 2>&1; then
-    (
-        sleep 1
-        CONTAINER="${APP_ID}_server_1"
-        timeout 15 sh -c 'printf "POST /containers/%s/restart HTTP/1.0\r\nHost: localhost\r\n\r\n" "$1" | socat - UNIX-CONNECT:/var/run/docker.sock' _ "$CONTAINER" >/dev/null 2>&1 || echo "restart failed" >> "$LOG"
-    ) &
-fi
-CGI
-chmod +x /tmp/httpd/cgi-bin/save
-
-# GET /api/health → httpd runs cgi-bin/health
-cat > /tmp/httpd/cgi-bin/health << 'CGI'
-#!/bin/sh
-echo "Content-Type: application/json"
-echo "Access-Control-Allow-Origin: *"
-echo ""
-echo '{"status":"healthy"}'
-CGI
-chmod +x /tmp/httpd/cgi-bin/health
-
-# Try installing socat in background for Docker restart capability
-# This is best-effort — HTTP API works without it.
+# Best-effort install socat for Docker restart capability
+# Runs in background so it doesn't block startup
 apk add --no-cache socat >> "$LOG" 2>&1 &
-APK_PID=$!
 
-echo "starting httpd on port 8081" >> "$LOG"
+echo "starting tcpsvd on port 8081" >> "$LOG"
 
-# Start Busybox httpd in foreground (daemonizing would exit the container)
-exec busybox httpd -p 8081 -h /tmp/httpd -f
+# tcpsvd is built into Alpine's Busybox — always available, no packages needed
+# For each connection, runs handler.sh with stdin/stdout as the TCP socket
+exec busybox tcpsvd -vE 0 8081 /tmp/handler.sh

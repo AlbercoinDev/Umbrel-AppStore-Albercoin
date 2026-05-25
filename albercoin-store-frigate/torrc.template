@@ -1,0 +1,2 @@
+HiddenServiceDir /data/app-albercoin-store-frigate/main
+HiddenServicePort 57001 server:57001

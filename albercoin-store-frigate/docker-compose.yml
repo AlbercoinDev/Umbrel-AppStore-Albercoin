@@ -1,0 +1,118 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: albercoin-store-frigate_web_1
+      APP_PORT: 8080
+
+  web:
+    image: ghcr.io/4rkad/frigate-umbrel-web:1.5.2-5@sha256:26c8d8a26a8cc91564229f0b1ceb14e7dce8e3c139be57714b550aff388941de
+    restart: on-failure
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - ${APP_DATA_DIR}/icon.png:/usr/share/nginx/html/icon.png:ro
+      - ${APP_DATA_DIR}/data/frigate.log:/usr/share/nginx/html/frigate.log:ro
+      - ${APP_DATA_DIR}/data/config.json:/usr/share/nginx/html/config.json:ro
+      - ${APP_DATA_DIR}/settings/settings.html:/usr/share/nginx/html/settings.html:ro
+      - ${APP_DATA_DIR}/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    environment:
+      FRIGATE_TOR_ADDRESS: "${APP_FRIGATE_RPC_HIDDEN_SERVICE}"
+      FRIGATE_VERSION: "${APP_VERSION}"
+    command: ["sh", "-c", "envsubst '$$FRIGATE_TOR_ADDRESS $$FRIGATE_VERSION' < /tmp/index.template.html > /usr/share/nginx/html/index.html && sed -i 's|</body>|<a href=\"/settings.html\" style=\"position:fixed;top:12px;right:12px;background:#1c3a5e;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;z-index:999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.3)\">⚙ Settings</a></body>|' /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'"]
+
+  api:
+    image: alpine:3.20
+    restart: on-failure
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - ${APP_DATA_DIR}/scripts/api.sh:/api.sh:ro
+      - ${APP_DATA_DIR}/scripts/init.sh:/init.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      APP_ID: "albercoin-store-frigate"
+      APP_BITCOIN_NODE_IP: "${APP_BITCOIN_NODE_IP}"
+      APP_BITCOIN_RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
+      APP_BITCOIN_ZMQ_SEQUENCE_PORT: "${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
+      APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
+      APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
+      APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
+      FRIGATE_COMPUTE_BACKEND: "${FRIGATE_COMPUTE_BACKEND:-CPU}"
+      FRIGATE_CACHE_SIZE: "${FRIGATE_CACHE_SIZE:-10M}"
+      FRIGATE_MEMORY_LIMIT: "${FRIGATE_MEMORY_LIMIT:-}"
+      FRIGATE_DB_THREADS: "${FRIGATE_DB_THREADS:-}"
+      FRIGATE_BATCH_SIZE: "${FRIGATE_BATCH_SIZE:-300000}"
+      FRIGATE_RPC_REQUEST_TIMEOUT: "${FRIGATE_RPC_REQUEST_TIMEOUT:-60}"
+      FRIGATE_RPC_BATCH_SIZE: "${FRIGATE_RPC_BATCH_SIZE:-100}"
+      FRIGATE_START_HEIGHT: "${FRIGATE_START_HEIGHT:-}"
+    command: ["sh", "/api.sh"]
+
+  init:
+    image: alpine:3.20
+    user: "0:0"
+    restart: "no"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - ${APP_DATA_DIR}/scripts/init.sh:/init.sh:ro
+    environment:
+      APP_BITCOIN_NODE_IP: "${APP_BITCOIN_NODE_IP}"
+      APP_BITCOIN_RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
+      APP_BITCOIN_ZMQ_SEQUENCE_PORT: "${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
+      APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
+      APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
+      APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
+      FRIGATE_COMPUTE_BACKEND: "${FRIGATE_COMPUTE_BACKEND:-CPU}"
+      FRIGATE_CACHE_SIZE: "${FRIGATE_CACHE_SIZE:-10M}"
+      FRIGATE_MEMORY_LIMIT: "${FRIGATE_MEMORY_LIMIT:-}"
+      FRIGATE_DB_THREADS: "${FRIGATE_DB_THREADS:-}"
+      FRIGATE_BATCH_SIZE: "${FRIGATE_BATCH_SIZE:-300000}"
+      FRIGATE_RPC_REQUEST_TIMEOUT: "${FRIGATE_RPC_REQUEST_TIMEOUT:-60}"
+      FRIGATE_RPC_BATCH_SIZE: "${FRIGATE_RPC_BATCH_SIZE:-100}"
+      FRIGATE_START_HEIGHT: "${FRIGATE_START_HEIGHT:-}"
+    command: ["sh", "/init.sh"]
+
+  server:
+    image: ghcr.io/4rkad/frigate-umbrel:1.5.2-5@sha256:122338455a8ccb367b199e033ab135fbf3280913ddd66cae8357b7de8ac9f3bf
+    user: "0:0"
+    restart: on-failure
+    stop_grace_period: 1m
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    ports:
+      - "57001:57001"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - ${APP_BITCOIN_DATA_DIR}:/data/.bitcoin:ro
+    environment:
+      APP_BITCOIN_NODE_IP: ${APP_BITCOIN_NODE_IP}
+      APP_BITCOIN_RPC_PORT: ${APP_BITCOIN_RPC_PORT}
+      APP_BITCOIN_ZMQ_SEQUENCE_PORT: ${APP_BITCOIN_ZMQ_SEQUENCE_PORT}
+      FRIGATE_BITCOIN_DATA_DIR: "/data/.bitcoin"
+      FRIGATE_BACKEND_ELECTRUM: "tcp://${APP_ELECTRS_NODE_IP}:${APP_ELECTRS_NODE_PORT}"
+      FRIGATE_NETWORK: ${APP_BITCOIN_NETWORK:-mainnet}
+      FRIGATE_COMPUTE_BACKEND: "${FRIGATE_COMPUTE_BACKEND:-CPU}"
+      FRIGATE_PORT: "57001"
+      FRIGATE_CACHE_SIZE: "${FRIGATE_CACHE_SIZE:-10M}"
+      FRIGATE_MEMORY_LIMIT: "${FRIGATE_MEMORY_LIMIT:-}"
+      FRIGATE_DB_THREADS: "${FRIGATE_DB_THREADS:-}"
+      FRIGATE_BATCH_SIZE: "${FRIGATE_BATCH_SIZE:-300000}"
+      FRIGATE_RPC_REQUEST_TIMEOUT: "${FRIGATE_RPC_REQUEST_TIMEOUT:-60}"
+      FRIGATE_RPC_BATCH_SIZE: "${FRIGATE_RPC_BATCH_SIZE:-100}"
+      FRIGATE_START_HEIGHT: "${FRIGATE_START_HEIGHT:-}"
+
+  tor:
+    image: getumbrel/tor:0.4.7.8@sha256:2ace83f22501f58857fa9b403009f595137fa2e7986c4fda79d82a8119072b6a
+    user: "1000:1000"
+    restart: on-failure
+    volumes:
+      - ${TOR_DATA_DIR}:/data
+    environment:
+      HOME: "/tmp"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /data/app-albercoin-store-frigate/main && chmod 700 /data/app-albercoin-store-frigate/main && printf 'HiddenServiceDir /data/app-albercoin-store-frigate/main\\nHiddenServicePort 57001 albercoin-store-frigate_server_1:57001\\n' > /tmp/torrc && exec tor -f /tmp/torrc"]

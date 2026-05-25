@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frigate Settings</title>
+<style>
+:root{--bg:#0f1119;--card:#18202d;--accent:#1c3a5e;--green:#4ade80;--text:#e0e6ed;--muted:#74839d;--red:#f87171;--input-bg:#0a0d14;--border:#253045;--preset-bg:#1a2538;--preset-hover:#22304a}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);padding:20px;min-height:100vh}
+.container{max-width:680px;margin:0 auto}
+.header{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.header h1{font-size:1.3rem;font-weight:600}
+.header-icon{font-size:1.4rem}
+.back-link{color:var(--muted);text-decoration:none;font-size:0.75rem;margin-left:auto;padding:4px 10px;border-radius:4px;transition:background 0.2s}
+.back-link:hover{background:var(--preset-bg);color:var(--text)}
+.subtitle{color:var(--muted);font-size:0.82rem;margin-bottom:20px;line-height:1.5}
+.card{background:var(--card);border-radius:10px;padding:18px;margin-bottom:14px}
+
+/* Presets */
+.presets{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.preset{cursor:pointer;border-radius:8px;padding:14px;text-align:center;transition:all 0.2s;background:var(--preset-bg);border:1px solid transparent}
+.preset:hover{background:var(--preset-hover);transform:translateY(-1px)}
+.preset:active{transform:translateY(0)}
+.preset .icon{font-size:1.3rem;margin-bottom:4px}
+.preset .name{font-size:0.8rem;font-weight:600}
+.preset .desc{font-size:0.7rem;color:var(--muted);margin-top:2px}
+.preset.active{border-color:var(--accent);background:linear-gradient(135deg,var(--preset-hover),var(--preset-bg))}
+
+/* Form */
+.section-title{font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px}
+.field{display:flex;align-items:center;justify-content:space-between;padding:7px 0;gap:10px}
+.field + .field{border-top:1px solid rgba(37,48,69,0.5)}
+.field-label{font-size:0.85rem;flex-shrink:0}
+.field-input{font-family:'SF Mono','Fira Code',monospace;font-size:0.82rem;background:var(--input-bg);border:1px solid var(--border);color:var(--accent);padding:5px 8px;border-radius:4px;width:140px;text-align:right;outline:none;transition:border-color 0.15s}
+.field-input:focus{border-color:#3a6a9e}
+.field-input::placeholder{color:var(--muted);font-style:italic;font-size:0.72rem}
+select.field-input{text-align:left;cursor:pointer;width:140px}
+.help{font-size:0.72rem;color:var(--muted);line-height:1.4;padding:0 0 2px 2px}
+
+/* Save row */
+.save-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#status{font-size:0.82rem;padding:7px 14px;border-radius:6px;display:none}
+#status.show{display:inline-block}
+#status.success{background:rgba(74,222,128,0.1);color:var(--green);border:1px solid rgba(74,222,128,0.2)}
+#status.error{background:rgba(248,113,113,0.1);color:var(--red);border:1px solid rgba(248,113,113,0.2)}
+#status.waiting{background:rgba(116,131,157,0.1);color:var(--muted);border:1px solid rgba(116,131,157,0.2)}
+.btn{background:var(--accent);color:var(--text);border:none;padding:9px 24px;border-radius:6px;font-size:0.85rem;cursor:pointer;transition:opacity 0.2s;font-weight:500;white-space:nowrap}
+.btn:hover{opacity:0.85}
+.btn:disabled{opacity:0.3;cursor:not-allowed}
+.note{font-size:0.75rem;color:var(--muted);padding:12px;background:var(--input-bg);border-radius:6px;margin-top:10px;line-height:1.5}
+#loading{text-align:center;padding:60px 0;color:var(--muted);font-size:0.9rem}
+#error-card{display:none}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a2538;border:1px solid var(--border);border-radius:8px;padding:10px 20px;font-size:0.82rem;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <span class="header-icon">&#9881;</span>
+    <h1>Frigate Settings</h1>
+    <a href="/" class="back-link">&#8592; Status</a>
+  </div>
+  <p class="subtitle">Tune Frigate for your machine — pick a preset below or adjust each value manually. The server restarts automatically when you save.</p>
+
+  <div id="loading">Loading...</div>
+
+  <div id="error-card" class="card" style="text-align:center;padding:40px 0;color:var(--red)"></div>
+
+  <div id="content" style="display:none">
+
+    <div class="card">
+      <div class="section-title">Quick presets</div>
+      <div class="presets">
+        <div class="preset active" data-preset="default" onclick="applyPreset('default')">
+          <div class="icon">&#128187;</div>
+          <div class="name">Default</div>
+          <div class="desc">CPU, standard</div>
+        </div>
+        <div class="preset" data-preset="gpu" onclick="applyPreset('gpu')">
+          <div class="icon">&#9889;</div>
+          <div class="name">GPU Machine</div>
+          <div class="desc">Auto-detect GPU</div>
+        </div>
+        <div class="preset" data-preset="lowram" onclick="applyPreset('lowram')">
+          <div class="icon">&#128225;</div>
+          <div class="name">Low Memory</div>
+          <div class="desc">&lt; 8 GB RAM</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Performance</div>
+      <div class="field">
+        <span class="field-label">Compute backend</span>
+        <select class="field-input" id="i-FRIGATE_COMPUTE_BACKEND">
+          <option value="CPU">CPU</option>
+          <option value="GPU">GPU</option>
+          <option value="AUTO">AUTO</option>
+        </select>
+      </div>
+      <div class="help">CPU-only, GPU-only, or AUTO to detect. Use AUTO on machines with NVIDIA / Intel / AMD GPU.</div>
+      <div class="field">
+        <span class="field-label">GPU batch size</span>
+        <input class="field-input" type="text" id="i-FRIGATE_BATCH_SIZE" placeholder="300000">
+      </div>
+      <div class="help">Rows per GPU dispatch. Reduce to 10000–50000 if scanning hangs on old GPUs.</div>
+      <div class="field">
+        <span class="field-label">CPU threads</span>
+        <input class="field-input" type="text" id="i-FRIGATE_DB_THREADS" placeholder="All cores">
+      </div>
+      <div class="help">DuckDB CPU threads for scanning. Leave empty to use all cores.</div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Memory</div>
+      <div class="field">
+        <span class="field-label">Cache entries</span>
+        <input class="field-input" type="text" id="i-FRIGATE_CACHE_SIZE" placeholder="10M">
+      </div>
+      <div class="help">~4 GB RAM per 10M entries. Reduce on low-RAM machines. (e.g. <code>2M</code>)</div>
+      <div class="field">
+        <span class="field-label">DB memory limit</span>
+        <input class="field-input" type="text" id="i-FRIGATE_MEMORY_LIMIT" placeholder="80% of RAM">
+      </div>
+      <div class="help">Max DuckDB RAM. Set e.g. <code>2GB</code> or <code>4096MB</code>. Empty = 80% of system RAM.</div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Connection</div>
+      <div class="field">
+        <span class="field-label">RPC timeout</span>
+        <input class="field-input" type="text" id="i-FRIGATE_RPC_REQUEST_TIMEOUT" placeholder="60">
+      </div>
+      <div class="help">Seconds before Bitcoin Core RPC times out. Raise for remote/slow nodes.</div>
+      <div class="field">
+        <span class="field-label">RPC batch size</span>
+        <input class="field-input" type="text" id="i-FRIGATE_RPC_BATCH_SIZE" placeholder="100">
+      </div>
+      <div class="help">Max sub-requests per batch during initial mempool indexing.</div>
+      <div class="field">
+        <span class="field-label">Start height</span>
+        <input class="field-input" type="text" id="i-FRIGATE_START_HEIGHT" placeholder="Taproot activation">
+      </div>
+      <div class="help">Block to start indexing from. Empty = Taproot activation (709632 mainnet).</div>
+    </div>
+
+    <div class="card">
+      <div class="save-row">
+        <div id="status"></div>
+        <button class="btn" id="saveBtn" onclick="save()">&#10003; Save &amp; Restart</button>
+      </div>
+      <div class="note">Settings persist across updates. The server restarts automatically after saving. The page will refresh when ready.</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const PRESETS = {
+  default: {
+    FRIGATE_COMPUTE_BACKEND: 'CPU',
+    FRIGATE_BATCH_SIZE: '300000',
+    FRIGATE_DB_THREADS: '',
+    FRIGATE_CACHE_SIZE: '10M',
+    FRIGATE_MEMORY_LIMIT: '',
+    FRIGATE_RPC_REQUEST_TIMEOUT: '60',
+    FRIGATE_RPC_BATCH_SIZE: '100',
+    FRIGATE_START_HEIGHT: ''
+  },
+  gpu: {
+    FRIGATE_COMPUTE_BACKEND: 'AUTO',
+    FRIGATE_BATCH_SIZE: '300000',
+    FRIGATE_DB_THREADS: '',
+    FRIGATE_CACHE_SIZE: '10M',
+    FRIGATE_MEMORY_LIMIT: '',
+    FRIGATE_RPC_REQUEST_TIMEOUT: '60',
+    FRIGATE_RPC_BATCH_SIZE: '100',
+    FRIGATE_START_HEIGHT: ''
+  },
+  lowram: {
+    FRIGATE_COMPUTE_BACKEND: 'CPU',
+    FRIGATE_BATCH_SIZE: '50000',
+    FRIGATE_DB_THREADS: '2',
+    FRIGATE_CACHE_SIZE: '2M',
+    FRIGATE_MEMORY_LIMIT: '2GB',
+    FRIGATE_RPC_REQUEST_TIMEOUT: '60',
+    FRIGATE_RPC_BATCH_SIZE: '50',
+    FRIGATE_START_HEIGHT: ''
+  }
+};
+
+const FIELDS = Object.keys(PRESETS.default);
+
+function applyPreset(name) {
+  document.querySelectorAll('.preset').forEach(el => el.classList.remove('active'));
+  document.querySelector('.preset[data-preset="' + name + '"]').classList.add('active');
+  const vals = PRESETS[name];
+  for (const key of FIELDS) {
+    const el = document.getElementById('i-' + key);
+    if (el) el.value = vals[key];
+  }
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.color = type === 'error' ? 'var(--red)' : 'var(--green)';
+  t.style.borderColor = type === 'error' ? 'rgba(248,113,113,0.3)' : 'rgba(74,222,128,0.3)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+async function load() {
+  try {
+    const res = await fetch('config.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const config = await res.json();
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+    let matched = null;
+    for (const [name, vals] of Object.entries(PRESETS)) {
+      let ok = true;
+      for (const key of FIELDS) {
+        const v = config[key] || '';
+        if (v !== vals[key]) { ok = false; break; }
+      }
+      if (ok) { matched = name; break; }
+    }
+    if (matched) {
+      document.querySelectorAll('.preset').forEach(el => el.classList.remove('active'));
+      const el = document.querySelector('.preset[data-preset="' + matched + '"]');
+      if (el) el.classList.add('active');
+    }
+
+    for (const key of FIELDS) {
+      const el = document.getElementById('i-' + key);
+      if (!el) continue;
+      const val = config[key];
+      if (el.tagName === 'SELECT') {
+        el.value = val && ['CPU','GPU','AUTO'].includes(val) ? val : 'CPU';
+      } else {
+        el.value = val || '';
+      }
+    }
+  } catch (e) {
+    document.getElementById('loading').style.display = 'none';
+    const ec = document.getElementById('error-card');
+    ec.style.display = 'block';
+    ec.textContent = 'Could not load config: ' + e.message + '. Make sure the app has started.';
+  }
+}
+
+async function save() {
+  const btn = document.getElementById('saveBtn');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  status.className = 'show waiting';
+  status.textContent = 'Saving...';
+
+  const data = {};
+  for (const key of FIELDS) {
+    const el = document.getElementById('i-' + key);
+    data[key] = el ? el.value : '';
+  }
+
+  try {
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    // Read response as text first so we can show it raw if JSON parse fails
+    const text = await res.text();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error('Server returned non-JSON response (HTTP ' + res.status + '): ' + text.substring(0, 1000));
+    }
+    if (!res.ok) throw new Error(result.message || 'HTTP ' + res.status);
+    status.className = 'show success';
+    status.textContent = 'Server restarting...';
+    showToast('Settings saved! Server restarting...');
+    await new Promise(r => setTimeout(r, 3000));
+    location.reload();
+  } catch (e) {
+    status.className = 'show error';
+    status.textContent = 'Save failed: ' + e.message;
+    btn.disabled = false;
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+load();
+</script>
+</body>
+</html>

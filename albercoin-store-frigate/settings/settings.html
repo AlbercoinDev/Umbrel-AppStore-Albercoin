@@ -271,12 +271,8 @@ async function save() {
   }
 
   try {
-    const res = await fetch('/api/save', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(data)
-    });
-    // Read response as text first so we can show it raw if JSON parse fails
+    const params = new URLSearchParams(data);
+    const res = await fetch('/api/save?' + params.toString());
     const text = await res.text();
     let result;
     try {

@@ -11,7 +11,8 @@ export INIT_SCRIPT="${INIT_SCRIPT:-/init.sh}"
 # Create CGI scripts for Busybox httpd (built-in, no packages needed)
 mkdir -p /tmp/httpd/cgi-bin
 
-# POST /api/save → httpd runs cgi-bin/save
+# GET /api/save?KEY=VAL&... → httpd runs cgi-bin/save
+# Uses GET + query params to avoid POST body issues with Busybox httpd CGI.
 cat > /tmp/httpd/cgi-bin/save << 'CGI'
 #!/bin/sh
 
@@ -24,19 +25,13 @@ echo "Content-Type: application/json"
 echo "Access-Control-Allow-Origin: *"
 echo ""
 
-# Read POST body via CONTENT_LENGTH (set by Busybox httpd for POST CGI)
-body=""
-if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
-    body=$(dd bs="$CONTENT_LENGTH" count=1 2>/dev/null)
-fi
-
-if [ -z "$body" ]; then
-    echo '{"status":"error","message":"empty body received"}'
+if [ -z "$QUERY_STRING" ]; then
+    echo '{"status":"error","message":"no query params"}'
     exit 0
 fi
 
-# Save config
-echo "$body" | sed 's/[{}]//g; s/","/\n/g; s/":"/="/g; s/"//g' > "$CONFIG_ENV"
+# Convert QUERY_STRING (KEY=VAL&KEY=VAL) to KEY="VAL"\nKEY="VAL"
+echo "$QUERY_STRING" | tr '&' '\n' | sed 's/=/="/; s/$/"/' > "$CONFIG_ENV"
 chmod 644 "$CONFIG_ENV"
 
 # Run init script to regenerate config files
@@ -44,7 +39,6 @@ if [ -f "$INIT_SCRIPT" ]; then
     sh "$INIT_SCRIPT" 2>>"$LOG" || true
 fi
 
-# Send response BEFORE attempting restart
 echo '{"status":"ok","message":"Settings saved, server restarting..."}'
 
 # Restart server container via Docker socket (if socat was installed)

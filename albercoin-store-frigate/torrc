@@ -1,3 +1,0 @@
-HiddenServiceDir /data/app-albercoin-store-frigate-frigate
-HiddenServiceVersion 3
-HiddenServicePort 57001 frigate:57001

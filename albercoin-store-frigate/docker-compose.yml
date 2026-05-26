@@ -18,6 +18,7 @@ services:
         from pathlib import Path
         from urllib.parse import parse_qs
         import os
+        import re
         import time
 
         DATA_DIR = Path("/data/frigate")
@@ -95,6 +96,28 @@ services:
                 return "Needs attention", "Frigate reported an error. Check the log below."
             return "Indexing / syncing", "Frigate is building or updating its Silent Payments index. It will be ready when the log says Electrum server listening."
 
+        def progress_info(path, network, configured_start_height, is_ready):
+            default_start = 709632 if network == "mainnet" else 0
+            start_height = int(configured_start_height) if configured_start_height.isdigit() else default_start
+            start_label = f"{start_height}" if configured_start_height else f"{start_height} (Frigate default)"
+            if is_ready:
+                return "100.00%", "100", start_label, "Ready", "Ready"
+            if not path.exists():
+                return "Calculando...", None, start_label, "Calculando...", "Calculando..."
+            indexed_height = None
+            tip_height = None
+            for line in path.read_text(errors="replace").splitlines():
+                match = re.search(r"Indexing \d+ blocks \((\d+) to (\d+)\)", line)
+                if match:
+                    tip_height = int(match.group(2))
+                match = re.search(r"Indexing progress: \d+ / \d+ blocks \([\d.]+%, height (\d+)\)", line)
+                if match:
+                    indexed_height = int(match.group(1))
+            if indexed_height is None or tip_height is None or tip_height <= start_height:
+                return "Calculando...", None, start_label, "Calculando...", str(tip_height) if tip_height is not None else "Calculando..."
+            percent = max(0.0, min(100.0, ((indexed_height - start_height) / (tip_height - start_height)) * 100.0))
+            return f"{percent:.2f}%", f"{percent:.2f}", start_label, str(indexed_height), str(tip_height)
+
         def page(title, body, refresh=True):
             refresh_tag = '<meta http-equiv="refresh" content="10">' if refresh else ""
             return f'''<!doctype html>
@@ -123,6 +146,10 @@ services:
             .endpoint {{ display: block; overflow-wrap: anywhere; font-size: 15px; line-height: 1.45; }}
             .copy-row {{ display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }}
             .copy-button {{ padding: 8px 10px; border-radius: 8px; font-size: 13px; }}
+            .progress {{ height: 16px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.12); border: 1px solid rgba(92,200,255,.22); margin: 10px 0 18px; }}
+            .progress-fill {{ height: 100%; min-width: 8px; border-radius: inherit; background: linear-gradient(90deg, #5cc8ff, #75ffc8); box-shadow: 0 0 24px rgba(92,200,255,.45); }}
+            .progress-indeterminate .progress-fill {{ width: 35%; animation: pulse 1.8s ease-in-out infinite alternate; }}
+            @keyframes pulse {{ from {{ transform: translateX(-20%); opacity: .55; }} to {{ transform: translateX(190%); opacity: 1; }} }}
             dl {{ display: grid; grid-template-columns: 170px 1fr; gap: 10px 18px; margin: 0; color: #c6d8e8; }}
             dt {{ color: #8fb0c8; }}
             dd {{ margin: 0; overflow-wrap: anywhere; }}
@@ -155,23 +182,27 @@ services:
             network = os.environ.get("APP_BITCOIN_NETWORK", "mainnet")
             lpath = log_path(network)
             status, detail = status_from_log(lpath)
+            is_ready = status == "Ready"
             port = os.environ.get("APP_FRIGATE_ELECTRUM_PORT", "50005")
             clearnet_host = os.environ.get("DEVICE_DOMAIN_NAME", "umbrel.local")
             onion_host = TOR_HOSTNAME_FILE.read_text().strip() if TOR_HOSTNAME_FILE.exists() else "Generating onion address..."
             onion_detail = "Use this host from Tor-enabled Electrum clients." if onion_host.endswith(".onion") else "Tor is still creating the hidden service hostname."
             restart_msg = '<div class="card warning"><p>Restart requested. Frigate will reload configuration shortly.</p></div>' if RESTART_FILE.exists() else ""
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else restart_msg
+            progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(lpath, network, settings["START_HEIGHT"], is_ready)
+            progress_bar = f'<div class="progress"><div class="progress-fill" style="width: {escape(progress_value or "35")}%"></div></div>' if progress_value else '<div class="progress progress-indeterminate"><div class="progress-fill"></div></div>'
             return f'''
             <h1>Frigate</h1>
             <nav><a href="/">Status</a><a href="/config">Configuration</a></nav>
             {msg}
             <div class="status"><span class="dot"></span>{escape(status)}</div>
             <p>{escape(detail)}</p>
+            <div class="card"><h2>Indexing progress</h2>{progress_bar}<dl><dt>Progress</dt><dd><code>{escape(progress_label)}</code></dd><dt>Start block</dt><dd><code>{escape(start_label)}</code></dd><dt>Indexed block</dt><dd><code>{escape(indexed_block)}</code></dd><dt>Chain tip</dt><dd><code>{escape(tip_block)}</code></dd></dl></div>
             <div class="connections">
               <div class="connection"><h2>Clearnet / LAN</h2><dl><dt>Host</dt><dd><div class="copy-row"><code class="endpoint">{escape(clearnet_host)}</code><button class="copy-button" onclick="copyValue('{escape(clearnet_host)}', this)">Copy</button></div></dd><dt>Port</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">Copy</button></div></dd></dl><p>Use this from wallets on your local network.</p></div>
               <div class="connection"><h2>Tor hidden service</h2><dl><dt>Host</dt><dd><div class="copy-row"><code class="endpoint">{escape(onion_host)}</code><button class="copy-button" onclick="copyValue('{escape(onion_host)}', this)">Copy</button></div></dd><dt>Port</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">Copy</button></div></dd></dl><p>{escape(onion_detail)}</p></div>
             </div>
-            <div class="card"><dl><dt>Bitcoin network</dt><dd><code>{escape(network)}</code></dd><dt>Start block</dt><dd><code>{escape(settings["START_HEIGHT"] or "Frigate default")}</code></dd><dt>Cache size</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>Compute backend</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>Log file</dt><dd><code>{escape(str(lpath))}</code></dd><dt>Updated</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
+            <div class="card"><dl><dt>Bitcoin network</dt><dd><code>{escape(network)}</code></dd><dt>Configured start block</dt><dd><code>{escape(settings["START_HEIGHT"] or "Frigate default")}</code></dd><dt>Cache size</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>Compute backend</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>Log file</dt><dd><code>{escape(str(lpath))}</code></dd><dt>Updated</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
             <div class="card"><p>Latest Frigate log lines:</p><pre>{escape(latest_lines(lpath))}</pre></div>
             '''
 
@@ -376,6 +407,76 @@ services:
       APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
       APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
       APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
+
+  electrum_proxy:
+    image: python:3.12-alpine
+    restart: on-failure
+    depends_on:
+      - frigate
+    command:
+      - python
+      - -c
+      - |
+        import asyncio
+        import json
+        import os
+
+        BANNER = os.environ.get("FRIGATE_ELECTRUM_BANNER", "Frigate Umbrel\nLaboratorio Albercoin\nSemilla Bitcoin")
+        LISTEN_PORT = int(os.environ.get("APP_FRIGATE_ELECTRUM_PORT", "50005"))
+        UPSTREAM_HOST = os.environ.get("FRIGATE_UPSTREAM_HOST", "frigate")
+        UPSTREAM_PORT = int(os.environ.get("FRIGATE_UPSTREAM_PORT", "50005"))
+
+        def banner_response(request):
+            return {"jsonrpc": request.get("jsonrpc", "2.0"), "id": request.get("id"), "result": BANNER}
+
+        async def forward(reader, writer, raw):
+            writer.write(raw + b"\n")
+            await writer.drain()
+            response = await reader.readline()
+            return response.rstrip(b"\r\n")
+
+        async def handle(client_reader, client_writer):
+            upstream_reader = None
+            upstream_writer = None
+            try:
+                while True:
+                    raw = await client_reader.readline()
+                    if not raw:
+                        break
+                    stripped = raw.strip()
+                    try:
+                        request = json.loads(stripped)
+                        if isinstance(request, dict) and request.get("method") == "server.banner":
+                            response = json.dumps(banner_response(request), separators=(",", ":")).encode()
+                        else:
+                            if upstream_writer is None or upstream_writer.is_closing():
+                                upstream_reader, upstream_writer = await asyncio.open_connection(UPSTREAM_HOST, UPSTREAM_PORT)
+                            response = await forward(upstream_reader, upstream_writer, stripped)
+                    except Exception:
+                        if upstream_writer is None or upstream_writer.is_closing():
+                            upstream_reader, upstream_writer = await asyncio.open_connection(UPSTREAM_HOST, UPSTREAM_PORT)
+                        response = await forward(upstream_reader, upstream_writer, stripped)
+                    client_writer.write(response + b"\n")
+                    await client_writer.drain()
+            finally:
+                if upstream_writer is not None:
+                    upstream_writer.close()
+                    await upstream_writer.wait_closed()
+                client_writer.close()
+                await client_writer.wait_closed()
+
+        async def main():
+            server = await asyncio.start_server(handle, "0.0.0.0", LISTEN_PORT)
+            async with server:
+                await server.serve_forever()
+
+        asyncio.run(main())
+    environment:
+      APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
+      FRIGATE_ELECTRUM_BANNER: |-
+        Frigate Umbrel
+        Laboratorio Albercoin
+        Semilla Bitcoin
     ports:
       - "${APP_FRIGATE_ELECTRUM_PORT}:${APP_FRIGATE_ELECTRUM_PORT}"
     networks:

@@ -9,8 +9,36 @@ services:
   web:
     image: nginx:1.27-alpine
     restart: on-failure
-    volumes:
-      - ./web:/usr/share/nginx/html:ro
+    command: |
+      sh -c 'cat > /usr/share/nginx/html/index.html <<"EOF"
+      <!doctype html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Frigate on Umbrel</title>
+        <style>
+          body { margin: 0; min-height: 100vh; background: #0b1020; color: #eaf6ff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: grid; place-items: center; }
+          main { width: min(760px, calc(100% - 40px)); padding: 42px; border-radius: 28px; background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+          h1 { margin: 0 0 12px; font-size: clamp(34px, 7vw, 64px); line-height: 1; }
+          p { color: #c6d8e8; font-size: 18px; line-height: 1.6; }
+          code { background: rgba(92,200,255,.14); border: 1px solid rgba(92,200,255,.32); color: #9ee3ff; padding: 3px 8px; border-radius: 8px; }
+          .card { margin-top: 26px; padding: 22px; border-radius: 18px; background: rgba(0,0,0,.22); }
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>Frigate</h1>
+          <p>Frigate is running as an Electrum server extension for Bitcoin Silent Payments (BIP352).</p>
+          <div class="card">
+            <p>Connect compatible wallets to your Umbrel host on TCP port <code>50005</code>.</p>
+            <p>Frigate uses your Bitcoin Core app for RPC/ZMQ and your Electrs app as the backend for regular Electrum requests.</p>
+          </div>
+        </main>
+      </body>
+      </html>
+      EOF
+      nginx -g "daemon off;"'
     networks:
       default:
         ipv4_address: $APP_FRIGATE_WEB_IP
@@ -19,9 +47,60 @@ services:
     image: debian:bookworm-slim
     restart: always
     stop_grace_period: 2m
-    command: sh /usr/local/bin/start-frigate.sh
+    command: |
+      sh -c '
+      set -eu
+      FRIGATE_VERSION="$${APP_VERSION:-1.5.2}"
+      runtime_dir="/data/frigate/runtime"
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl tar
+      rm -rf /var/lib/apt/lists/*
+      arch="$$(dpkg --print-architecture)"
+      case "$${arch}" in
+        amd64) frigate_arch="x86_64"; frigate_sha256="4e0f9b0ba90d07354859b7fa29f14deb5c01bd1b4c3449e657e7c0b4dddf667d" ;;
+        arm64) frigate_arch="aarch64"; frigate_sha256="dc7aa026f78f0365d08d04358562a19d961bd7cbdfd862f2ec4a0fb5f3fe0413" ;;
+        *) echo "Unsupported architecture: $${arch}" >&2; exit 1 ;;
+      esac
+      install_dir="$${runtime_dir}/frigate-$${FRIGATE_VERSION}-$${frigate_arch}"
+      if [ ! -x "$${install_dir}/bin/frigate" ]; then
+        tmp_file="/tmp/frigate.tar.gz"
+        rm -rf "$${install_dir}"
+        mkdir -p "$${install_dir}"
+        curl -fsSL -o "$${tmp_file}" "https://github.com/sparrowwallet/frigate/releases/download/$${FRIGATE_VERSION}/frigate-$${FRIGATE_VERSION}-$${frigate_arch}.tar.gz"
+        echo "$${frigate_sha256}  $${tmp_file}" | sha256sum -c -
+        tar -xzf "$${tmp_file}" -C "$${install_dir}" --strip-components=1
+        rm -f "$${tmp_file}"
+      fi
+      network="$${APP_BITCOIN_NETWORK:-mainnet}"
+      home_dir="/data/frigate"
+      config_dir="$${home_dir}"
+      network_args=""
+      if [ "$${network}" != "mainnet" ]; then
+        config_dir="$${home_dir}/$${network}"
+        network_args="-n $${network}"
+      fi
+      mkdir -p "$${config_dir}"
+      cat > "$${config_dir}/config.toml" <<EOF
+      [core]
+      connect = true
+      server = "http://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_RPC_PORT}"
+      authType = "USERPASS"
+      auth = "$${APP_BITCOIN_RPC_USER}:$${APP_BITCOIN_RPC_PASS}"
+      zmqSequenceEndpoint = "tcp://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
+
+      [index]
+      cacheSize = "10M"
+
+      [scan]
+      computeBackend = "AUTO"
+
+      [server]
+      tcp = "tcp://0.0.0.0:$${APP_FRIGATE_ELECTRUM_PORT}"
+      backendElectrumServer = "tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}"
+      EOF
+      exec "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args}
+      '
     volumes:
-      - ./start-frigate.sh:/usr/local/bin/start-frigate.sh:ro
       - ${APP_DATA_DIR}/data/frigate:/data/frigate
     environment:
       APP_VERSION: "${APP_VERSION}"

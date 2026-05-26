@@ -1,0 +1,35 @@
+version: "3.7"
+
+services:
+  frigate:
+    build: .
+    restart: always
+    stop_grace_period: 2m
+    volumes:
+      - ${APP_DATA_DIR}/data/frigate:/data/frigate
+    environment:
+      APP_VERSION: "${APP_VERSION}"
+      APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
+      APP_BITCOIN_NODE_IP: "${APP_BITCOIN_NODE_IP}"
+      APP_BITCOIN_RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
+      APP_BITCOIN_RPC_USER: "${APP_BITCOIN_RPC_USER}"
+      APP_BITCOIN_RPC_PASS: "${APP_BITCOIN_RPC_PASS}"
+      APP_BITCOIN_ZMQ_SEQUENCE_PORT: "${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
+      APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
+      APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
+      APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
+    ports:
+      - "${APP_FRIGATE_ELECTRUM_PORT}:${APP_FRIGATE_ELECTRUM_PORT}"
+    networks:
+      default:
+        ipv4_address: $APP_FRIGATE_IP
+
+  tor:
+    image: getumbrel/tor:0.4.7.8@sha256:2ace83f22501f58857fa9b403009f595137fa2e7986c4fda79d82a8119072b6a
+    user: "1000:1000"
+    restart: on-failure
+    volumes:
+      - ${APP_DATA_DIR}/torrc:/etc/tor/torrc:ro
+      - ${TOR_DATA_DIR}:/data
+    environment:
+      HOME: "/tmp"

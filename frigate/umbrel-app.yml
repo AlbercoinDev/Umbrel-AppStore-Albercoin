@@ -1,0 +1,36 @@
+manifestVersion: 1.1
+id: frigate
+category: bitcoin
+name: Frigate
+version: "1.5.2"
+tagline: Electrum server for Silent Payments
+description: >
+  Frigate is an Electrum server for Bitcoin Silent Payments (BIP352).
+  It performs Silent Payments scanning server-side using ephemeral client keys,
+  returning discovered transactions over an extension to the Electrum JSON-RPC
+  protocol.
+
+
+  This Umbrel package connects Frigate to your Bitcoin Core node and proxies
+  non-Silent Payments Electrum requests to your Electrs app.
+developer: Sparrow Wallet
+website: https://sparrowwallet.com/
+dependencies:
+  - bitcoin
+  - electrs
+repo: https://github.com/sparrowwallet/frigate
+support: https://github.com/sparrowwallet/frigate/issues
+port: 50005
+path: ""
+defaultPassword: ""
+releaseNotes: >
+  Initial Frigate package for Umbrel, based on Frigate 1.5.2.
+
+
+  Frigate listens on port 50005 to avoid conflicting with the Electrs app on
+  port 50001.
+submitter: AlbercoinDev
+submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+backupIgnore:
+  - data/frigate/db
+  - data/frigate/*/db

@@ -421,7 +421,7 @@ services:
         import json
         import os
 
-        BANNER = os.environ.get("FRIGATE_ELECTRUM_BANNER", "Frigate Umbrel\nLaboratorio Albercoin\nSemilla Bitcoin")
+        BANNER = os.environ.get("FRIGATE_ELECTRUM_BANNER", "  _____      _             _        _   _           _              _\n |  ___| __ (_) __ _  __ _| |_ ___ | | | |_ __ ___ | |__  _ __ ___| |\n | |_ | '_ \\| |/ _` |/ _` | __/ _ \\| | | | '_ ` _ \\| '_ \\| '__/ _ \\ |\n |  _|| | | | | (_| | (_| | ||  __/| |_| | | | | | | |_) | | |  __/ |\n |_|  |_| |_|_|\\__, |\\__,_|\\__\\___| \\___/|_| |_| |_|_.__/|_|  \\___|_|\n                |___/\nLaboratorio Albercoin\nSemilla Bitcoin")
         LISTEN_PORT = int(os.environ.get("APP_FRIGATE_ELECTRUM_PORT", "50005"))
         UPSTREAM_HOST = os.environ.get("FRIGATE_UPSTREAM_HOST", "frigate")
         UPSTREAM_PORT = int(os.environ.get("FRIGATE_UPSTREAM_PORT", "50005"))
@@ -474,7 +474,12 @@ services:
     environment:
       APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
       FRIGATE_ELECTRUM_BANNER: |-
-        Frigate Umbrel
+        _____      _             _        _   _           _              _
+        |  ___| __ (_) __ _  __ _| |_ ___ | | | |_ __ ___ | |__  _ __ ___| |
+        | |_ | '_ \| |/ _` |/ _` | __/ _ \| | | | '_ ` _ \| '_ \| '__/ _ \ |
+        |  _|| | | | | (_| | (_| | ||  __/| |_| | | | | | | |_) | | |  __/ |
+        |_|  |_| |_|_|\__, |\__,_|\__\___| \___/|_| |_| |_|_.__/|_|  \___|_|
+                      |___/
         Laboratorio Albercoin
         Semilla Bitcoin
     ports:

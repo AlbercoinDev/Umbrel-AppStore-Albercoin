@@ -94,6 +94,20 @@ def _container_matches_app(container: dict, app_id: str) -> bool:
     return any(name.strip("/").startswith(f"{app_id}_") for name in names)
 
 
+def _container_is_tor(container: dict) -> bool:
+    labels = container.get("Labels") or {}
+    names = [name.strip("/") for name in (container.get("Names") or [])]
+    service = labels.get("com.docker.compose.service", "")
+    project = labels.get("com.docker.compose.project", "")
+    image = container.get("Image", "")
+
+    if service == "tor" or project == "tor":
+        return True
+    if any(name == "tor" or name.startswith("tor_") or "_tor_" in name for name in names):
+        return True
+    return "getumbrel/tor" in image
+
+
 def get_app_containers(app_id: str) -> list[dict]:
     return [c for c in _list_containers() if _container_matches_app(c, app_id)]
 
@@ -106,6 +120,39 @@ def has_restart_target(app_id: str) -> bool:
     except Exception as e:
         logger.warning(f"Failed checking restart target for {app_id}: {e}")
         return False
+
+
+def restart_tor_containers() -> tuple[bool, str]:
+    if DRY_RUN:
+        logger.info("DRY RUN: Would restart Tor containers")
+        return True, "dry_run"
+
+    try:
+        containers = [c for c in _list_containers() if _container_is_tor(c)]
+        if not containers:
+            logger.warning("No Tor containers found")
+            return False, "no_tor_containers_found"
+
+        restarted = 0
+        errors: list[str] = []
+        for container in containers:
+            container_id = container.get("Id", "")
+            name = ",".join(container.get("Names", [])) or container_id[:12]
+            ok, message = _restart_container(container_id)
+            if ok:
+                restarted += 1
+            else:
+                errors.append(f"{name}: {message}")
+
+        if errors:
+            logger.error(f"Failed restarting some Tor containers: {'; '.join(errors)}")
+            return False, "; ".join(errors)
+
+        logger.info(f"Restarted {restarted} Tor container(s)")
+        return True, f"restarted_{restarted}_tor_containers"
+    except Exception as e:
+        logger.error(f"Unexpected error restarting Tor containers: {e}")
+        return False, f"error: {e}"
 
 
 def _restart_container(container_id: str) -> tuple[bool, str]:

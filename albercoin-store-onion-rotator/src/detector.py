@@ -67,6 +67,17 @@ def get_app_data_app_ids() -> set[str]:
     return app_ids
 
 
+def _owner_app_id(service_id: str, installed_app_ids: set[str] | None) -> Optional[str]:
+    if installed_app_ids is None:
+        return service_id
+    if service_id in installed_app_ids:
+        return service_id
+    matches = [app_id for app_id in installed_app_ids if service_id.startswith(f"{app_id}-")]
+    if not matches:
+        return None
+    return max(matches, key=len)
+
+
 def scan_apps(installed_app_ids: set[str] | None = None) -> list[dict]:
     tor_dir = _resolve_tor_data_dir()
     if not os.path.isdir(tor_dir):
@@ -80,10 +91,11 @@ def scan_apps(installed_app_ids: set[str] | None = None) -> list[dict]:
             if not os.path.isdir(app_dir) or os.path.islink(app_dir):
                 continue
 
-            app_id = _extract_app_id(entry)
-            if app_id is None:
+            service_id = _extract_app_id(entry)
+            if service_id is None:
                 continue
-            if installed_app_ids is not None and app_id not in installed_app_ids:
+            restart_app_id = _owner_app_id(service_id, installed_app_ids)
+            if restart_app_id is None:
                 continue
 
             hostname_path = os.path.join(app_dir, "hostname")
@@ -95,14 +107,16 @@ def scan_apps(installed_app_ids: set[str] | None = None) -> list[dict]:
             status = "available" if onion else "no_hostname"
 
             detected.append({
-                "app_id": app_id,
+                "app_id": service_id,
+                "service_id": service_id,
+                "restart_app_id": restart_app_id,
                 "hostname_path": hostname_path,
                 "onion_address": onion or "",
                 "status": status,
             })
 
             if DEBUG:
-                logger.debug(f"Detected {app_id}: {onion or 'no onion'}")
+                logger.debug(f"Detected {service_id} -> {restart_app_id}: {onion or 'no onion'}")
     except PermissionError as e:
         logger.error(f"Permission denied scanning {tor_dir}: {e}")
 

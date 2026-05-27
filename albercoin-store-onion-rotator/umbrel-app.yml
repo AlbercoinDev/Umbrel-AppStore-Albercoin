@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-onion-rotator
 category: networking
 name: Onion Rotator
-version: "1.0.6"
+version: "1.0.7"
 tagline: Rotate Tor onion addresses for installed Umbrel apps
 description: >-
   Onion Rotator lets you view all .onion addresses of your installed
@@ -45,6 +45,6 @@ dependencies: []
 permissions:
   - docker.sock
 releaseNotes: >-
-  Filters Onion entries using Umbrel app-data so stale Tor services from
-  uninstalled apps are hidden, and refuses to delete a hostname unless the app
-  has restartable Docker containers.
+  Rotates Onion v3 addresses correctly by removing Tor hidden service key files,
+  maps auxiliary Onion services like electrs-rpc to their owner app for restart,
+  and attempts to restart Tor containers so new hostnames are generated.

@@ -73,6 +73,15 @@ def test_scan_apps_filters_to_installed_ids(monkeypatch_tor_dir):
     assert app_ids == {"bitcoin", "lnd"}
 
 
+def test_scan_apps_maps_auxiliary_service_to_owner(monkeypatch_tor_dir):
+    from detector import scan_apps
+    apps = scan_apps({"electrs"})
+    app_map = {a["app_id"]: a for a in apps}
+    assert "electrs" in app_map
+    assert "electrs-rpc" in app_map
+    assert app_map["electrs-rpc"]["restart_app_id"] == "electrs"
+
+
 def test_get_app_data_app_ids(monkeypatch, temp_app_data_dir):
     import config
     import detector

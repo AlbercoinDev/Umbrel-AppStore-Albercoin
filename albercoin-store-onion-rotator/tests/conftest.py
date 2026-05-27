@@ -28,10 +28,11 @@ def temp_tor_dir():
         tor_dir = os.path.join(tmpdir, "tor", "data")
         os.makedirs(tor_dir, exist_ok=True)
 
-        app_dirs = ["app-bitcoin", "app-electrs", "app-lnd", "app-invalid"]
+        app_dirs = ["app-bitcoin", "app-electrs", "app-electrs-rpc", "app-lnd", "app-invalid"]
         onions = {
             "app-bitcoin": _make_onion("bitcoin"),
             "app-electrs": _make_onion("electrs"),
+            "app-electrs-rpc": _make_onion("electrsrpc"),
             "app-lnd": _make_onion("lndnode"),
         }
 
@@ -41,6 +42,10 @@ def temp_tor_dir():
                 hostname_path = os.path.join(tor_dir, app_dir, "hostname")
                 with open(hostname_path, "w") as f:
                     f.write(onions[app_dir] + "\n")
+                with open(os.path.join(tor_dir, app_dir, "hs_ed25519_secret_key"), "w") as f:
+                    f.write("fake-secret-key")
+                with open(os.path.join(tor_dir, app_dir, "hs_ed25519_public_key"), "w") as f:
+                    f.write("fake-public-key")
 
         yield tor_dir
 

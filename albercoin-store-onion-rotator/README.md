@@ -64,20 +64,32 @@ Click **Refresh** to rescan and update the list of apps.
 
 The app scans the Umbrel Tor data directory (typically `/home/umbrel/umbrel/tor/data/`)
 for subdirectories matching `app-<id>` and reads the `hostname` file inside each one.
+Entries are filtered against Umbrel's installed apps in `/app-data`. Auxiliary
+hidden services such as `app-electrs-rpc` are mapped to their owner app (`electrs`)
+when the service ID starts with the installed app ID.
 
 ### App restart
 
 The app uses the Docker socket (`/var/run/docker.sock`) to find containers by
-the `com.docker.compose.project` label matching the app ID, and restarts them.
+the `com.docker.compose.project` label matching the owner app ID, and restarts them.
+It also attempts to restart Umbrel Tor containers so deleted hidden service keys
+are regenerated.
 
 ### Regeneration flow
 
 For each selected app:
 1. Validates the app ID
-2. Deletes the `hostname` file from the Tor data directory
-3. Restarts the app's Docker containers
-4. Waits up to 120 seconds for Tor to regenerate a new hostname
-5. Returns the old and new onion addresses
+2. Confirms the owner app has restartable containers
+3. Deletes only these files from the hidden service directory: `hostname`,
+   `hs_ed25519_secret_key`, `hs_ed25519_public_key`
+4. Restarts the owner app's Docker containers
+5. Attempts to restart Umbrel Tor containers
+6. Waits up to 120 seconds for Tor to regenerate a new hostname
+7. Returns the old and new onion addresses
+
+Deleting only `hostname` is not enough to rotate a Tor v3 onion address. The
+address is derived from `hs_ed25519_secret_key`, so the key files must be removed
+for Tor to generate a new address.
 
 ## Dry run mode
 
@@ -130,7 +142,9 @@ python -m pytest tests/ -v
 ## Permissions required
 
 - **Tor data directory** (`/home/umbrel/umbrel/tor/data`): Read/write access to
-  read and delete `hostname` files
+  read and delete Tor hidden service rotation files
+- **Umbrel app-data directory** (`/home/umbrel/umbrel/app-data`): Read-only
+  access to identify currently installed apps
 - **Docker socket** (`/var/run/docker.sock`): Required to restart app containers
   after rotating their onion addresses
 

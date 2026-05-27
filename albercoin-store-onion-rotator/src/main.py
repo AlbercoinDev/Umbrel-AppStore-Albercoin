@@ -100,6 +100,7 @@ def _rotate(app_ids: list[str]) -> dict:
             app_id=app_id,
             hostname_path=app["hostname_path"],
             current_onion=app["onion_address"],
+            restart_app_id=app.get("restart_app_id") or app_id,
         ))
 
     return {"results": results}

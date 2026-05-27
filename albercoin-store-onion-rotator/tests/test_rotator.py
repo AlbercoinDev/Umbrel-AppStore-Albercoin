@@ -25,6 +25,17 @@ def test_delete_hostname_safe_path(monkeypatch_tor_dir):
     assert not os.path.exists(hostname_path)
 
 
+def test_delete_hidden_service_keys(monkeypatch_tor_dir):
+    from rotator import delete_hidden_service_keys
+    service_dir = os.path.join(monkeypatch_tor_dir, "app-electrs")
+    hostname_path = os.path.join(service_dir, "hostname")
+    ok, msg = delete_hidden_service_keys(hostname_path)
+    assert ok
+    assert not os.path.exists(os.path.join(service_dir, "hostname"))
+    assert not os.path.exists(os.path.join(service_dir, "hs_ed25519_secret_key"))
+    assert not os.path.exists(os.path.join(service_dir, "hs_ed25519_public_key"))
+
+
 def test_delete_hostname_path_traversal():
     from rotator import delete_hostname
     ok, msg = delete_hostname("/etc/passwd")

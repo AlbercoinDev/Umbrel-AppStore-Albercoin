@@ -3,6 +3,7 @@ import re
 
 UMBREL_ROOT = os.environ.get("UMBREL_ROOT", "/home/umbrel/umbrel")
 TOR_DATA_DIR = os.environ.get("TOR_DATA_DIR", os.path.join(UMBREL_ROOT, "tor", "data"))
+UMBREL_APP_DATA_DIR = os.environ.get("UMBREL_APP_DATA_DIR", os.path.join(UMBREL_ROOT, "app-data"))
 DRY_RUN = os.environ.get("ONION_ROTATOR_DRY_RUN", "false").lower() == "true"
 DEBUG = os.environ.get("ONION_ROTATOR_DEBUG", "false").lower() == "true"
 LOG_MAX_LINES = 500

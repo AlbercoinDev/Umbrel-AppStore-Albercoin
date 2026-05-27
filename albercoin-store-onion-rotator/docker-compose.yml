@@ -17,11 +17,13 @@ services:
     command: python main.py
     volumes:
       - ${APP_DATA_DIR}/src:/app:ro
+      - ${UMBREL_ROOT}/app-data:/app-data:ro
       - ${UMBREL_ROOT}/tor/data:/tor-data:rw
       - /var/run/docker.sock:/var/run/docker.sock:rw
     environment:
       UMBREL_ROOT: ${UMBREL_ROOT}
       TOR_DATA_DIR: /tor-data
+      UMBREL_APP_DATA_DIR: /app-data
       ONION_ROTATOR_DRY_RUN: "false"
       ONION_ROTATOR_DEBUG: "false"
       PYTHONDONTWRITEBYTECODE: "1"

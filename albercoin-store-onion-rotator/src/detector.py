@@ -3,7 +3,7 @@ import re
 import logging
 import pathlib
 from typing import Optional
-from config import TOR_DATA_DIR, ONION_V3_REGEX, APP_ID_REGEX, DEBUG
+from config import TOR_DATA_DIR, UMBREL_APP_DATA_DIR, ONION_V3_REGEX, APP_ID_REGEX, DEBUG
 
 logger = logging.getLogger("onion_rotator.detector")
 
@@ -49,6 +49,22 @@ def _extract_app_id(dirname: str) -> Optional[str]:
         if APP_ID_REGEX.match(app_id):
             return app_id
     return None
+
+
+def get_app_data_app_ids() -> set[str]:
+    app_data_dir = os.path.realpath(UMBREL_APP_DATA_DIR)
+    app_ids: set[str] = set()
+    if not os.path.isdir(app_data_dir):
+        logger.warning(f"Umbrel app-data directory not found: {app_data_dir}")
+        return app_ids
+    try:
+        for entry in os.listdir(app_data_dir):
+            full_path = os.path.join(app_data_dir, entry)
+            if os.path.isdir(full_path) and not os.path.islink(full_path) and APP_ID_REGEX.match(entry):
+                app_ids.add(entry)
+    except PermissionError as e:
+        logger.error(f"Permission denied scanning app-data {app_data_dir}: {e}")
+    return app_ids
 
 
 def scan_apps(installed_app_ids: set[str] | None = None) -> list[dict]:

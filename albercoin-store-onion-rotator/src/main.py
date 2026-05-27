@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-from config import DEBUG, DRY_RUN, LOG_MAX_LINES, TOR_DATA_DIR
-from detector import scan_apps
+from config import DEBUG, DRY_RUN, LOG_MAX_LINES, TOR_DATA_DIR, UMBREL_APP_DATA_DIR
+from detector import get_app_data_app_ids, scan_apps
 from i18n import TRANSLATIONS
 from restarter import get_docker_info, get_installed_app_ids, is_docker_accessible
 from rotator import rotate_single
@@ -42,6 +42,7 @@ def _health() -> dict:
         "status": "ok",
         "tor_data_dir": TOR_DATA_DIR,
         "tor_data_accessible": os.path.isdir(TOR_DATA_DIR),
+        "app_data_accessible": os.path.isdir(UMBREL_APP_DATA_DIR),
         "docker_accessible": is_docker_accessible(),
         "dry_run": DRY_RUN,
     }
@@ -57,12 +58,22 @@ def _api_path(path: str) -> str:
 
 
 def _scan_installed_apps() -> list[dict]:
-    installed = get_installed_app_ids()
-    if installed:
-        logger.debug(f"Filtering Tor hostnames by installed apps: {sorted(installed)}")
-        return scan_apps(installed)
-    logger.warning("Docker app list unavailable; falling back to Tor hostname scan")
-    return scan_apps()
+    app_data_ids = get_app_data_app_ids()
+    docker_ids = get_installed_app_ids()
+
+    if app_data_ids:
+        # app-data is the authoritative source for installed Umbrel apps. This
+        # intentionally hides stale Tor dirs like app-electrs-rpc when no app
+        # with that exact ID is installed.
+        logger.debug(f"Filtering Tor hostnames by app-data IDs: {sorted(app_data_ids)}")
+        return scan_apps(app_data_ids)
+
+    if docker_ids:
+        logger.warning("app-data unavailable; filtering Tor hostnames by Docker projects")
+        return scan_apps(docker_ids)
+
+    logger.warning("No installed app source available; returning no apps to avoid stale hostnames")
+    return []
 
 
 def _rotate(app_ids: list[str]) -> dict:

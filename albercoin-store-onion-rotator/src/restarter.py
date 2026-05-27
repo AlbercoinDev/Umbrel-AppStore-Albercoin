@@ -94,6 +94,20 @@ def _container_matches_app(container: dict, app_id: str) -> bool:
     return any(name.strip("/").startswith(f"{app_id}_") for name in names)
 
 
+def get_app_containers(app_id: str) -> list[dict]:
+    return [c for c in _list_containers() if _container_matches_app(c, app_id)]
+
+
+def has_restart_target(app_id: str) -> bool:
+    if DRY_RUN:
+        return True
+    try:
+        return len(get_app_containers(app_id)) > 0
+    except Exception as e:
+        logger.warning(f"Failed checking restart target for {app_id}: {e}")
+        return False
+
+
 def _restart_container(container_id: str) -> tuple[bool, str]:
     status, body = _docker_request("POST", f"/containers/{quote(container_id)}/restart")
     if status in (204, 304):
@@ -107,7 +121,7 @@ def restart_app(app_id: str) -> tuple[bool, str]:
         return True, "dry_run"
 
     try:
-        containers = [c for c in _list_containers() if _container_matches_app(c, app_id)]
+        containers = get_app_containers(app_id)
         if not containers:
             logger.warning(f"No containers found for app {app_id}")
             return False, "no_containers_found"

@@ -55,3 +55,11 @@ def monkeypatch_tor_dir(monkeypatch, temp_tor_dir):
     import importlib
     importlib.reload(detector)
     return temp_tor_dir
+
+
+@pytest.fixture
+def temp_app_data_dir():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for app_id in ("bitcoin", "electrs", "lnd"):
+            os.makedirs(os.path.join(tmpdir, app_id), exist_ok=True)
+        yield tmpdir

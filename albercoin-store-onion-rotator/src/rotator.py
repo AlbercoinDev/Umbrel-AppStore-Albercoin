@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 from config import APP_ID_REGEX, DRY_RUN, POLL_INTERVAL, POLL_TIMEOUT
 from detector import _read_hostname, _is_safe_path
-from restarter import restart_app
+from restarter import has_restart_target, restart_app
 
 logger = logging.getLogger("onion_rotator.rotator")
 
@@ -69,6 +69,16 @@ def rotate_single(app_id: str, hostname_path: str, current_onion: str) -> dict:
             "new_onion": "",
             "status": "invalid_hostname",
             "message": error,
+        }
+
+    if not has_restart_target(app_id):
+        logger.warning(f"Refusing to delete hostname for {app_id}: no restartable containers found")
+        return {
+            "app_id": app_id,
+            "old_onion": current_onion,
+            "new_onion": "",
+            "status": "restart_failed",
+            "message": "no_restartable_containers_found",
         }
 
     del_ok, del_msg = delete_hostname(hostname_path)

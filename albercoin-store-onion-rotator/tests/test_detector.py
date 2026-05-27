@@ -64,3 +64,21 @@ def test_read_hostname_nonexistent():
     from detector import _read_hostname
     result = _read_hostname("/nonexistent/path")
     assert result is None
+
+
+def test_scan_apps_filters_to_installed_ids(monkeypatch_tor_dir):
+    from detector import scan_apps
+    apps = scan_apps({"bitcoin", "lnd"})
+    app_ids = {a["app_id"] for a in apps}
+    assert app_ids == {"bitcoin", "lnd"}
+
+
+def test_get_app_data_app_ids(monkeypatch, temp_app_data_dir):
+    import config
+    import detector
+    import importlib
+    monkeypatch.setattr(config, "UMBREL_APP_DATA_DIR", temp_app_data_dir)
+    importlib.reload(detector)
+
+    app_ids = detector.get_app_data_app_ids()
+    assert {"bitcoin", "electrs", "lnd"}.issubset(app_ids)

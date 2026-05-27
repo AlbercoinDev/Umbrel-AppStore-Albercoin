@@ -52,3 +52,17 @@ def test_rotate_single_dry_run(monkeypatch, monkeypatch_tor_dir):
     hostname_path = os.path.join(monkeypatch_tor_dir, "app-bitcoin", "hostname")
     result = rotator.rotate_single("bitcoin", hostname_path, "old.onion")
     assert result["app_id"] == "bitcoin"
+
+
+def test_rotate_single_refuses_delete_without_restart_target(monkeypatch, monkeypatch_tor_dir):
+    import rotator
+
+    hostname_path = os.path.join(monkeypatch_tor_dir, "app-bitcoin", "hostname")
+    assert os.path.exists(hostname_path)
+
+    monkeypatch.setattr(rotator, "has_restart_target", lambda app_id: False)
+    result = rotator.rotate_single("bitcoin", hostname_path, "old.onion")
+
+    assert result["status"] == "restart_failed"
+    assert result["message"] == "no_restartable_containers_found"
+    assert os.path.exists(hostname_path)

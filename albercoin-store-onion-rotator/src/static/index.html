@@ -224,7 +224,7 @@ footer { margin-top: 32px; text-align: center; color: var(--text2); font-size: 1
 </div>
 
 <script>
-const API = { base: '' };
+const API = { base: './' };
 let lang = 'en';
 let appsData = [];
 let selectedIds = new Set();
@@ -272,7 +272,7 @@ async function init() {
 
 async function loadTranslations() {
   try {
-    const res = await fetch('/api/i18n');
+    const res = await fetch(API.base + 'api/i18n');
     window._i18n = await res.json();
     i18nUpdate();
   } catch(e) {
@@ -293,7 +293,7 @@ async function loadApps() {
   rotateBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/apps');
+    const res = await fetch(API.base + 'api/apps');
     const data = await res.json();
     appsData = data.apps || [];
 
@@ -401,7 +401,7 @@ async function doRotate() {
   rotateBtn.innerHTML = `<span class="spinner"></span> ${t('processing')}`;
 
   try {
-    const res = await fetch('/api/rotate', {
+    const res = await fetch(API.base + 'api/rotate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ app_ids: Array.from(selectedIds) }),
@@ -491,7 +491,7 @@ function copyText(text) {
 
 async function loadLogs() {
   try {
-    const res = await fetch('/api/logs');
+    const res = await fetch(API.base + 'api/logs');
     const data = await res.json();
     const logs = data.logs || [];
     const container = document.getElementById('logs-content');
@@ -510,7 +510,7 @@ function toggleLogs() {
 }
 
 function refreshBanners() {
-  fetch('/api/apps').then(r => r.json()).then(data => {
+  fetch(API.base + 'api/apps').then(r => r.json()).then(data => {
     const dryBanner = document.getElementById('dry-run-banner');
     if (data.dry_run) {
       dryBanner.classList.remove('hidden');

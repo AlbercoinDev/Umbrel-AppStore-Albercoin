@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-onion-rotator
 category: networking
 name: Onion Rotator
-version: "1.0.1"
+version: "1.0.2"
 tagline: Rotate Tor onion addresses for installed Umbrel apps
 description: >-
   Onion Rotator lets you view all .onion addresses of your installed
@@ -42,5 +42,8 @@ defaultPassword: ""
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 dependencies: []
+permissions:
+  - docker.sock
 releaseNotes: >-
-  Initial release of Onion Rotator.
+  Improves Umbrel installation compatibility by using a public Python image
+  instead of a local build context.

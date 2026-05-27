@@ -58,6 +58,29 @@ def _list_containers() -> list[dict]:
     return json.loads(body.decode("utf-8"))
 
 
+def get_installed_app_ids() -> set[str]:
+    app_ids: set[str] = set()
+    try:
+        for container in _list_containers():
+            labels = container.get("Labels") or {}
+            names = container.get("Names") or []
+            candidates = [
+                labels.get("com.docker.compose.project", ""),
+                labels.get("app", ""),
+                labels.get("umbrel.appId", ""),
+            ]
+            for name in names:
+                clean = name.strip("/")
+                if "_" in clean:
+                    candidates.append(clean.split("_", 1)[0])
+            for candidate in candidates:
+                if candidate:
+                    app_ids.add(candidate)
+    except Exception as e:
+        logger.warning(f"Failed to list installed app IDs from Docker: {e}")
+    return app_ids
+
+
 def _container_matches_app(container: dict, app_id: str) -> bool:
     labels = container.get("Labels") or {}
     names = container.get("Names") or []

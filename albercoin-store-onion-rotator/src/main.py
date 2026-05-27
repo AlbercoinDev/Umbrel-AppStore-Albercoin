@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from config import DEBUG, DRY_RUN, LOG_MAX_LINES, TOR_DATA_DIR
 from detector import scan_apps
 from i18n import TRANSLATIONS
-from restarter import get_docker_info, is_docker_accessible
+from restarter import get_docker_info, get_installed_app_ids, is_docker_accessible
 from rotator import rotate_single
 
 logging.basicConfig(
@@ -47,11 +47,29 @@ def _health() -> dict:
     }
 
 
+def _api_path(path: str) -> str:
+    if path == "/health":
+        return "/health"
+    for api_path in ("/api/apps", "/api/logs", "/api/i18n", "/api/rotate"):
+        if path == api_path or path.endswith(api_path):
+            return api_path
+    return path
+
+
+def _scan_installed_apps() -> list[dict]:
+    installed = get_installed_app_ids()
+    if installed:
+        logger.debug(f"Filtering Tor hostnames by installed apps: {sorted(installed)}")
+        return scan_apps(installed)
+    logger.warning("Docker app list unavailable; falling back to Tor hostname scan")
+    return scan_apps()
+
+
 def _rotate(app_ids: list[str]) -> dict:
     if not app_ids:
         return {"error": "no_apps_selected", "results": []}
 
-    all_apps = scan_apps()
+    all_apps = _scan_installed_apps()
     app_map = {a["app_id"]: a for a in all_apps}
     results = []
 
@@ -99,12 +117,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        path = _api_path(urlparse(self.path).path)
         if path == "/health":
             self._send_json(_health())
             return
         if path == "/api/apps":
-            self._send_json({"apps": scan_apps(), "dry_run": DRY_RUN})
+            self._send_json({"apps": _scan_installed_apps(), "dry_run": DRY_RUN})
             return
         if path == "/api/logs":
             self._send_json({"logs": _in_memory_logs[-100:]})
@@ -112,7 +130,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/i18n":
             self._send_json(TRANSLATIONS)
             return
-        if path in ("/", "/index.html"):
+        if path in ("/", "/index.html") or not path.startswith("/api/"):
             index_path = os.path.join(STATIC_DIR, "index.html")
             if os.path.exists(index_path):
                 with open(index_path, encoding="utf-8") as f:
@@ -123,7 +141,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({"error": "not_found"}, 404)
 
     def do_POST(self):
-        path = urlparse(self.path).path
+        path = _api_path(urlparse(self.path).path)
         if path != "/api/rotate":
             self._send_json({"error": "not_found"}, 404)
             return

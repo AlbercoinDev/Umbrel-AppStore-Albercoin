@@ -224,7 +224,12 @@ footer { margin-top: 32px; text-align: center; color: var(--text2); font-size: 1
 </div>
 
 <script>
-const API = { base: './' };
+const API = {
+  basePath: window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/',
+  url(path) {
+    return this.basePath + path.replace(/^\/+/, '');
+  },
+};
 let lang = 'en';
 let appsData = [];
 let selectedIds = new Set();
@@ -272,12 +277,30 @@ async function init() {
 
 async function loadTranslations() {
   try {
-    const res = await fetch(API.base + 'api/i18n');
-    window._i18n = await res.json();
+    window._i18n = await apiJson('api/i18n');
     i18nUpdate();
   } catch(e) {
     console.error('Failed to load translations', e);
   }
+}
+
+async function apiJson(path, options = {}) {
+  const res = await fetch(API.url(path), options);
+  const text = await res.text();
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected JSON from ${path}, got ${contentType || 'unknown'}: ${text.slice(0, 120)}`);
+  }
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch(e) {
+    throw new Error(`Invalid JSON from ${path}: ${text.slice(0, 120)}`);
+  }
+  if (!res.ok) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
 }
 
 async function loadApps() {
@@ -293,8 +316,7 @@ async function loadApps() {
   rotateBtn.disabled = true;
 
   try {
-    const res = await fetch(API.base + 'api/apps');
-    const data = await res.json();
+    const data = await apiJson('api/apps');
     appsData = data.apps || [];
 
     loading.classList.add('hidden');
@@ -401,12 +423,11 @@ async function doRotate() {
   rotateBtn.innerHTML = `<span class="spinner"></span> ${t('processing')}`;
 
   try {
-    const res = await fetch(API.base + 'api/rotate', {
+    const data = await apiJson('api/rotate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ app_ids: Array.from(selectedIds) }),
     });
-    const data = await res.json();
 
     if (data.results) {
       showResults(data.results);
@@ -491,8 +512,7 @@ function copyText(text) {
 
 async function loadLogs() {
   try {
-    const res = await fetch(API.base + 'api/logs');
-    const data = await res.json();
+    const data = await apiJson('api/logs');
     const logs = data.logs || [];
     const container = document.getElementById('logs-content');
     container.innerHTML = logs.map(l =>
@@ -510,7 +530,7 @@ function toggleLogs() {
 }
 
 function refreshBanners() {
-  fetch(API.base + 'api/apps').then(r => r.json()).then(data => {
+  apiJson('api/apps').then(data => {
     const dryBanner = document.getElementById('dry-run-banner');
     if (data.dry_run) {
       dryBanner.classList.remove('hidden');

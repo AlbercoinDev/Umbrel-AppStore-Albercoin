@@ -3,11 +3,12 @@ version: "3.7"
 services:
   app_proxy:
     environment:
-      APP_HOST: server
+      APP_HOST: onion-rotator-web
       APP_PORT: 8900
 
   server:
     image: python:3.12-slim
+    hostname: onion-rotator-web
     init: true
     user: "0:0"
     restart: on-failure

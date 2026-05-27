@@ -51,7 +51,7 @@ def _extract_app_id(dirname: str) -> Optional[str]:
     return None
 
 
-def scan_apps() -> list[dict]:
+def scan_apps(installed_app_ids: set[str] | None = None) -> list[dict]:
     tor_dir = _resolve_tor_data_dir()
     if not os.path.isdir(tor_dir):
         logger.error(f"Tor data directory not found: {tor_dir}")
@@ -66,6 +66,8 @@ def scan_apps() -> list[dict]:
 
             app_id = _extract_app_id(entry)
             if app_id is None:
+                continue
+            if installed_app_ids is not None and app_id not in installed_app_ids:
                 continue
 
             hostname_path = os.path.join(app_dir, "hostname")

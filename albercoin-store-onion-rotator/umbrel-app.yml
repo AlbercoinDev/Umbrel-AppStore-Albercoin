@@ -1,0 +1,43 @@
+manifestVersion: 1
+id: albercoin-store-onion-rotator
+category: networking
+name: Onion Rotator
+version: "1.0.0"
+tagline: Rotate Tor onion addresses for installed Umbrel apps
+description: >-
+  Onion Rotator lets you view all .onion addresses of your installed
+  Umbrel applications and selectively regenerate them.
+
+
+  When you rotate an onion address:
+  - The old .onion address stops working
+  - Tor generates a new random .onion address
+  - The app is automatically restarted
+  - Your app remains functional with the new address
+
+
+  This is useful for:
+  - Security maintenance and periodic rotation
+  - Mitigating potential exposure of compromised addresses
+  - Managing app-level privacy
+
+
+  ⚠️ Rotating an onion address will make the previous address permanently
+  stop working after the app restarts. Make sure you have updated any
+  external services that rely on the old address.
+
+
+  This app requires access to the Docker socket to restart applications
+  and to the Tor data directory to manage onion service files.
+developer: Alberto
+website: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+repo: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+support: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/issues
+port: 2180
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: AlbercoinDev
+submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+dependencies: []

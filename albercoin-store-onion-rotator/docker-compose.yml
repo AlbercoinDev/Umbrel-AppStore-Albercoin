@@ -1,0 +1,19 @@
+services:
+  app_proxy:
+    environment:
+      APP_HOST: albercoin-store-onion-rotator_server_1
+      APP_PORT: 8900
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    stop_grace_period: 30s
+    volumes:
+      - ${UMBREL_ROOT}/tor/data:/tor-data:rw
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    environment:
+      UMBREL_ROOT: ${UMBREL_ROOT}
+      ONION_ROTATOR_DRY_RUN: "false"
+      ONION_ROTATOR_DEBUG: "false"

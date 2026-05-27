@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#7c5cfc"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="60" fill="url(#bg)"/>
+  <circle cx="64" cy="64" r="54" fill="#1a1c25"/>
+  <ellipse cx="64" cy="52" rx="22" ry="18" fill="url(#skin)"/>
+  <ellipse cx="58" cy="46" rx="3" ry="2.5" fill="#1a1c25" opacity="0.3"/>
+  <ellipse cx="70" cy="46" rx="3" ry="2.5" fill="#1a1c25" opacity="0.3"/>
+  <ellipse cx="64" cy="54" rx="2.5" ry="1.5" fill="#92400e" opacity="0.5"/>
+  <rect x="56" y="68" width="16" height="24" rx="8" fill="url(#skin)"/>
+  <rect x="62" y="64" width="4" height="6" rx="2" fill="#92400e" opacity="0.4"/>
+  <rect x="38" y="52" width="4" height="20" rx="2" fill="url(#skin)" transform="rotate(-20 40 62)"/>
+  <rect x="86" y="52" width="4" height="20" rx="2" fill="url(#skin)" transform="rotate(20 88 62)"/>
+  <text x="64" y="108" text-anchor="middle" fill="#a78bfa" font-family="monospace" font-size="9" font-weight="bold">TOR</text>
+</svg>

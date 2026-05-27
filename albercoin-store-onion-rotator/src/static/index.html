@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Onion Rotator</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1c25;
+  --surface2: #23252f;
+  --border: #2e3040;
+  --text: #e8e8e8;
+  --text2: #999;
+  --accent: #7c5cfc;
+  --accent-hover: #6a4ae0;
+  --green: #34d399;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --blue: #60a5fa;
+  --orange: #fb923c;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+.container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 24px;
+}
+header h1 {
+  font-size: 24px; font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--blue));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+header p { color: var(--text2); font-size: 14px; margin-top: 4px; }
+.lang-switch { display: flex; gap: 4px; }
+.lang-switch button {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text2);
+  padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 13px;
+}
+.lang-switch button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.banner {
+  padding: 10px 14px; border-radius: var(--radius); margin-bottom: 16px;
+  font-size: 13px; font-weight: 500;
+}
+.banner.warning { background: rgba(251,191,36,0.12); color: var(--yellow); border: 1px solid rgba(251,191,36,0.25); }
+.banner.dry-run { background: rgba(251,146,60,0.12); color: var(--orange); border: 1px solid rgba(251,146,60,0.25); }
+.toolbar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px;
+}
+.toolbar label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.toolbar label input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+  border-radius: var(--radius); border: none; font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; text-decoration: none;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface2); }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #ef4444; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.table-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow-x: auto;
+}
+table { width: 100%; border-collapse: collapse; }
+thead { background: var(--surface2); }
+th { text-align: left; padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text2); letter-spacing: 0.5px; }
+td { padding: 10px 12px; font-size: 14px; border-top: 1px solid var(--border); }
+tr.result-row td { border-top: none; padding: 4px 12px; }
+tr.result-row:first-child td { padding-top: 10px; }
+tr.result-row + tr.result-row td { padding-bottom: 10px; }
+tr.result-group { border-top: 1px solid var(--border); }
+tr.result-group:first-child { border-top: none; }
+.col-check { width: 40px; text-align: center; }
+.col-check input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+.col-app { min-width: 140px; font-weight: 500; }
+.col-onion { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; word-break: break-all; }
+.col-status { min-width: 100px; }
+.col-actions { min-width: 80px; text-align: right; }
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+}
+.badge-available { background: rgba(52,211,153,0.15); color: var(--green); }
+.badge-no_hostname { background: rgba(153,153,153,0.15); color: var(--text2); }
+.badge-read_error { background: rgba(248,113,113,0.15); color: var(--red); }
+.badge-success { background: rgba(52,211,153,0.15); color: var(--green); }
+.badge-unchanged { background: rgba(96,165,250,0.15); color: var(--blue); }
+.badge-timeout { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.badge-restart_failed, .badge-delete_failed, .badge-invalid_hostname { background: rgba(248,113,113,0.15); color: var(--red); }
+.label-old { color: var(--text2); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.label-new { color: var(--green); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.copy-btn { background: none; border: 1px solid var(--border); color: var(--text2); cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+.copy-btn:hover { background: var(--surface2); color: var(--text); }
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  align-items: center; justify-content: center; z-index: 100;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 24px; max-width: 500px; width: 90%;
+}
+.modal h2 { font-size: 18px; margin-bottom: 12px; }
+.modal p { color: var(--text2); font-size: 14px; margin-bottom: 20px; }
+.modal .btn-group { display: flex; gap: 8px; justify-content: flex-end; }
+.empty-state { text-align: center; padding: 48px 16px; color: var(--text2); }
+.empty-state p { font-size: 15px; }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.results-section { margin-top: 16px; }
+.results-section h3 { font-size: 15px; margin-bottom: 8px; }
+.logs-section { margin-top: 24px; }
+.logs-section h3 { font-size: 15px; margin-bottom: 8px; cursor: pointer; user-select: none; }
+.logs-section h3:hover { color: var(--accent); }
+.logs-content { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; max-height: 200px; overflow-y: auto; font-family: 'SF Mono', monospace; font-size: 12px; color: var(--text2); }
+.logs-content .log-error { color: var(--red); }
+.logs-content .log-warning { color: var(--yellow); }
+.logs-content .log-info { color: var(--text2); }
+footer { margin-top: 32px; text-align: center; color: var(--text2); font-size: 12px; }
+.hidden { display: none !important; }
+@media (max-width: 680px) {
+  header { flex-direction: column; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar .btn { justify-content: center; }
+}
+</style>
+</head>
+<body>
+<div class="container" id="app">
+  <header>
+    <div>
+      <h1 data-i18n="app_title">Onion Rotator</h1>
+      <p data-i18n="app_subtitle">Rotate Tor onion addresses for installed Umbrel apps.</p>
+    </div>
+    <div class="lang-switch">
+      <button data-lang="en" class="active" onclick="setLang('en')">EN</button>
+      <button data-lang="es" onclick="setLang('es')">ES</button>
+    </div>
+  </header>
+
+  <div id="dry-run-banner" class="banner dry-run hidden"></div>
+  <div id="warning-banner" class="banner warning"></div>
+
+  <div id="loading-state" class="empty-state"><span class="spinner"></span> <span data-i18n="loading">Loading...</span></div>
+
+  <div id="main-content" class="hidden">
+    <div class="toolbar">
+      <label><input type="checkbox" id="select-all" onchange="toggleAll()"> <span data-i18n="select_all">Select All</span></label>
+      <button class="btn btn-danger" id="rotate-btn" onclick="confirmRotate()" disabled>
+        <span data-i18n="rotate_selected">Rotate selected onion addresses</span>
+      </button>
+      <button class="btn btn-secondary" id="refresh-btn" onclick="loadApps()">
+        <span data-i18n="refresh">Refresh</span>
+      </button>
+    </div>
+
+    <div id="empty-state" class="empty-state hidden"><p data-i18n="no_apps_found">No apps with Tor onion addresses found.</p></div>
+
+    <div id="apps-table-wrap" class="table-wrap hidden">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            <th class="col-app" data-i18n="app">App</th>
+            <th class="col-onion" data-i18n="onion_address">Onion Address</th>
+            <th class="col-status" data-i18n="status">Status</th>
+            <th class="col-actions" data-i18n="actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="apps-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="results-section" class="results-section hidden">
+      <h3 data-i18n="operation_completed">Operation completed</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-app" data-i18n="app">App</th>
+              <th class="col-onion" data-i18n="onion_address">Onion Address</th>
+              <th class="col-status" data-i18n="status">Status</th>
+            </tr>
+          </thead>
+          <tbody id="results-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="logs-section">
+      <h3 onclick="toggleLogs()" data-i18n="log_title">Operation Logs</h3>
+      <div id="logs-content" class="logs-content hidden"></div>
+    </div>
+  </div>
+
+  <footer>
+    <a href="https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin" target="_blank" rel="noopener">Albercoin Store</a>
+  </footer>
+</div>
+
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h2 data-i18n="confirm_title">Confirm Rotation</h2>
+    <p data-i18n="confirm_message">Rotating an onion address will make the previous address stop working after the app restarts. Are you sure you want to rotate the selected addresses?</p>
+    <div class="btn-group">
+      <button class="btn btn-secondary" onclick="closeModal()" data-i18n="cancel_btn">Cancel</button>
+      <button class="btn btn-danger" id="confirm-btn" onclick="doRotate()" data-i18n="confirm_btn">Yes, rotate selected</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = { base: '' };
+let lang = 'en';
+let appsData = [];
+let selectedIds = new Set();
+
+const t = (key) => {
+  if (!window._i18n) return key;
+  return (window._i18n[lang] && window._i18n[lang][key]) || (window._i18n.en && window._i18n.en[key]) || key;
+};
+
+function i18nUpdate() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    el.textContent = t(key);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+  });
+  document.title = t('app_title');
+}
+
+async function setLang(l) {
+  lang = l;
+  document.querySelectorAll('.lang-switch button').forEach(b => b.classList.toggle('active', b.dataset.lang === l));
+  i18nUpdate();
+  await loadApps();
+  await loadLogs();
+}
+
+function detectLang() {
+  const nav = navigator.language || navigator.userLanguage || '';
+  return nav.startsWith('es') ? 'es' : 'en';
+}
+
+async function init() {
+  const saved = localStorage.getItem('onion-rotator-lang');
+  lang = saved || detectLang();
+  document.querySelectorAll('.lang-switch button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+
+  await loadTranslations();
+  i18nUpdate();
+  await loadApps();
+  await loadLogs();
+  refreshBanners();
+}
+
+async function loadTranslations() {
+  try {
+    const res = await fetch('/api/i18n');
+    window._i18n = await res.json();
+    i18nUpdate();
+  } catch(e) {
+    console.error('Failed to load translations', e);
+  }
+}
+
+async function loadApps() {
+  const loading = document.getElementById('loading-state');
+  const main = document.getElementById('main-content');
+  const empty = document.getElementById('empty-state');
+  const tableWrap = document.getElementById('apps-table-wrap');
+  const tbody = document.getElementById('apps-tbody');
+  const rotateBtn = document.getElementById('rotate-btn');
+
+  loading.classList.remove('hidden');
+  main.classList.add('hidden');
+  rotateBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/apps');
+    const data = await res.json();
+    appsData = data.apps || [];
+
+    loading.classList.add('hidden');
+    main.classList.remove('hidden');
+
+    if (appsData.length === 0) {
+      empty.classList.remove('hidden');
+      tableWrap.classList.add('hidden');
+      return;
+    }
+
+    empty.classList.add('hidden');
+    tableWrap.classList.remove('hidden');
+    renderTable(tbody, appsData);
+    updateRotateBtn();
+    refreshBanners();
+  } catch(e) {
+    loading.classList.remove('hidden');
+    loading.innerHTML = `<span style="color:var(--red)">${t('error_prefix')} ${e.message}</span>`;
+  }
+}
+
+function renderTable(tbody, apps) {
+  tbody.innerHTML = '';
+  selectedIds = new Set();
+
+  apps.forEach((app, idx) => {
+    const tr = document.createElement('tr');
+    tr.dataset.idx = idx;
+
+    const statusBadge = app.status === 'available' ? 'badge-available' :
+      app.status === 'no_hostname' ? 'badge-no_hostname' : 'badge-read_error';
+    const statusText = t(app.status) || app.status;
+
+    tr.innerHTML = `
+      <td class="col-check">
+        <input type="checkbox" class="app-check" data-id="${app.app_id}" ${app.status !== 'available' ? 'disabled' : ''}
+          onchange="onCheckChange('${app.app_id}', this.checked)">
+      </td>
+      <td class="col-app">${escHtml(app.app_id)}</td>
+      <td class="col-onion">${app.onion_address ? escHtml(app.onion_address) : '<span style="color:var(--text2)">—</span>'}</td>
+      <td class="col-status"><span class="badge ${statusBadge}">${statusText}</span></td>
+      <td class="col-actions">
+        ${app.onion_address ? `<button class="copy-btn" onclick="copyOnion('${app.app_id}')" data-i18n="copy">${t('copy')}</button>` : ''}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('select-all').checked = false;
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function onCheckChange(appId, checked) {
+  if (checked) selectedIds.add(appId);
+  else selectedIds.delete(appId);
+  updateRotateBtn();
+  updateSelectAllCheckbox();
+}
+
+function updateSelectAllCheckbox() {
+  const checks = document.querySelectorAll('.app-check:not(:disabled)');
+  const checked = document.querySelectorAll('.app-check:checked');
+  const all = document.getElementById('select-all');
+  all.checked = checks.length > 0 && checks.length === checked.length;
+  all.indeterminate = checked.length > 0 && checked.length < checks.length;
+}
+
+function toggleAll() {
+  const all = document.getElementById('select-all').checked;
+  document.querySelectorAll('.app-check:not(:disabled)').forEach(cb => {
+    cb.checked = all;
+    if (all) selectedIds.add(cb.dataset.id);
+    else selectedIds.delete(cb.dataset.id);
+  });
+  updateRotateBtn();
+}
+
+function updateRotateBtn() {
+  const btn = document.getElementById('rotate-btn');
+  btn.disabled = selectedIds.size === 0;
+}
+
+function confirmRotate() {
+  if (selectedIds.size === 0) return;
+  document.getElementById('confirm-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('confirm-modal').classList.remove('open');
+}
+
+async function doRotate() {
+  closeModal();
+  const btn = document.getElementById('confirm-btn');
+  const rotateBtn = document.getElementById('rotate-btn');
+  btn.disabled = true;
+  rotateBtn.disabled = true;
+  rotateBtn.innerHTML = `<span class="spinner"></span> ${t('processing')}`;
+
+  try {
+    const res = await fetch('/api/rotate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app_ids: Array.from(selectedIds) }),
+    });
+    const data = await res.json();
+
+    if (data.results) {
+      showResults(data.results);
+    }
+    if (data.error) {
+      alert(t('error_prefix') + ' ' + t(data.error));
+    }
+
+    await loadApps();
+    await loadLogs();
+  } catch(e) {
+    alert(`${t('error_prefix')} ${e.message}`);
+  }
+
+  rotateBtn.innerHTML = `<span data-i18n="rotate_selected">${t('rotate_selected')}</span>`;
+  btn.disabled = false;
+}
+
+function showResults(results) {
+  const section = document.getElementById('results-section');
+  const tbody = document.getElementById('results-tbody');
+  section.classList.remove('hidden');
+  tbody.innerHTML = '';
+
+  results.forEach(r => {
+    const group = document.createElement('tbody');
+    group.className = 'result-group';
+
+    const statusBadge = r.status === 'success' ? 'badge-success' :
+      r.status === 'unchanged' ? 'badge-unchanged' :
+      r.status === 'timeout' ? 'badge-timeout' : 'badge-restart_failed';
+    const statusText = t(r.status) || r.status;
+
+    const oldRow = document.createElement('tr');
+    oldRow.className = 'result-row';
+    oldRow.innerHTML = `
+      <td class="col-app"><span class="label-old">${t('old')}</span> ${escHtml(r.app_id)}</td>
+      <td class="col-onion">${r.old_onion ? escHtml(r.old_onion) : '<span style="color:var(--text2)">—</span>'}</td>
+      <td class="col-status" rowspan="2"><span class="badge ${statusBadge}">${statusText}</span></td>
+    `;
+
+    const newRow = document.createElement('tr');
+    newRow.className = 'result-row';
+    newRow.innerHTML = `
+      <td class="col-app"><span class="label-new">${t('new')}</span> ${escHtml(r.app_id)}</td>
+      <td class="col-onion">
+        ${r.new_onion ? escHtml(r.new_onion) : '<span style="color:var(--text2)">—</span>'}
+        ${r.new_onion ? ` <button class="copy-btn" onclick="copyText('${escHtml(r.new_onion)}')" data-i18n="copy">${t('copy')}</button>` : ''}
+      </td>
+    `;
+
+    group.appendChild(oldRow);
+    group.appendChild(newRow);
+    tbody.appendChild(group);
+  });
+
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function copyOnion(appId) {
+  const app = appsData.find(a => a.app_id === appId);
+  if (app && app.onion_address) {
+    copyText(app.onion_address);
+  }
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = t('copied');
+    setTimeout(() => btn.textContent = orig, 2000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+}
+
+async function loadLogs() {
+  try {
+    const res = await fetch('/api/logs');
+    const data = await res.json();
+    const logs = data.logs || [];
+    const container = document.getElementById('logs-content');
+    container.innerHTML = logs.map(l =>
+      `<div class="log-${l.level.toLowerCase()}">[${l.timestamp}] ${escHtml(l.message)}</div>`
+    ).join('');
+  } catch(e) {
+    // silent
+  }
+}
+
+function toggleLogs() {
+  const el = document.getElementById('logs-content');
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) loadLogs();
+}
+
+function refreshBanners() {
+  fetch('/api/apps').then(r => r.json()).then(data => {
+    const dryBanner = document.getElementById('dry-run-banner');
+    if (data.dry_run) {
+      dryBanner.classList.remove('hidden');
+      dryBanner.textContent = t('dry_run_banner');
+    } else {
+      dryBanner.classList.add('hidden');
+    }
+  }).catch(() => {});
+
+  const warning = document.getElementById('warning-banner');
+  warning.textContent = t('security_warning');
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

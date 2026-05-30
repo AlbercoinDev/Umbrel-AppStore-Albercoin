@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-onion-rotator
 category: networking
 name: Onion Rotator
-version: "1.0.8"
+version: "1.0.9"
 tagline: Rotate Tor onion addresses for installed Umbrel apps
 description: >-
   Onion Rotator lets you view all .onion addresses of your installed
@@ -45,6 +45,6 @@ dependencies: []
 permissions:
   - docker.sock
 releaseNotes: >-
-  Groups all Onion directories under their installed owner app, rotates selected
-  services sequentially app by app, deletes hidden service directories safely,
-  and tracks live restart/regeneration progress in the web UI.
+  Adds an advanced section for Umbrel system Onion services (web/auth). Selected
+  system Onion directories can be cleared separately, with a clear warning that
+  a full Umbrel server restart is required to regenerate them.

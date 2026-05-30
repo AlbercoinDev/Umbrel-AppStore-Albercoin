@@ -12,6 +12,7 @@ from detector import scan_apps
 from i18n import TRANSLATIONS
 from restarter import get_docker_info, is_docker_accessible
 from rotator import rotate_app_services
+from system_onions import delete_system_onions, scan_system_onions
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
@@ -60,7 +61,7 @@ def _health() -> dict:
 def _api_path(path: str) -> str:
     if path == "/health":
         return "/health"
-    for api_path in ("/api/apps", "/api/logs", "/api/i18n", "/api/rotate"):
+    for api_path in ("/api/apps", "/api/logs", "/api/i18n", "/api/rotate", "/api/system-onions", "/api/system-onions/delete"):
         if path == api_path or path.endswith(api_path):
             return api_path
     marker = "/api/operations/"
@@ -205,6 +206,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/apps":
             self._send_json({"apps": scan_apps(), "dry_run": DRY_RUN})
             return
+        if path == "/api/system-onions":
+            self._send_json({"services": scan_system_onions(), "dry_run": DRY_RUN})
+            return
         if path.startswith("/api/operations/"):
             operation_id = path.rsplit("/", 1)[-1]
             with _operations_lock:
@@ -232,6 +236,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = _api_path(urlparse(self.path).path)
+        if path == "/api/system-onions/delete":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8"))
+                service_ids = payload.get("service_ids") or payload.get("serviceIds") or []
+                if not isinstance(service_ids, list) or not all(isinstance(x, str) for x in service_ids):
+                    self._send_json({"error": "invalid_service_ids"}, 400)
+                    return
+                results = delete_system_onions(service_ids)
+                self._send_json({
+                    "results": results,
+                    "message": "restart_umbrel_server_to_regenerate",
+                })
+            except Exception as e:
+                logger.exception("System Onion delete request failed")
+                self._send_json({"error": str(e)}, 500)
+            return
         if path != "/api/rotate":
             self._send_json({"error": "not_found"}, 404)
             return

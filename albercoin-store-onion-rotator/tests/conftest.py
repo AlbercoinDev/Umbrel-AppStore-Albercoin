@@ -47,6 +47,13 @@ def temp_tor_dir():
                 with open(os.path.join(tor_dir, app_dir, "hs_ed25519_public_key"), "w") as f:
                     f.write("fake-public-key")
 
+        for service in ("web", "auth"):
+            os.makedirs(os.path.join(tor_dir, service), exist_ok=True)
+            with open(os.path.join(tor_dir, service, "hostname"), "w") as f:
+                f.write(_make_onion(service) + "\n")
+            with open(os.path.join(tor_dir, service, "hs_ed25519_secret_key"), "w") as f:
+                f.write("fake-secret-key")
+
         yield tor_dir
 
 

@@ -12,28 +12,26 @@ def test_scan_apps_finds_valid_onions(monkeypatch_tor_dir):
 
 
 def test_scan_apps_onion_content(monkeypatch_tor_dir):
-    from detector import scan_apps
-    apps = scan_apps()
-    bitcoin = next(a for a in apps if a["app_id"] == "bitcoin")
+    from detector import scan_services
+    services = scan_services()
+    bitcoin = next(a for a in services if a["service_id"] == "bitcoin")
     assert bitcoin["onion_address"].endswith(".onion")
     assert len(bitcoin["onion_address"]) == 56 + len(".onion")
 
 
 def test_scan_apps_status_available(monkeypatch_tor_dir):
-    from detector import scan_apps
-    apps = scan_apps()
-    for app in apps:
-        if app["app_id"] in ("bitcoin", "electrs", "lnd"):
-            assert app["status"] == "available"
+    from detector import scan_services
+    services = scan_services()
+    for service in services:
+        if service["service_id"] in ("bitcoin", "electrs", "lnd"):
+            assert service["status"] == "available"
 
 
 def test_scan_apps_invalid_app_id_has_no_onion(monkeypatch_tor_dir):
-    from detector import scan_apps
-    apps = scan_apps()
-    invalid = [a for a in apps if a["app_id"] == "invalid"]
-    assert len(invalid) == 1
-    assert invalid[0]["onion_address"] == ""
-    assert invalid[0]["status"] == "no_hostname"
+    from detector import scan_services
+    services = scan_services(include_unavailable=True)
+    invalid = [a for a in services if a["service_id"] == "invalid"]
+    assert len(invalid) == 0
 
 
 def test_scan_apps_empty_dir(tmp_path):
@@ -67,19 +65,27 @@ def test_read_hostname_nonexistent():
 
 
 def test_scan_apps_filters_to_installed_ids(monkeypatch_tor_dir):
-    from detector import scan_apps
-    apps = scan_apps({"bitcoin", "lnd"})
-    app_ids = {a["app_id"] for a in apps}
-    assert app_ids == {"bitcoin", "lnd"}
+    from detector import scan_services
+    services = scan_services({"bitcoin", "lnd"})
+    service_ids = {a["service_id"] for a in services}
+    assert service_ids == {"bitcoin", "lnd"}
 
 
 def test_scan_apps_maps_auxiliary_service_to_owner(monkeypatch_tor_dir):
+    from detector import scan_services
+    services = scan_services({"electrs"})
+    service_map = {a["service_id"]: a for a in services}
+    assert "electrs" in service_map
+    assert "electrs-rpc" in service_map
+    assert service_map["electrs-rpc"]["app_id"] == "electrs"
+
+
+def test_scan_apps_groups_services_by_app(monkeypatch_tor_dir):
     from detector import scan_apps
-    apps = scan_apps({"electrs"})
-    app_map = {a["app_id"]: a for a in apps}
-    assert "electrs" in app_map
-    assert "electrs-rpc" in app_map
-    assert app_map["electrs-rpc"]["restart_app_id"] == "electrs"
+    apps = scan_apps()
+    electrs = next(a for a in apps if a["app_id"] == "electrs")
+    service_ids = {s["service_id"] for s in electrs["services"]}
+    assert {"electrs", "electrs-rpc"}.issubset(service_ids)
 
 
 def test_get_app_data_app_ids(monkeypatch, temp_app_data_dir):

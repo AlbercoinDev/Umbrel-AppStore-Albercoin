@@ -51,10 +51,11 @@ def temp_tor_dir():
 
 
 @pytest.fixture
-def monkeypatch_tor_dir(monkeypatch, temp_tor_dir):
+def monkeypatch_tor_dir(monkeypatch, temp_tor_dir, temp_app_data_dir):
     import config
     config.REAL_TOR_DATA_DIR = None
     monkeypatch.setattr(config, "TOR_DATA_DIR", temp_tor_dir)
+    monkeypatch.setattr(config, "UMBREL_APP_DATA_DIR", temp_app_data_dir)
     monkeypatch.setattr(config, "REAL_TOR_DATA_DIR", None)
     import detector
     import importlib

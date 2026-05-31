@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-machine-doctor
 category: utilities
 name: Machine Doctor
-version: "0.1.4"
+version: "0.1.5"
 tagline: Hardware diagnostics for your Umbrel node
 description: >-
   Machine Doctor checks the health of your Umbrel machine, starting with CPU
@@ -26,5 +26,5 @@ submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 dependencies: []
 releaseNotes: >-
-  Adds per-core temperature mapping when core sensors are exposed and improves
-  CPU test startup error feedback in the web interface.
+  Restores a stable Dockerfile-based runtime so dependencies are installed at
+  build time instead of every app start.

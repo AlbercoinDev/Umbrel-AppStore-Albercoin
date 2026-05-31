@@ -95,7 +95,7 @@ async function startTest(){
   const button=document.getElementById('start-btn');
   button.disabled=true;
   button.textContent='Starting...';
-  try{await json('api/cpu/start',{method:'POST'});await refresh();if(!pollTimer)pollTimer=setInterval(refresh,1000);}catch(e){document.getElementById('final-result').textContent=e.message;alert(e.message)}finally{button.textContent='Start CPU test';await refresh()}
+  try{await json('api/cpu/start',{method:'POST'});await refresh();if(!pollTimer)pollTimer=setInterval(refresh,1000);}catch(e){document.getElementById('final-result').textContent=e.message;alert(e.message)}finally{button.textContent='Start CPU test';refresh()}
 }
 
 async function cancelTest(){

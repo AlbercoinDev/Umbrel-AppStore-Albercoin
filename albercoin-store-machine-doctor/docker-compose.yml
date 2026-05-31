@@ -3,35 +3,23 @@ version: "3.7"
 services:
   app_proxy:
     environment:
-      APP_HOST: server
+      APP_HOST: machine-doctor-web
       APP_PORT: 2190
 
   server:
-    image: python:3.12-slim
+    build: .
     hostname: machine-doctor-web
     init: true
     user: "0:0"
     privileged: true
     restart: on-failure
     stop_grace_period: 30s
-    working_dir: /app
-    command:
-      - sh
-      - -c
-      - |
-        apt-get update
-        apt-get install -y --no-install-recommends stress-ng
-        rm -rf /var/lib/apt/lists/*
-        pip install --no-cache-dir -r /app/requirements.txt
-        exec uvicorn main:app --host 0.0.0.0 --port 2190
     volumes:
-      - ${APP_DATA_DIR}/src:/app:ro
       - ${APP_DATA_DIR}/data:/data
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /dev:/host/dev:ro
     environment:
-      DEBIAN_FRONTEND: noninteractive
       TEST_DURATION_SECONDS: "300"
       CPU_WARNING_TEMP: "80"
       CPU_CRITICAL_TEMP: "90"

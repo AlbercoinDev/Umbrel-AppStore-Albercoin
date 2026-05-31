@@ -89,11 +89,12 @@ services:
         def status_from_log(path):
             if not path.exists():
                 return "Starting", "Waiting for Frigate to write its first log entries."
-            recent = "\n".join(path.read_text(errors="replace").splitlines()[-120:])
-            if "Electrum server listening" in recent:
-                return "Ready", "Frigate is indexed and accepting Electrum connections."
+            lines = path.read_text(errors="replace").splitlines()
+            recent = "\n".join(lines[-120:])
             if "ERROR" in recent.upper():
                 return "Needs attention", "Frigate reported an error. Check the log below."
+            if any("Electrum server listening" in line for line in lines):
+                return "Ready", "Frigate is indexed and accepting Electrum connections."
             return "Indexing / syncing", "Frigate is building or updating its Silent Payments index. It will be ready when the log says Electrum server listening."
 
         def progress_info(path, network, configured_start_height, is_ready):

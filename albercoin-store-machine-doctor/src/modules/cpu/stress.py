@@ -19,7 +19,7 @@ class StressProcess:
         command = ["stress-ng", "--cpu", "0", "--timeout", f"{self.duration_seconds}s", "--metrics-brief"]
         with self._lock:
             self.started_at_monotonic = time.monotonic()
-            self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd="/tmp")
 
     def poll(self) -> int | None:
         with self._lock:

@@ -34,6 +34,8 @@ Machine Doctor runs inside Docker and reads host hardware information through re
 
 The first release uses `privileged: true` for broad Umbrel OS, Raspberry Pi and mini PC compatibility. The app does not expose a shell and does not accept arbitrary commands from the web interface.
 
+The Umbrel package runs from the standard `${APP_DATA_DIR}/src` source mount and uses `python:3.12-slim` as its base image, so installation does not require Umbrel to build a local Docker image.
+
 ## Configuration
 
 The CPU test is controlled with environment variables in `docker-compose.yml`:
@@ -92,6 +94,7 @@ Priority order:
 ```text
 src/
   main.py
+  requirements.txt
   modules/
     cpu/
       service.py

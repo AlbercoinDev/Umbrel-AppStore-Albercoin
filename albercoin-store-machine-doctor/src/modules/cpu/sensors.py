@@ -44,7 +44,7 @@ def read_cpu_info() -> dict[str, Any]:
                 processors.append(current_processor)
             except ValueError:
                 current_processor = None
-        elif key_lower in ("model name", "hardware", "model", "processor") and value and model == "Unknown CPU":
+        elif key_lower in ("model name", "hardware") and value and model == "Unknown CPU":
             model = value
         elif key_lower == "cpu mhz" and current_processor is not None:
             try:

@@ -44,6 +44,7 @@ The CPU test is controlled with environment variables in `docker-compose.yml`:
 TEST_DURATION_SECONDS=300
 CPU_WARNING_TEMP=80
 CPU_CRITICAL_TEMP=90
+CPU_FAIL_TEMP=100
 CPU_MIN_EXPECTED_LOAD=90
 ```
 
@@ -76,6 +77,7 @@ Reports are saved as JSON files in `/data/reports` and include:
 
 - Some systems do not expose CPU temperature inside containers, even with `/sys` mounted.
 - Per-core temperatures are not universally available; Machine Doctor lists detected sensors instead.
+- Throttling detection depends on Linux exposing CPU throttle counters or processor cooling state to the container.
 - CPU frequency paths vary by kernel and CPU governor.
 - The first release does not yet implement disk, full thermal or RAM checks.
 - A CPU stress test can temporarily slow down other services on low-power nodes.

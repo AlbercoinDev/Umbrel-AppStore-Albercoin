@@ -208,3 +208,59 @@ def read_temperatures() -> dict[str, Any]:
             core_temperatures[core_id] = temperature
 
     return {"cpu": current, "core_temperatures": core_temperatures, "sensors": sensors}
+
+
+def read_thermal_management() -> dict[str, Any]:
+    cooling_devices: list[dict[str, Any]] = []
+    for device in sorted((HOST_SYS / "class/thermal").glob("cooling_device*")):
+        cur_state = _read_number(device / "cur_state")
+        max_state = _read_number(device / "max_state")
+        cooling_type = _read_text(device / "type") or device.name
+        cooling_devices.append({
+            "id": device.name,
+            "type": cooling_type,
+            "cur_state": int(cur_state) if cur_state is not None else None,
+            "max_state": int(max_state) if max_state is not None else None,
+            "active": bool(cur_state and cur_state > 0),
+        })
+
+    thermal_zones: list[dict[str, Any]] = []
+    for zone in sorted((HOST_SYS / "class/thermal").glob("thermal_zone*")):
+        trips = []
+        for trip_temp in sorted(zone.glob("trip_point_*_temp")):
+            match = re.fullmatch(r"trip_point_(\d+)_temp", trip_temp.name)
+            if not match:
+                continue
+            index = match.group(1)
+            temperature = _normalize_temp(_read_number(trip_temp))
+            trips.append({
+                "index": int(index),
+                "type": _read_text(zone / f"trip_point_{index}_type") or "unknown",
+                "temperature": temperature,
+            })
+        thermal_zones.append({
+            "id": zone.name,
+            "type": _thermal_zone_name(zone),
+            "temperature": _normalize_temp(_read_number(zone / "temp")),
+            "trip_points": trips,
+        })
+
+    throttle_counts: dict[int, dict[str, int]] = {}
+    cpu_root = HOST_SYS / "devices/system/cpu"
+    for throttle_path in sorted(cpu_root.glob("cpu[0-9]*/thermal_throttle/*_throttle_count")):
+        match = re.search(r"cpu(\d+)/thermal_throttle/(.+)_throttle_count$", str(throttle_path))
+        if not match:
+            continue
+        cpu_id = int(match.group(1))
+        counter_name = match.group(2)
+        value = _read_number(throttle_path)
+        if value is not None:
+            throttle_counts.setdefault(cpu_id, {})[counter_name] = int(value)
+
+    return {
+        "cooling_devices": cooling_devices,
+        "active_cooling_devices": [device for device in cooling_devices if device["active"]],
+        "thermal_zones": thermal_zones,
+        "cpu_throttle_counts": throttle_counts,
+        "throttle_counters_available": bool(throttle_counts),
+    }

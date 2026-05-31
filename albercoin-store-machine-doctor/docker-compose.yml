@@ -7,7 +7,7 @@ services:
       APP_PORT: 2190
 
   server:
-    image: ghcr.io/albercoindev/machine-doctor:0.1.7
+    image: ghcr.io/albercoindev/machine-doctor:0.1.8
     hostname: machine-doctor-web
     init: true
     user: "0:0"
@@ -23,6 +23,7 @@ services:
       TEST_DURATION_SECONDS: "300"
       CPU_WARNING_TEMP: "80"
       CPU_CRITICAL_TEMP: "90"
+      CPU_FAIL_TEMP: "100"
       CPU_MIN_EXPECTED_LOAD: "90"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"

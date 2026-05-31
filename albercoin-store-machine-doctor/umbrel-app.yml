@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-machine-doctor
 category: utilities
 name: Machine Doctor
-version: "0.1.7"
+version: "0.1.8"
 tagline: Hardware diagnostics for your Umbrel node
 description: >-
   Machine Doctor checks the health of your Umbrel machine, starting with CPU
@@ -26,5 +26,5 @@ submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 dependencies: []
 releaseNotes: >-
-  Adds automatic English and Spanish interface language support based on the
-  Umbrel/browser language, with a manual EN/ES selector.
+  Adds thermal guidance and throttling detection when Linux exposes CPU throttle
+  counters or processor cooling state.

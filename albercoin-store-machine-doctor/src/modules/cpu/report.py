@@ -36,6 +36,7 @@ def build_report(state: dict[str, Any]) -> dict[str, Any]:
             "average_temperature": _average(temperatures),
             "max_cpu_usage": max(usages) if usages else None,
             "average_cpu_usage": _average(usages),
+            "throttling_detected": bool((state.get("throttling") or {}).get("confirmed")),
         },
         "warnings": state.get("warnings", []),
         "errors": state.get("errors", []),

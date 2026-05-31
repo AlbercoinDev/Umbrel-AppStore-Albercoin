@@ -40,7 +40,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/albercoindev/machine-doctor:0.1.6
+            ghcr.io/albercoindev/machine-doctor:0.1.7
             ghcr.io/albercoindev/machine-doctor:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

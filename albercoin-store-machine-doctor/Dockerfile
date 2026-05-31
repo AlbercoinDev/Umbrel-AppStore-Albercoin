@@ -3,7 +3,7 @@ FROM python:3.12-slim
 LABEL org.opencontainers.image.title="Machine Doctor"
 LABEL org.opencontainers.image.description="Hardware diagnostics for Umbrel nodes"
 LABEL org.opencontainers.image.source="https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin"
-LABEL org.opencontainers.image.version="0.1.6"
+LABEL org.opencontainers.image.version="0.1.7"
 
 WORKDIR /app
 

@@ -1,0 +1,30 @@
+manifestVersion: 1
+id: albercoin-store-machine-doctor
+category: utilities
+name: Machine Doctor
+version: "0.1.0"
+tagline: Hardware diagnostics for your Umbrel node
+description: >-
+  Machine Doctor checks the health of your Umbrel machine, starting with CPU
+  stress testing, temperatures, per-core load and stability reports.
+
+
+  The first release focuses on CPU diagnostics using stress-ng. It reads host
+  CPU, sensor and frequency information through read-only /proc, /sys and /dev
+  mounts where available, and stores JSON reports locally in app data.
+developer: Albercoin
+website: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+repo: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+support: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/issues
+port: 2190
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-machine-doctor/icon.svg
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: AlbercoinDev
+submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+dependencies: []
+releaseNotes: >-
+  Initial Machine Doctor release with CPU stress testing, live CPU usage,
+  sensor discovery, frequency readings and persistent JSON reports.

@@ -1,0 +1,28 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: machine-doctor-web
+      APP_PORT: 2190
+
+  server:
+    build: .
+    hostname: machine-doctor-web
+    init: true
+    user: "0:0"
+    privileged: true
+    restart: on-failure
+    stop_grace_period: 30s
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /dev:/host/dev:ro
+    environment:
+      TEST_DURATION_SECONDS: "300"
+      CPU_WARNING_TEMP: "80"
+      CPU_CRITICAL_TEMP: "90"
+      CPU_MIN_EXPECTED_LOAD: "90"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"

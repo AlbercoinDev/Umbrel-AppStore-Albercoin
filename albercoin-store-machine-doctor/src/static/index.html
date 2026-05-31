@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Machine Doctor</title>
+  <link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Umbrel hardware diagnostics</p>
+        <h1>Machine Doctor</h1>
+        <p class="subtitle">CPU stress testing, live sensor readings and stability reports for your Umbrel machine.</p>
+      </div>
+      <div id="result-pill" class="pill muted">No test yet</div>
+    </header>
+
+    <section class="grid summary-grid">
+      <article class="card span-2">
+        <div class="section-title">
+          <div>
+            <h2>CPU Check</h2>
+            <p id="cpu-model">Detecting CPU...</p>
+          </div>
+          <div class="actions">
+            <button id="start-btn" class="primary">Start CPU test</button>
+            <button id="cancel-btn" class="secondary" disabled>Cancel</button>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <div class="metrics">
+          <div><span>Status</span><strong id="state">stopped</strong></div>
+          <div><span>Time remaining</span><strong id="remaining">-</strong></div>
+          <div><span>Total CPU</span><strong id="total-usage">-</strong></div>
+          <div><span>Current temp</span><strong id="current-temp">-</strong></div>
+          <div><span>Max temp</span><strong id="max-temp">-</strong></div>
+          <div><span>Avg frequency</span><strong id="avg-freq">-</strong></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Final Result</h2>
+        <div id="final-result" class="result-box">No report generated yet.</div>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <h2>Per-Core Live View</h2>
+          <p>If per-core temperature is not exposed by the host, available sensors are listed below.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Core</th><th>Usage</th><th>Frequency</th><th>Temperature</th></tr></thead>
+          <tbody id="core-body"><tr><td colspan="4">Waiting for samples...</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Available Sensors</h2>
+        <div id="sensors" class="sensor-list">No sensor data loaded yet.</div>
+      </article>
+      <article class="card">
+        <h2>Last Report</h2>
+        <button id="load-report" class="secondary">View latest report</button>
+        <pre id="report" class="report"></pre>
+      </article>
+    </section>
+  </main>
+  <script src="static/app.js"></script>
+</body>
+</html>

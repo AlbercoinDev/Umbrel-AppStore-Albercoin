@@ -20,6 +20,7 @@ services:
         import time
 
         DATA_DIR = Path("/data/frigate")
+        LOG_FILE = DATA_DIR / "frigate.log"
         SETTINGS_FILE = DATA_DIR / "settings.env"
         RESTART_FILE = DATA_DIR / ".restart-requested"
         TOR_HOSTNAME_FILE = Path("/tor-data/app-albercoin-store-frigate-electrum/hostname")
@@ -172,13 +173,13 @@ services:
                 return "METRICS_ENABLED"
             return None
 
-        def log_path(network):
-            return DATA_DIR / "frigate.log" if network == "mainnet" else DATA_DIR / network / "frigate.log"
-
         def read_log(path):
-            if not path.exists():
+            try:
+                if not path.exists():
+                    return None
+                return path.read_text(errors="replace").splitlines()
+            except OSError:
                 return None
-            return path.read_text(errors="replace").splitlines()
 
         def latest_lines(lines, lang, limit=35):
             if lines is None:
@@ -186,12 +187,18 @@ services:
             return "\n".join(lines[-limit:])
 
         def status_from_log(lines):
-            if lines is None:
+            if not lines:
                 return "status_starting", "detail_starting"
-            recent = "\n".join(lines[-120:])
-            if "ERROR" in recent.upper():
+            ready_index = -1
+            error_index = -1
+            for index, line in enumerate(lines):
+                if "Electrum server listening" in line:
+                    ready_index = index
+                if "ERROR" in line.upper():
+                    error_index = index
+            if error_index > ready_index:
                 return "status_attention", "detail_attention"
-            if any("Electrum server listening" in line for line in lines):
+            if ready_index >= 0:
                 return "status_ready", "detail_ready"
             return "status_indexing", "detail_indexing"
 
@@ -279,7 +286,7 @@ services:
         def status_body(lang, message=""):
             settings = read_settings()
             network = os.environ.get("APP_BITCOIN_NETWORK", "mainnet")
-            lpath = log_path(network)
+            lpath = LOG_FILE
             log_lines = read_log(lpath)
             status_key, detail_key = status_from_log(log_lines)
             status = tr(lang, status_key)
@@ -526,7 +533,7 @@ services:
           fi
         } >> "$${config_dir}/config.toml"
         chmod 600 "$${config_dir}/config.toml"
-        rm -f "$${config_dir}/frigate.log"
+        rm -f "$${home_dir}/frigate.log" "$${config_dir}/frigate.log"
         "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args} &
         frigate_pid="$$!"
         restart_requested="0"

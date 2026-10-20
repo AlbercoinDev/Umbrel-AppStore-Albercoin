@@ -1,5 +1,3 @@
-version: "3.7"
-
 services:
   app_proxy:
     environment:
@@ -35,11 +33,12 @@ services:
             "BATCH_SIZE": "",
             "MAX_LABELS": "10",
             "MAX_SUBSCRIPTIONS": "100",
+            "METRICS_ENABLED": "true",
             "RPC_REQUEST_TIMEOUT_SECONDS": "60",
             "RPC_BATCH_SIZE": "100",
         }
 
-        FIELDS = ["START_HEIGHT", "CACHE_SIZE", "COMPUTE_BACKEND", "DB_THREADS", "MEMORY_LIMIT", "BATCH_SIZE", "MAX_LABELS", "MAX_SUBSCRIPTIONS", "RPC_REQUEST_TIMEOUT_SECONDS", "RPC_BATCH_SIZE"]
+        FIELDS = ["START_HEIGHT", "CACHE_SIZE", "COMPUTE_BACKEND", "DB_THREADS", "MEMORY_LIMIT", "BATCH_SIZE", "MAX_LABELS", "MAX_SUBSCRIPTIONS", "METRICS_ENABLED", "RPC_REQUEST_TIMEOUT_SECONDS", "RPC_BATCH_SIZE"]
 
         TEXT = {
             "en": {
@@ -61,6 +60,7 @@ services:
                 "important": "Important:", "start_height_warning": "changing start height deletes the local db/ index on next Frigate restart so it can be rebuilt correctly from the new height. Empty uses Frigate default.",
                 "saved_start_height": "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index during the automatic restart.",
                 "saved_restart": "Configuration saved. Frigate will restart automatically to apply changes.",
+                "invalid_setting": "Invalid value for {field}. Check the expected format and try again.",
                 "title_status": "Frigate on Umbrel", "title_config": "Frigate configuration",
                 "field_START_HEIGHT_label": "Start height", "field_START_HEIGHT_help": "Optional block height where Frigate starts building its Silent Payments index. Leave empty to use Frigate's official default: 709632 on mainnet (Taproot activation), 0 on test networks. Changing this value requires deleting the DuckDB index and rebuilding from scratch because Frigate stores the index in db/frigate.duckdb and the documented index can be rebuilt from Bitcoin Core.",
                 "field_CACHE_SIZE_label": "Cache size", "field_CACHE_SIZE_help": "scriptPubKey cache size. Default 10M uses roughly 4 GB RAM according to Frigate docs. Reduce on low-memory systems.",
@@ -70,6 +70,7 @@ services:
                 "field_BATCH_SIZE_label": "Batch size", "field_BATCH_SIZE_help": "Optional rows per GPU dispatch. Reduce if scanning hangs or is unstable on older GPUs.",
                 "field_MAX_LABELS_label": "Max labels", "field_MAX_LABELS_help": "Maximum Silent Payments labels accepted per subscription.",
                 "field_MAX_SUBSCRIPTIONS_label": "Max subscriptions", "field_MAX_SUBSCRIPTIONS_help": "Maximum Silent Payments subscriptions per connection.",
+                "field_METRICS_ENABLED_label": "Metrics", "field_METRICS_ENABLED_help": "Emit privacy-preserving hourly aggregate scan and server statistics to the log. Disable to suppress these lines.",
                 "field_RPC_REQUEST_TIMEOUT_SECONDS_label": "RPC request timeout", "field_RPC_REQUEST_TIMEOUT_SECONDS_help": "Per-RPC read timeout against Bitcoin Core in seconds. Increase on slow nodes.",
                 "field_RPC_BATCH_SIZE_label": "RPC batch size", "field_RPC_BATCH_SIZE_help": "Maximum sub-requests per JSON-RPC array batch used during mempool indexing.",
             },
@@ -92,6 +93,7 @@ services:
                 "important": "Importante:", "start_height_warning": "cambiar la altura inicial borra el índice local db/ en el siguiente reinicio de Frigate para poder reconstruirlo correctamente desde la nueva altura. Vacío usa el valor por defecto de Frigate.",
                 "saved_start_height": "Configuración guardada. La altura inicial cambió, así que Frigate borrará db/ y reconstruirá el índice durante el reinicio automático.",
                 "saved_restart": "Configuración guardada. Frigate se reiniciará automáticamente para aplicar los cambios.",
+                "invalid_setting": "Valor no válido para {field}. Revisa el formato esperado e inténtalo de nuevo.",
                 "title_status": "Frigate en Umbrel", "title_config": "Configuración de Frigate",
                 "field_START_HEIGHT_label": "Altura inicial", "field_START_HEIGHT_help": "Altura de bloque opcional donde Frigate empieza a construir su índice de Silent Payments. Déjalo vacío para usar el valor oficial por defecto de Frigate: 709632 en mainnet (activación de Taproot), 0 en redes de prueba. Cambiar este valor requiere borrar el índice DuckDB y reconstruirlo desde cero porque Frigate guarda el índice en db/frigate.duckdb y el índice documentado puede reconstruirse desde Bitcoin Core.",
                 "field_CACHE_SIZE_label": "Tamaño de caché", "field_CACHE_SIZE_help": "Tamaño de caché scriptPubKey. El valor por defecto 10M usa aproximadamente 4 GB de RAM según la documentación de Frigate. Redúcelo en sistemas con poca memoria.",
@@ -101,6 +103,7 @@ services:
                 "field_BATCH_SIZE_label": "Tamaño de lote", "field_BATCH_SIZE_help": "Filas opcionales por envío a GPU. Redúcelo si el escaneo se queda colgado o es inestable en GPUs antiguas.",
                 "field_MAX_LABELS_label": "Máximo de etiquetas", "field_MAX_LABELS_help": "Máximo de etiquetas Silent Payments aceptadas por suscripción.",
                 "field_MAX_SUBSCRIPTIONS_label": "Máximo de suscripciones", "field_MAX_SUBSCRIPTIONS_help": "Máximo de suscripciones Silent Payments por conexión.",
+                "field_METRICS_ENABLED_label": "Métricas", "field_METRICS_ENABLED_help": "Escribe estadísticas agregadas horarias de escaneo y servidor en el log, sin exponer datos de clientes. Desactívalo para suprimir estas líneas.",
                 "field_RPC_REQUEST_TIMEOUT_SECONDS_label": "Timeout RPC", "field_RPC_REQUEST_TIMEOUT_SECONDS_help": "Timeout de lectura por petición RPC contra Bitcoin Core, en segundos. Auméntalo en nodos lentos.",
                 "field_RPC_BATCH_SIZE_label": "Tamaño de lote RPC", "field_RPC_BATCH_SIZE_help": "Máximo de sub-peticiones por lote JSON-RPC usado durante la indexación de mempool.",
             },
@@ -141,21 +144,50 @@ services:
                 value = str(values.get(key, DEFAULTS[key])).strip()
                 value = value.replace("\n", "").replace("\r", "")
                 lines.append(f"{key}={value}")
-            SETTINGS_FILE.write_text("\n".join(lines) + "\n")
+            tmp_file = SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".tmp")
+            tmp_file.write_text("\n".join(lines) + "\n")
+            os.replace(tmp_file, SETTINGS_FILE)
+            try:
+                os.chmod(SETTINGS_FILE, 0o600)
+            except OSError:
+                pass
+
+        def validate_settings(values):
+            def invalid(key, pattern):
+                value = values.get(key, "")
+                return bool(value) and re.fullmatch(pattern, value, re.IGNORECASE) is None
+
+            if invalid("START_HEIGHT", r"0|[1-9][0-9]{0,8}"):
+                return "START_HEIGHT"
+            if invalid("CACHE_SIZE", r"[0-9]+(?:\.[0-9]+)?[KM]?"):
+                return "CACHE_SIZE"
+            if invalid("MEMORY_LIMIT", r"[0-9]+(?:\.[0-9]+)?(?:B|KB|MB|GB|TB|KIB|MIB|GIB|TIB|%)?"):
+                return "MEMORY_LIMIT"
+            for key in ("DB_THREADS", "BATCH_SIZE", "MAX_LABELS", "MAX_SUBSCRIPTIONS", "RPC_REQUEST_TIMEOUT_SECONDS", "RPC_BATCH_SIZE"):
+                if invalid(key, r"0|[1-9][0-9]*"):
+                    return key
+            if values.get("COMPUTE_BACKEND") not in ("AUTO", "GPU", "CPU"):
+                return "COMPUTE_BACKEND"
+            if values.get("METRICS_ENABLED") not in ("true", "false"):
+                return "METRICS_ENABLED"
+            return None
 
         def log_path(network):
             return DATA_DIR / "frigate.log" if network == "mainnet" else DATA_DIR / network / "frigate.log"
 
-        def latest_lines(path, lang, limit=35):
+        def read_log(path):
             if not path.exists():
+                return None
+            return path.read_text(errors="replace").splitlines()
+
+        def latest_lines(lines, lang, limit=35):
+            if lines is None:
                 return tr(lang, "no_log")
-            lines = path.read_text(errors="replace").splitlines()
             return "\n".join(lines[-limit:])
 
-        def status_from_log(path):
-            if not path.exists():
+        def status_from_log(lines):
+            if lines is None:
                 return "status_starting", "detail_starting"
-            lines = path.read_text(errors="replace").splitlines()
             recent = "\n".join(lines[-120:])
             if "ERROR" in recent.upper():
                 return "status_attention", "detail_attention"
@@ -163,17 +195,17 @@ services:
                 return "status_ready", "detail_ready"
             return "status_indexing", "detail_indexing"
 
-        def progress_info(path, network, configured_start_height, is_ready, lang):
+        def progress_info(lines, network, configured_start_height, is_ready, lang):
             default_start = 709632 if network == "mainnet" else 0
             start_height = int(configured_start_height) if configured_start_height.isdigit() else default_start
             start_label = f"{start_height}" if configured_start_height else f"{start_height} ({tr(lang, 'default_suffix')})"
             if is_ready:
                 return "100.00%", "100", start_label, tr(lang, "status_ready"), tr(lang, "status_ready")
-            if not path.exists():
+            if lines is None:
                 return tr(lang, "calculating"), None, start_label, tr(lang, "calculating"), tr(lang, "calculating")
             indexed_height = None
             tip_height = None
-            for line in path.read_text(errors="replace").splitlines():
+            for line in lines:
                 match = re.search(r"Indexing \d+ blocks \((\d+) to (\d+)\)", line)
                 if match:
                     tip_height = int(match.group(2))
@@ -248,7 +280,8 @@ services:
             settings = read_settings()
             network = os.environ.get("APP_BITCOIN_NETWORK", "mainnet")
             lpath = log_path(network)
-            status_key, detail_key = status_from_log(lpath)
+            log_lines = read_log(lpath)
+            status_key, detail_key = status_from_log(log_lines)
             status = tr(lang, status_key)
             detail = tr(lang, detail_key)
             is_ready = status_key == "status_ready"
@@ -258,7 +291,7 @@ services:
             onion_detail = tr(lang, "onion_ready") if onion_host.endswith(".onion") else tr(lang, "onion_waiting")
             restart_msg = f'<div class="card warning"><p>{escape(tr(lang, "restart_requested"))}</p></div>' if RESTART_FILE.exists() else ""
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else restart_msg
-            progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(lpath, network, settings["START_HEIGHT"], is_ready, lang)
+            progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(log_lines, network, settings["START_HEIGHT"], is_ready, lang)
             progress_bar = f'<div class="progress"><div class="progress-fill" style="width: {escape(progress_value or "35")}%"></div></div>' if progress_value else '<div class="progress progress-indeterminate"><div class="progress-fill"></div></div>'
             return f'''
             <h1>Frigate</h1>
@@ -272,11 +305,11 @@ services:
               <div class="connection"><h2>{escape(tr(lang, "tor_service"))}</h2><dl><dt>{escape(tr(lang, "host"))}</dt><dd><div class="copy-row"><code class="endpoint">{escape(onion_host)}</code><button class="copy-button" onclick="copyValue('{escape(onion_host)}', this)">{escape(tr(lang, "copy"))}</button></div></dd><dt>{escape(tr(lang, "port"))}</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">{escape(tr(lang, "copy"))}</button></div></dd></dl><p>{escape(onion_detail)}</p></div>
             </div>
             <div class="card"><dl><dt>{escape(tr(lang, "bitcoin_network"))}</dt><dd><code>{escape(network)}</code></dd><dt>{escape(tr(lang, "configured_start_block"))}</dt><dd><code>{escape(settings["START_HEIGHT"] or tr(lang, "default_suffix"))}</code></dd><dt>{escape(tr(lang, "cache_size"))}</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>{escape(tr(lang, "compute_backend"))}</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>{escape(tr(lang, "log_file"))}</dt><dd><code>{escape(str(lpath))}</code></dd><dt>{escape(tr(lang, "updated"))}</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
-            <div class="card"><p>{escape(tr(lang, "latest_logs"))}</p><pre>{escape(latest_lines(lpath, lang))}</pre></div>
+            <div class="card"><p>{escape(tr(lang, "latest_logs"))}</p><pre>{escape(latest_lines(log_lines, lang))}</pre></div>
             '''
 
-        def config_body(lang, message=""):
-            settings = read_settings()
+        def config_body(lang, message="", values=None):
+            settings = read_settings() if values is None else values
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else ""
             fields = []
             for key in FIELDS:
@@ -285,6 +318,8 @@ services:
                 value = settings.get(key, DEFAULTS[key])
                 if key == "COMPUTE_BACKEND":
                     control = '<select name="COMPUTE_BACKEND">' + ''.join(f'<option value="{v}" {"selected" if value == v else ""}>{v}</option>' for v in ["AUTO", "GPU", "CPU"]) + '</select>'
+                elif key == "METRICS_ENABLED":
+                    control = '<select name="METRICS_ENABLED">' + ''.join(f'<option value="{v}" {"selected" if value == v else ""}>{v}</option>' for v in ["true", "false"]) + '</select>'
                 else:
                     placeholder = tr(lang, "default_suffix") if key == 'START_HEIGHT' else DEFAULTS[key]
                     control = f'<input name="{key}" value="{escape(value)}" placeholder="{escape(placeholder)}">'
@@ -317,14 +352,21 @@ services:
                     self.send_error(404)
                     return
                 lang = self.language()
-                length = int(self.headers.get("content-length", "0"))
-                form = parse_qs(self.rfile.read(length).decode())
+                try:
+                    length = int(self.headers.get("content-length", "0"))
+                except ValueError:
+                    self.send_error(400)
+                    return
+                form = parse_qs(self.rfile.read(length).decode(), keep_blank_values=True)
                 old = read_settings()
                 new = DEFAULTS.copy()
                 for key in DEFAULTS:
                     new[key] = form.get(key, [old.get(key, DEFAULTS[key])])[0].strip()
-                if new["COMPUTE_BACKEND"] not in ("AUTO", "GPU", "CPU"):
-                    new["COMPUTE_BACKEND"] = "AUTO"
+                invalid = validate_settings(new)
+                if invalid:
+                    message = tr(lang, "invalid_setting").format(field=tr(lang, f"field_{invalid}_label"))
+                    self.respond(page(tr(lang, "title_config"), config_body(lang, message, new), lang, refresh=False))
+                    return
                 write_settings(new)
                 RESTART_FILE.write_text(str(int(time.time())) + "\n")
                 if new["START_HEIGHT"] != old["START_HEIGHT"]:
@@ -364,7 +406,8 @@ services:
     command: |
       sh -c '
       set -eu
-      FRIGATE_VERSION="$${FRIGATE_VERSION:-1.5.2}"
+      umask 077
+      FRIGATE_VERSION="$${FRIGATE_VERSION:-1.6.1}"
       runtime_dir="/data/frigate/runtime"
       settings_file="/data/frigate/settings.env"
       mkdir -p /data/frigate
@@ -378,32 +421,50 @@ services:
           printf "%s\n" "BATCH_SIZE="
           printf "%s\n" "MAX_LABELS=10"
           printf "%s\n" "MAX_SUBSCRIPTIONS=100"
+          printf "%s\n" "METRICS_ENABLED=true"
           printf "%s\n" "RPC_REQUEST_TIMEOUT_SECONDS=60"
           printf "%s\n" "RPC_BATCH_SIZE=100"
         } > "$${settings_file}"
       fi
-      . "$${settings_file}"
-      apt-get update
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl tar
-      rm -rf /var/lib/apt/lists/*
+      read_setting() {
+        sed -n "s/^$${1}=//p" "$${settings_file}" | tail -n 1 | tr -d "\r"
+      }
       arch="$$(dpkg --print-architecture)"
       case "$${arch}" in
-        amd64) frigate_arch="x86_64"; frigate_sha256="4e0f9b0ba90d07354859b7fa29f14deb5c01bd1b4c3449e657e7c0b4dddf667d" ;;
-        arm64) frigate_arch="aarch64"; frigate_sha256="dc7aa026f78f0365d08d04358562a19d961bd7cbdfd862f2ec4a0fb5f3fe0413" ;;
+        amd64) frigate_arch="x86_64"; frigate_sha256="ebddc2f7396035459dd94c8e04bfdccf2332506d907f949d67351fb47c6fbc2f" ;;
+        arm64) frigate_arch="aarch64"; frigate_sha256="32d97ebc74581cee101fe8a03613e1de4b59ddd03ff46553bf17702a4eea72f5" ;;
         *) echo "Unsupported architecture: $${arch}" >&2; exit 1 ;;
       esac
       install_dir="$${runtime_dir}/frigate-$${FRIGATE_VERSION}-$${frigate_arch}"
       if [ ! -x "$${install_dir}/bin/frigate" ]; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl tar
+        rm -rf /var/lib/apt/lists/*
         tmp_file="/tmp/frigate.tar.gz"
         rm -rf "$${install_dir}"
         mkdir -p "$${install_dir}"
-        curl -fsSL -o "$${tmp_file}" "https://github.com/sparrowwallet/frigate/releases/download/$${FRIGATE_VERSION}/frigate-$${FRIGATE_VERSION}-$${frigate_arch}.tar.gz"
+        curl --retry 3 --retry-delay 2 -fsSL -o "$${tmp_file}" "https://github.com/sparrowwallet/frigate/releases/download/$${FRIGATE_VERSION}/frigate-$${FRIGATE_VERSION}-$${frigate_arch}.tar.gz"
         echo "$${frigate_sha256}  $${tmp_file}" | sha256sum -c -
         tar -xzf "$${tmp_file}" -C "$${install_dir}" --strip-components=1
         rm -f "$${tmp_file}"
       fi
+      for old_dir in "$${runtime_dir}"/frigate-*; do
+        if [ ! -d "$${old_dir}" ]; then continue; fi
+        if [ "$${old_dir}" = "$${install_dir}" ]; then continue; fi
+        rm -rf "$${old_dir}"
+      done
       while true; do
-        . "$${settings_file}"
+        START_HEIGHT="$$(read_setting START_HEIGHT)"
+        CACHE_SIZE="$$(read_setting CACHE_SIZE)"
+        COMPUTE_BACKEND="$$(read_setting COMPUTE_BACKEND)"
+        DB_THREADS="$$(read_setting DB_THREADS)"
+        MEMORY_LIMIT="$$(read_setting MEMORY_LIMIT)"
+        BATCH_SIZE="$$(read_setting BATCH_SIZE)"
+        MAX_LABELS="$$(read_setting MAX_LABELS)"
+        MAX_SUBSCRIPTIONS="$$(read_setting MAX_SUBSCRIPTIONS)"
+        METRICS_ENABLED="$$(read_setting METRICS_ENABLED)"
+        RPC_REQUEST_TIMEOUT_SECONDS="$$(read_setting RPC_REQUEST_TIMEOUT_SECONDS)"
+        RPC_BATCH_SIZE="$$(read_setting RPC_BATCH_SIZE)"
         network="$${APP_BITCOIN_NETWORK:-mainnet}"
         home_dir="/data/frigate"
         config_dir="$${home_dir}"
@@ -413,7 +474,14 @@ services:
           network_args="-n $${network}"
         fi
         mkdir -p "$${config_dir}"
+        banner_file="$${config_dir}/banner.txt"
+        if [ ! -f "$${banner_file}" ]; then
+          printf "%s" "X19fX18gICAgICBfICAgICAgICAgICAgIF8gICAgICAgIF8gICBfICAgICAgICAgICBfICAgICAgICAgICAgICBfCnwgIF9fX3wgX18gKF8pIF9fIF8gIF9fIF98IHxfIF9fXyB8IHwgfCB8XyBfXyBfX18gfCB8X18gIF8gX18gX19ffCB8CnwgfF8gfCAnXyBcfCB8LyBfYCB8LyBfYCB8IF9fLyBfIFx8IHwgfCB8ICdfIGAgXyBcfCAnXyBcfCAnX18vIF8gXCB8CnwgIF98fCB8IHwgfCB8IChffCB8IChffCB8IHx8ICBfXy98IHxffCB8IHwgfCB8IHwgfCB8XykgfCB8IHwgIF9fLyB8CnxffCAgfF98IHxffF98XF9fLCB8XF9fLF98XF9fXF9fX3wgXF9fXy98X3wgfF98IHxffF8uX18vfF98ICBcX19ffF98CiAgICAgICAgICAgICAgfF9fXy8KTGFib3JhdG9yaW8gQWxiZXJjb2luClNlbWlsbGEgQml0Y29pbgo=" | base64 -d > "$${banner_file}"
+        fi
         desired_start_height="$${START_HEIGHT:-}"
+        case "$${desired_start_height}" in
+          *[!0-9]*|0?*) echo "Invalid START_HEIGHT value: $${desired_start_height}" >&2; exit 1 ;;
+        esac
         start_height_marker="$${config_dir}/.umbrel-start-height"
         marker_value="$${desired_start_height:-default}"
         if [ "$$(cat "$${start_height_marker}" 2>/dev/null || true)" != "$${marker_value}" ]; then
@@ -426,7 +494,7 @@ services:
           printf "%s\n" "server = \"http://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_RPC_PORT}\""
           printf "%s\n" "authType = \"USERPASS\""
           printf "%s\n" "auth = \"$${APP_BITCOIN_RPC_USER}:$${APP_BITCOIN_RPC_PASS}\""
-          printf "%s\n" "zmqSequenceEndpoint = \"tcp://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_ZMQ_SEQUENCE_PORT}\""
+          if [ -n "$${APP_BITCOIN_ZMQ_SEQUENCE_PORT:-}" ]; then printf "%s\n" "zmqSequenceEndpoint = \"tcp://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_ZMQ_SEQUENCE_PORT}\""; fi
           printf "%s\n" "rpcRequestTimeoutSeconds = $${RPC_REQUEST_TIMEOUT_SECONDS:-60}"
           printf "%s\n" "rpcBatchSize = $${RPC_BATCH_SIZE:-100}"
           printf "%s\n" ""
@@ -438,6 +506,7 @@ services:
           printf "%s\n" "computeBackend = \"$${COMPUTE_BACKEND:-AUTO}\""
           printf "%s\n" "maxLabels = $${MAX_LABELS:-10}"
           printf "%s\n" "maxSubscriptions = $${MAX_SUBSCRIPTIONS:-100}"
+          printf "%s\n" "metricsEnabled = $${METRICS_ENABLED:-true}"
         } > "$${config_dir}/config.toml"
         if [ -n "$${DB_THREADS:-}" ]; then printf "dbThreads = %s\n" "$${DB_THREADS}" >> "$${config_dir}/config.toml"; fi
         if [ -n "$${MEMORY_LIMIT:-}" ]; then printf "memoryLimit = \"%s\"\n" "$${MEMORY_LIMIT}" >> "$${config_dir}/config.toml"; fi
@@ -446,8 +515,17 @@ services:
           printf "%s\n" ""
           printf "%s\n" "[server]"
           printf "%s\n" "tcp = \"tcp://0.0.0.0:$${APP_FRIGATE_ELECTRUM_PORT}\""
+          printf "%s\n" "bannerFile = \"banner.txt\""
           printf "%s\n" "backendElectrumServer = \"tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}\""
+          printf "%s\n" ""
+          printf "%s\n" "[limits]"
+          if [ -n "$${APP_FRIGATE_TOR_IP:-}" ]; then
+            printf "%s\n" "excludedSubnets = [\"127.0.0.1/32\", \"::1/128\", \"$${APP_FRIGATE_TOR_IP}/32\"]"
+          else
+            printf "%s\n" "excludedSubnets = [\"127.0.0.1/32\", \"::1/128\"]"
+          fi
         } >> "$${config_dir}/config.toml"
+        chmod 600 "$${config_dir}/config.toml"
         rm -f "$${config_dir}/frigate.log"
         "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args} &
         frigate_pid="$$!"
@@ -473,7 +551,7 @@ services:
       - ${APP_DATA_DIR}/data/frigate:/data/frigate
     environment:
       APP_VERSION: "${APP_VERSION}"
-      FRIGATE_VERSION: "1.5.2"
+      FRIGATE_VERSION: "1.6.1"
       APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
       APP_BITCOIN_NODE_IP: "${APP_BITCOIN_NODE_IP}"
       APP_BITCOIN_RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
@@ -483,91 +561,16 @@ services:
       APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
       APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
       APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
-
-  electrum_proxy:
-    image: python:3.12-alpine
-    restart: on-failure
-    depends_on:
-      - frigate
-    command:
-      - python
-      - -c
-      - |
-        import asyncio
-        import json
-        import os
-
-        BANNER = os.environ.get("FRIGATE_ELECTRUM_BANNER", "  _____      _             _        _   _           _              _\n |  ___| __ (_) __ _  __ _| |_ ___ | | | |_ __ ___ | |__  _ __ ___| |\n | |_ | '_ \\| |/ _` |/ _` | __/ _ \\| | | | '_ ` _ \\| '_ \\| '__/ _ \\ |\n |  _|| | | | | (_| | (_| | ||  __/| |_| | | | | | | |_) | | |  __/ |\n |_|  |_| |_|_|\\__, |\\__,_|\\__\\___| \\___/|_| |_| |_|_.__/|_|  \\___|_|\n                |___/\nLaboratorio Albercoin\nSemilla Bitcoin")
-        LISTEN_PORT = int(os.environ.get("APP_FRIGATE_ELECTRUM_PORT", "50005"))
-        UPSTREAM_HOST = os.environ.get("FRIGATE_UPSTREAM_HOST", "frigate")
-        UPSTREAM_PORT = int(os.environ.get("FRIGATE_UPSTREAM_PORT", "50005"))
-
-        def banner_response(request):
-            return {"jsonrpc": request.get("jsonrpc", "2.0"), "id": request.get("id"), "result": BANNER}
-
-        async def forward(reader, writer, raw):
-            writer.write(raw + b"\n")
-            await writer.drain()
-            response = await reader.readline()
-            return response.rstrip(b"\r\n")
-
-        async def handle(client_reader, client_writer):
-            upstream_reader = None
-            upstream_writer = None
-            try:
-                while True:
-                    raw = await client_reader.readline()
-                    if not raw:
-                        break
-                    stripped = raw.strip()
-                    try:
-                        request = json.loads(stripped)
-                        if isinstance(request, dict) and request.get("method") == "server.banner":
-                            response = json.dumps(banner_response(request), separators=(",", ":")).encode()
-                        else:
-                            if upstream_writer is None or upstream_writer.is_closing():
-                                upstream_reader, upstream_writer = await asyncio.open_connection(UPSTREAM_HOST, UPSTREAM_PORT)
-                            response = await forward(upstream_reader, upstream_writer, stripped)
-                    except Exception:
-                        if upstream_writer is None or upstream_writer.is_closing():
-                            upstream_reader, upstream_writer = await asyncio.open_connection(UPSTREAM_HOST, UPSTREAM_PORT)
-                        response = await forward(upstream_reader, upstream_writer, stripped)
-                    client_writer.write(response + b"\n")
-                    await client_writer.drain()
-            finally:
-                if upstream_writer is not None:
-                    upstream_writer.close()
-                    await upstream_writer.wait_closed()
-                client_writer.close()
-                await client_writer.wait_closed()
-
-        async def main():
-            server = await asyncio.start_server(handle, "0.0.0.0", LISTEN_PORT)
-            async with server:
-                await server.serve_forever()
-
-        asyncio.run(main())
-    environment:
-      APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
-      FRIGATE_ELECTRUM_BANNER: |-
-        _____      _             _        _   _           _              _
-        |  ___| __ (_) __ _  __ _| |_ ___ | | | |_ __ ___ | |__  _ __ ___| |
-        | |_ | '_ \| |/ _` |/ _` | __/ _ \| | | | '_ ` _ \| '_ \| '__/ _ \ |
-        |  _|| | | | | (_| | (_| | ||  __/| |_| | | | | | | |_) | | |  __/ |
-        |_|  |_| |_|_|\__, |\__,_|\__\___| \___/|_| |_| |_|_.__/|_|  \___|_|
-                      |___/
-        Laboratorio Albercoin
-        Semilla Bitcoin
+      APP_FRIGATE_TOR_IP: "${APP_FRIGATE_TOR_IP}"
     ports:
       - "${APP_FRIGATE_ELECTRUM_PORT}:${APP_FRIGATE_ELECTRUM_PORT}"
-    networks:
-      default:
-        ipv4_address: $APP_FRIGATE_IP
 
   tor:
     image: getumbrel/tor:0.4.7.8@sha256:2ace83f22501f58857fa9b403009f595137fa2e7986c4fda79d82a8119072b6a
     user: "1000:1000"
     restart: on-failure
+    depends_on:
+      - frigate
     volumes:
       - ${APP_DATA_DIR}/torrc:/etc/tor/torrc:ro
       - ${TOR_DATA_DIR}:/data

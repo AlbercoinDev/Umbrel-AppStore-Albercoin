@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-frigate
 category: bitcoin
 name: Frigate
-version: "1.5.2-06"
+version: "1.6.1-07"
 tagline: Electrum server for Silent Payments
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
 description: >-
@@ -12,9 +12,9 @@ description: >-
   protocol.
 
 
-  This Umbrel package connects Frigate to your Bitcoin Core node and proxies
-  non-Silent Payments Electrum requests to your Electrs app. Wallets should
-  connect to port 50005 on your Umbrel.
+  This Umbrel package connects Frigate to your Bitcoin Core node and uses your
+  Electrs app as the backend for non-Silent Payments Electrum requests. Wallets
+  should connect directly to Frigate on port 50005.
 developer: Sparrow Wallet
 website: https://sparrowwallet.com/
 dependencies:
@@ -29,15 +29,26 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Umbrel package revision 06 for Frigate 1.5.2.
+  Umbrel package revision 07 for Frigate 1.6.1.
 
 
-  Adds English and Spanish text to the Frigate web interface. The page follows
-  the browser/Umbrel language when Spanish is selected and falls back to English
-  for other languages.
+  Updates Frigate to 1.6.1, including request limits, backend reconnection,
+  graceful shutdown and health metrics. Electrum clients now connect directly
+  to Frigate on port 50005, improving subscription notifications and per-IP
+  limits. The custom banner is preserved via Frigate's bannerFile option.
+  The existing index is compatible and does not need to be rebuilt.
+  Configuration input is validated before saving, generated config files are
+  kept private, and dependencies are only installed when Frigate must be
+  downloaded, which speeds up normal restarts.
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 backupIgnore:
   - data/frigate/db
   - data/frigate/*/db
   - data/frigate/runtime
+  - data/frigate/cache
+  - data/frigate/*/cache
+  - data/frigate/config.toml
+  - data/frigate/*/config.toml
+  - data/frigate/frigate.log
+  - data/frigate/*/frigate.log

@@ -28,10 +28,13 @@ gallery: []
 path: ""
 defaultUsername: "admin"
 defaultPassword: "$APP_PASSWORD"
+deterministicPassword: true
 dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Initial package with SimpleX Chat CLI v7.0.3, web text messaging, persistent
-  storage, offline backups and an optional authenticated connector for Hermes.
-  Generated source release; runtime validation on Umbrel has not been performed.
+  Umbrel now displays the real per-install random password instead of the
+  APP_PASSWORD variable. The login screen also lets you set your own password
+  (minimum 8 characters); the Umbrel app card keeps showing the original one
+  after a change. Includes SimpleX Chat CLI v7.0.3, web text messaging,
+  persistent storage, offline backups and the optional Hermes connector.

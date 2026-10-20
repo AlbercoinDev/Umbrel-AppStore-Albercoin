@@ -42,5 +42,10 @@ class Config:
     def verify(self, password):
         return secrets.compare_digest(self.auth["hash"], self.derive(password, self.auth["salt"]))
 
+    def set_password(self, password):
+        salt = secrets.token_hex(16)
+        self.auth = {"salt": salt, "hash": self.derive(password, salt)}
+        atomic_json(DATA / "manager/admin-auth.json", self.auth)
+
     def save(self):
         atomic_json(self.path, self.value)

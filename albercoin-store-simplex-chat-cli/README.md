@@ -1,21 +1,21 @@
-# SimpleX Chat CLI · Albercoin · v1.0.0
+# SimpleX Chat CLI · Albercoin · v1.0.1
 
 Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.0.3** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
 
-**Estado de esta entrega:** código generado; sin pruebas ejecutadas, sin construcción de imagen y sin validación en Umbrel o Hermes. No se anuncia como una versión validada en producción.
+**Estado de esta entrega:** imagen multiarquitectura publicada en GHCR y app instalada y arrancada correctamente en Umbrel. La mensajería y la integración con Hermes no se han validado de extremo a extremo.
 
 ## Instalación
 
 Esta carpeta debe situarse en la raíz de `AlbercoinDev/Umbrel-AppStore-Albercoin`, junto a las demás apps. También debe añadirse el nuevo workflow `simplex-chat-cli-image.yml` a `.github/workflows/` sin reemplazar otros workflows.
 
-La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.0` debe construirse y hacerse pública antes de instalar. Utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
+La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.1` debe construirse y hacerse pública antes de instalar. Utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
 
-Después de publicar, puede fijarse la imagen por su digest real en este `docker-compose.yml`. La etiqueta por sí sola puede reemplazarse en una publicación futura: el workflow no impide republicar `1.0.0`.
+Después de publicar, puede fijarse la imagen por su digest real en este `docker-compose.yml`. La etiqueta por sí sola puede reemplazarse en una publicación futura: el workflow no impide republicar `1.0.1`.
 
 Para construcción local alternativa, desde la raíz del repositorio y con Docker Buildx:
 
 ```sh
-docker buildx build --platform linux/amd64 --load -t ghcr.io/albercoindev/simplex-chat-cli:1.0.0 ./albercoin-store-simplex-chat-cli
+docker buildx build --platform linux/amd64 --load -t ghcr.io/albercoindev/simplex-chat-cli:1.0.1 ./albercoin-store-simplex-chat-cli
 ```
 
 Este comando construye para AMD64 sin publicar. Para construir localmente ARM64 cambia `linux/amd64` por `linux/arm64`. El despliegue de Umbrel descarga una imagen: no construye el Dockerfile de esta carpeta.
@@ -23,8 +23,9 @@ Este comando construye para AMD64 sin publicar. Para construir localmente ARM64 
 ## Acceso y funciones
 
 - Interfaz mediante el proxy de Umbrel, puerto público de la app `2191`.
-- Usuario `admin`, contraseña de la ficha de Umbrel (`APP_PASSWORD`, conservada como hash scrypt en el primer arranque).
-- Si falta esa variable, contraseña aleatoria en `data/manager/initial-password.txt`, permisos `0600`.
+- Usuario `admin`, contraseña aleatoria por instalación (`APP_PASSWORD`), mostrada por Umbrel gracias a `deterministicPassword: true` y conservada como hash scrypt en el primer arranque.
+- La pantalla de acceso permite cambiar la contraseña indicando la actual. Tras cambiarla, la ficha de Umbrel sigue mostrando la original.
+- Si falta esa variable, contraseña aleatoria en `data/manager/initial-password.txt`, permisos `0600`; también puede establecerse una propia desde la pantalla de acceso.
 - Sesiones de 12 horas, cookies HttpOnly y SameSite, controles CSRF y límite de intentos de acceso.
 - Perfil editable; dirección persistente con QR generado localmente; conexiones y solicitudes con aceptación manual.
 - Chats de texto directos y de grupo. Lista de hasta 200 conversaciones recientes y 100 entradas por historial; la consola permite otras consultas.

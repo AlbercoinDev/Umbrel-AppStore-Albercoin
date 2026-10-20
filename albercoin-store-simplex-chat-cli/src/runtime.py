@@ -68,7 +68,7 @@ class Runtime:
                 for name in ("simplex", "manager"):
                     archive.add(DATA / name, arcname=name, recursive=True)
                 metadata = DATA / "backup-info.json"
-                metadata.write_text(json.dumps({"app": "1.0.0", "simplex": "v7.0.3", "created_utc": stamp}))
+                metadata.write_text(json.dumps({"app": "1.0.1", "simplex": "v7.0.3", "created_utc": stamp}))
                 archive.add(metadata, arcname="backup-info.json")
                 metadata.unlink()
             partial.replace(path)

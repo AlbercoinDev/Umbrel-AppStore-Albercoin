@@ -20,7 +20,7 @@ from .simplex_client import Broker
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "simplex_session"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 TARGET = re.compile(r"^[@#][1-9][0-9]*$")
 
 
@@ -96,7 +96,7 @@ async def authentication(request, handler):
             raise web.HTTPForbidden(text="Missing request header")
         if request.content_type != "application/json":
             raise web.HTTPUnsupportedMediaType()
-    if request.path.startswith("/api/") and request.path != "/api/login":
+    if request.path.startswith("/api/") and request.path not in ("/api/login", "/api/password"):
         session = request.cookies.get(COOKIE, "")
         expires = manager.sessions.get(session, 0)
         if expires < time.time():
@@ -132,6 +132,31 @@ async def login(request):
 
 async def logout(request):
     request.app["manager"].sessions.pop(request.cookies.get(COOKIE, ""), None)
+    response = web.json_response({"ok": True})
+    response.del_cookie(COOKIE)
+    return response
+
+
+async def change_password(request):
+    manager = request.app["manager"]
+    now = time.time()
+    while manager.login_attempts and now - manager.login_attempts[0] > 60:
+        manager.login_attempts.popleft()
+    if len(manager.login_attempts) >= 10:
+        return web.json_response({"error": "Espera un minuto antes de volver a intentarlo."}, status=429)
+    manager.login_attempts.append(now)
+    body = await request.json()
+    current, new = body.get("current", ""), body.get("new", "")
+    if not isinstance(current, str) or not isinstance(new, str):
+        raise ValueError("Contraseña no válida.")
+    if len(new) < 8 or len(new) > 1024:
+        raise ValueError("La nueva contraseña debe tener entre 8 y 1024 caracteres.")
+    if secrets.compare_digest(current, new):
+        raise ValueError("La nueva contraseña debe ser distinta de la actual.")
+    if not await asyncio.to_thread(manager.config.verify, current):
+        return web.json_response({"error": "La contraseña actual no es correcta."}, status=401)
+    await asyncio.to_thread(manager.config.set_password, new)
+    manager.sessions.clear()
     response = web.json_response({"ok": True})
     response.del_cookie(COOKIE)
     return response
@@ -392,7 +417,7 @@ async def serve():
     app = web.Application(middlewares=[errors, authentication], client_max_size=128 * 1024)
     app["manager"] = manager
     app.add_routes([web.get("/", index), web.get("/static/{name}", static_file),
-        web.post("/api/login", login), web.post("/api/logout", logout), web.get("/api/status", status),
+        web.post("/api/login", login), web.post("/api/logout", logout), web.post("/api/password", change_password), web.get("/api/status", status),
         web.get("/api/snapshot", snapshot), web.get("/api/history", history), web.post("/api/action", action),
         web.get("/api/address", address), web.get("/api/qr", qr),
         web.get("/api/settings", settings), web.post("/api/settings", settings),

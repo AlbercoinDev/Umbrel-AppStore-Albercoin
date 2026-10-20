@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-simplex-chat-cli
 category: social
 name: SimpleX Chat CLI
-version: "1.0.0"
+version: "1.0.1"
 tagline: Private messaging with web management and optional agents
 description: >-
   Run SimpleX Chat CLI independently on your Umbrel. Manage your profile,

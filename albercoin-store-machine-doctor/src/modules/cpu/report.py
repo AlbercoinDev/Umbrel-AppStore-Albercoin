@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -48,7 +49,7 @@ def build_report(state: dict[str, Any]) -> dict[str, Any]:
 def save_report(report: dict[str, Any]) -> Path:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = REPORT_DIR / f"cpu-{timestamp}.json"
+    path = REPORT_DIR / f"cpu-{timestamp}-{uuid.uuid4().hex[:8]}.json"
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return path
 

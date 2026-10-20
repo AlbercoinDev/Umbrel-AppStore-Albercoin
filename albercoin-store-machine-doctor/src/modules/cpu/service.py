@@ -8,7 +8,7 @@ from typing import Any
 
 from .report import build_report, save_report
 from .sensors import cpu_usage_percent, read_cpu_info, read_cpu_topology, read_frequencies, read_load_average, read_proc_stat, read_temperatures, read_thermal_management
-from .stress import StressProcess
+from .stress import StressProcess, available_cpu_workers
 
 
 def _env_int(name: str, default: int) -> int:
@@ -47,6 +47,7 @@ class CpuCheckService:
             "samples": [],
             "current_sample": None,
             "cpu_info": read_cpu_info(),
+            "available_workers": available_cpu_workers(),
             "thresholds": {
                 "warning_temp": CPU_WARNING_TEMP,
                 "critical_temp": CPU_CRITICAL_TEMP,
@@ -92,6 +93,9 @@ class CpuCheckService:
 
     def shutdown(self) -> None:
         self.cancel()
+        thread = self._thread
+        if thread and thread.is_alive():
+            thread.join(timeout=10)
 
     def _run_test_safe(self) -> None:
         try:
@@ -107,8 +111,8 @@ class CpuCheckService:
         throttle_baseline = self._state.get("throttle_baseline", {})
         throttle_deltas = self._throttle_deltas(throttle_baseline, thermal_management.get("cpu_throttle_counts", {}))
         processor_cooling_active = [device for device in thermal_management.get("active_cooling_devices", []) if "processor" in str(device.get("type", "")).lower()]
-        throttling_confirmed = bool(throttle_deltas or processor_cooling_active)
-        throttling_status = "confirmed" if throttling_confirmed else "not_detected" if thermal_management.get("throttle_counters_available") or thermal_management.get("cooling_devices") else "unavailable"
+        throttling_confirmed = bool(throttle_deltas)
+        throttling_status = "confirmed" if throttling_confirmed else "not_detected" if thermal_management.get("throttle_counters_available") else "unavailable"
         topology = read_cpu_topology()
         frequencies = read_frequencies(cpu_info.get("cpuinfo_mhz", {}))
         total_usage = None
@@ -159,7 +163,7 @@ class CpuCheckService:
             "throttling": {
                 "status": throttling_status,
                 "confirmed": throttling_confirmed,
-                "available": thermal_management.get("throttle_counters_available") or bool(thermal_management.get("cooling_devices")),
+                "available": thermal_management.get("throttle_counters_available"),
                 "counter_deltas": throttle_deltas,
                 "active_processor_cooling": processor_cooling_active,
             },
@@ -179,7 +183,8 @@ class CpuCheckService:
         return deltas
 
     def _run_test(self) -> None:
-        stress = StressProcess(TEST_DURATION_SECONDS)
+        workers = available_cpu_workers()
+        stress = StressProcess(TEST_DURATION_SECONDS, workers=workers)
         with self._lock:
             self._stress = stress
             self._state["throttle_baseline"] = read_thermal_management().get("cpu_throttle_counts", {})
@@ -271,11 +276,11 @@ class CpuCheckService:
             avg_usage = sum(usages) / len(usages)
             max_usage = max(usages)
             if avg_usage < CPU_MIN_EXPECTED_LOAD * 0.75:
-                errors.append(f"Average CPU usage was too low during stress test: {avg_usage:.1f}%")
+                warnings.append(f"Average host CPU usage was lower than expected during stress test: {avg_usage:.1f}%; container CPU limits or host activity may affect this reading")
             elif max_usage < CPU_MIN_EXPECTED_LOAD:
                 warnings.append(f"CPU load did not clearly reach expected threshold: {max_usage:.1f}%")
 
-        expected_cores = cpu_info.get("cores") or 0
+        expected_cores = min(cpu_info.get("cores") or 0, self._state.get("available_workers", available_cpu_workers()))
         core_samples = [s.get("per_core", []) for s in samples if s.get("per_core")]
         if expected_cores and core_samples:
             max_usage_by_core: dict[int, float] = {}
@@ -291,6 +296,8 @@ class CpuCheckService:
 
         if sensor_counts and max(sensor_counts) == 0:
             warnings.append("No hardware sensors were available")
+        elif not temperatures and sensor_counts and max(sensor_counts) > 0:
+            warnings.append("Temperature sensors were found, but none could be identified as a CPU sensor")
 
         if errors:
             return "FAIL", warnings, errors
@@ -313,9 +320,13 @@ class CpuCheckService:
             latest_sample = self._state.get("current_sample") or {}
             self._state["throttling"] = latest_sample.get("throttling", self._state.get("throttling"))
             report = build_report(self._state)
-        path = save_report(report)
-        with self._lock:
-            self._state["report_path"] = str(path)
+        try:
+            path = save_report(report)
+            with self._lock:
+                self._state["report_path"] = str(path)
+        except OSError as exc:
+            with self._lock:
+                self._state["warnings"].append(f"Report could not be saved: {exc}")
 
 
 cpu_check_service = CpuCheckService()

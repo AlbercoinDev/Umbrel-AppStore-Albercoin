@@ -44,7 +44,7 @@ def read_cpu_info() -> dict[str, Any]:
                 processors.append(current_processor)
             except ValueError:
                 current_processor = None
-        elif key_lower in ("model name", "hardware") and value and model == "Unknown CPU":
+        elif key_lower in ("model name", "hardware", "processor", "cpu model") and value and model == "Unknown CPU":
             model = value
         elif key_lower == "cpu mhz" and current_processor is not None:
             try:
@@ -155,8 +155,10 @@ def _hwmon_name(hwmon: Path) -> str:
 def _normalize_temp(raw: float | None) -> float | None:
     if raw is None:
         return None
-    if raw > 1000:
+    if abs(raw) > 1000:
         raw = raw / 1000.0
+    if raw < -50 or raw > 200:
+        return None
     return round(raw, 1)
 
 
@@ -177,7 +179,7 @@ def read_temperatures() -> dict[str, Any]:
         value = _normalize_temp(_read_number(zone / "temp"))
         if value is not None:
             name = _thermal_zone_name(zone)
-            sensors.append({"id": zone.name, "name": name, "temperature": value, "source": "thermal", "core_id": _core_id_from_label(name)})
+            sensors.append({"id": zone.name, "name": name, "device_name": name, "temperature": value, "source": "thermal", "core_id": _core_id_from_label(name)})
 
     for hwmon in sorted((HOST_SYS / "class/hwmon").glob("hwmon*")):
         hwmon_name = _hwmon_name(hwmon)
@@ -190,15 +192,15 @@ def read_temperatures() -> dict[str, Any]:
                 sensors.append({
                     "id": f"{hwmon.name}:{temp_input.name}",
                     "name": name,
+                    "device_name": hwmon_name,
                     "temperature": value,
                     "source": "hwmon",
                     "core_id": _core_id_from_label(name),
                 })
 
-    cpu_candidates = [s for s in sensors if re.search(r"cpu|core|package|soc|tctl|tdie|thermal", s["name"], re.I)]
+    cpu_pattern = re.compile(r"\b(cpu|core|package|soc|tctl|tdie)\b", re.I)
+    cpu_candidates = [s for s in sensors if cpu_pattern.search(f"{s['name']} {s.get('device_name', '')}")]
     current = max((s["temperature"] for s in cpu_candidates), default=None)
-    if current is None and sensors:
-        current = max(s["temperature"] for s in sensors)
 
     core_temperatures: dict[int, float] = {}
     for sensor in sensors:

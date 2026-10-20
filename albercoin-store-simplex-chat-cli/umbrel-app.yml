@@ -38,6 +38,6 @@ releaseNotes: >-
   WebSocket se registran para diagnóstico; la integración con Hermes escribe
   las variables SIMPLEX_* sin comillas JSON sobrantes; el proxy SOCKS se valida
   como IPv4 y puerto correctos antes de reiniciar el cliente; el docker-compose
-  elimina el digest de imagen placeholder y añade un healthcheck sobre
-  /healthz; se unifica la versión 1.0.2 en el manifiesto, la imagen y las
-  copias de seguridad. Se mantiene SimpleX Chat CLI v7.0.3.
+  sustituye el digest de imagen placeholder por el digest real y añade un
+  healthcheck sobre /healthz; se unifica la versión 1.0.2 en el manifiesto, la
+  imagen y las copias de seguridad. Se mantiene SimpleX Chat CLI v7.0.3.

@@ -8,9 +8,9 @@ Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial Simpl
 
 Esta carpeta debe situarse en la raíz de `AlbercoinDev/Umbrel-AppStore-Albercoin`, junto a las demás apps. También debe añadirse el nuevo workflow `simplex-chat-cli-image.yml` a `.github/workflows/` sin reemplazar otros workflows.
 
-La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.2` debe construirse y hacerse pública antes de instalar. Utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
+La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.2` está publicada y fijada por su digest en `docker-compose.yml`; Umbrel la descarga sin credenciales. Para republicarla, utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
 
-Después de publicar, puede fijarse la imagen por su digest real en este `docker-compose.yml`. La etiqueta por sí sola puede reemplazarse en una publicación futura: el workflow no impide republicar `1.0.2`.
+La imagen está fijada por el digest `sha256:ac17551b8d1f003434f26d319d793a116bcf74ecaab2fa1e15228a68a08c5a3d`. Si se republica `1.0.2`, actualiza el digest en este `docker-compose.yml`; el workflow no impide reemplazar la etiqueta.
 
 Para construcción local alternativa, desde la raíz del repositorio y con Docker Buildx:
 

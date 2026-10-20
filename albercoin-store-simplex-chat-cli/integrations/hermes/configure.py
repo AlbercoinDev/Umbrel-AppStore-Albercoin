@@ -66,7 +66,7 @@ def main():
         if not match or match.group(1) not in keys:
             lines.append(line)
     lines += ["", "# SimpleX Chat CLI for Umbrel — managed connector settings"]
-    lines += [key + "=" + json.dumps(value) for key, value in values.items()]
+    lines += [key + "=" + value for key, value in values.items()]
     temp = path.with_name(".env.simplex-tmp")
     temp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     temp.chmod(0o600)

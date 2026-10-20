@@ -54,8 +54,8 @@ class Broker:
                                     self.listeners.discard(queue)
                                 else:
                                     queue.put_nowait(packet)
-                except (aiohttp.ClientError, OSError, ValueError):
-                    pass
+                except (aiohttp.ClientError, OSError, ValueError) as exc:
+                    print(f"SimpleX WebSocket error: {exc}", flush=True)
                 finally:
                     self.ws = None
                     self.connected.clear()

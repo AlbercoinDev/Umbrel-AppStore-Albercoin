@@ -20,7 +20,7 @@ from .simplex_client import Broker
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "simplex_session"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 TARGET = re.compile(r"^[@#][1-9][0-9]*$")
 
 
@@ -277,8 +277,12 @@ async def settings(request):
             raise ValueError("Configuración no válida.")
         updates[key] = value.strip()
     proxy = updates["socks_proxy"]
-    if proxy and not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}", proxy):
-        raise ValueError("SOCKS debe tener formato IPv4:puerto, por ejemplo 10.21.0.2:9050.")
+    if proxy:
+        match = re.fullmatch(r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})", proxy)
+        if (not match or any(str(int(part)) != part for part in match.groups())
+                or any(int(part) > 255 for part in match.groups()[:4])
+                or not 1 <= int(match.group(5)) <= 65535):
+            raise ValueError("SOCKS debe ser una IPv4 válida y un puerto entre 1 y 65535, por ejemplo 10.21.0.2:9050.")
     m.config.value.update(updates)
     m.config.save()
     await m.close_integrations()
@@ -399,6 +403,10 @@ async def connector(request):
     return ws
 
 
+async def health(request):
+    return web.json_response({"ok": True})
+
+
 async def index(request):
     return web.FileResponse(STATIC / "index.html")
 
@@ -416,7 +424,7 @@ async def serve():
     manager = Manager()
     app = web.Application(middlewares=[errors, authentication], client_max_size=128 * 1024)
     app["manager"] = manager
-    app.add_routes([web.get("/", index), web.get("/static/{name}", static_file),
+    app.add_routes([web.get("/", index), web.get("/healthz", health), web.get("/static/{name}", static_file),
         web.post("/api/login", login), web.post("/api/logout", logout), web.post("/api/password", change_password), web.get("/api/status", status),
         web.get("/api/snapshot", snapshot), web.get("/api/history", history), web.post("/api/action", action),
         web.get("/api/address", address), web.get("/api/qr", qr),

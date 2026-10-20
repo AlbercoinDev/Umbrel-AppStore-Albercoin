@@ -5,7 +5,7 @@ services:
       APP_HOST: albercoin-store-simplex-chat-cli_server_1
       APP_PORT: 2191
   server:
-    image: ghcr.io/albercoindev/simplex-chat-cli:1.0.1@sha256:8e21433c28eb33cae77458fbbb2118f6fbf0341421053813babc9e9429e3b82b
+    image: ghcr.io/albercoindev/simplex-chat-cli:1.0.2
     hostname: simplex-chat-cli-web
     init: true
     restart: on-failure
@@ -21,3 +21,9 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=64m,mode=1777
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:2191/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

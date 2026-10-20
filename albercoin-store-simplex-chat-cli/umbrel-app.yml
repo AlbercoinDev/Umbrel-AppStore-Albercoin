@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-simplex-chat-cli
 category: social
 name: SimpleX Chat CLI
-version: "1.0.1"
+version: "1.0.2"
 tagline: Private messaging with web management and optional agents
 description: >-
   Run SimpleX Chat CLI independently on your Umbrel. Manage your profile,
@@ -33,8 +33,11 @@ dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Umbrel now displays the real per-install random password instead of the
-  APP_PASSWORD variable. The login screen also lets you set your own password
-  (minimum 8 characters); the Umbrel app card keeps showing the original one
-  after a change. Includes SimpleX Chat CLI v7.0.3, web text messaging,
-  persistent storage, offline backups and the optional Hermes connector.
+  Parche 1.0.2: el supervisor del cliente SimpleX reintenta el arranque cada
+  5 segundos si el proceso falla, en lugar de detenerse; los errores de
+  WebSocket se registran para diagnóstico; la integración con Hermes escribe
+  las variables SIMPLEX_* sin comillas JSON sobrantes; el proxy SOCKS se valida
+  como IPv4 y puerto correctos antes de reiniciar el cliente; el docker-compose
+  elimina el digest de imagen placeholder y añade un healthcheck sobre
+  /healthz; se unifica la versión 1.0.2 en el manifiesto, la imagen y las
+  copias de seguridad. Se mantiene SimpleX Chat CLI v7.0.3.

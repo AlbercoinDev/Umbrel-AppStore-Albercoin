@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 ARG TARGETARCH
 ARG SIMPLEX_VERSION=v7.0.3
 LABEL org.opencontainers.image.title="SimpleX Chat CLI for Umbrel" \
-      org.opencontainers.image.version="1.0.1" \
+      org.opencontainers.image.version="1.0.2" \
       org.opencontainers.image.source="https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

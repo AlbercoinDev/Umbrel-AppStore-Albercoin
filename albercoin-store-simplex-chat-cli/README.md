@@ -1,21 +1,21 @@
-# SimpleX Chat CLI · Albercoin · v1.0.1
+# SimpleX Chat CLI · Albercoin · v1.0.2
 
 Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.0.3** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
 
-**Estado de esta entrega:** imagen multiarquitectura publicada en GHCR y app instalada y arrancada correctamente en Umbrel. La mensajería y la integración con Hermes no se han validado de extremo a extremo.
+**Estado de esta entrega:** código del parche 1.0.2; la imagen debe reconstruirse y publicarse antes de instalar. Se han validado la construcción local para amd64, el arranque real del cliente, la dirección/QR, el perfil, los backups, la restauración y el conector WebSocket con credenciales. No se ha validado el intercambio de mensajes con un contacto real ni el gateway de Hermes de extremo a extremo.
 
 ## Instalación
 
 Esta carpeta debe situarse en la raíz de `AlbercoinDev/Umbrel-AppStore-Albercoin`, junto a las demás apps. También debe añadirse el nuevo workflow `simplex-chat-cli-image.yml` a `.github/workflows/` sin reemplazar otros workflows.
 
-La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.1` debe construirse y hacerse pública antes de instalar. Utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
+La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.2` debe construirse y hacerse pública antes de instalar. Utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
 
-Después de publicar, puede fijarse la imagen por su digest real en este `docker-compose.yml`. La etiqueta por sí sola puede reemplazarse en una publicación futura: el workflow no impide republicar `1.0.1`.
+Después de publicar, puede fijarse la imagen por su digest real en este `docker-compose.yml`. La etiqueta por sí sola puede reemplazarse en una publicación futura: el workflow no impide republicar `1.0.2`.
 
 Para construcción local alternativa, desde la raíz del repositorio y con Docker Buildx:
 
 ```sh
-docker buildx build --platform linux/amd64 --load -t ghcr.io/albercoindev/simplex-chat-cli:1.0.1 ./albercoin-store-simplex-chat-cli
+docker buildx build --platform linux/amd64 --load -t ghcr.io/albercoindev/simplex-chat-cli:1.0.2 ./albercoin-store-simplex-chat-cli
 ```
 
 Este comando construye para AMD64 sin publicar. Para construir localmente ARM64 cambia `linux/amd64` por `linux/arm64`. El despliegue de Umbrel descarga una imagen: no construye el Dockerfile de esta carpeta.
@@ -33,7 +33,7 @@ Este comando construye para AMD64 sin publicar. Para construir localmente ARM64 
 - El estado técnico de entrega del cliente aparece junto al mensaje. Aceptación de una orden no significa recepción en el otro dispositivo.
 - Copias consistentes mediante parada del cliente; descarga y restauración offline.
 - Consola de órdenes SimpleX, con permisos administrativos completos, accesible solo tras autenticarse.
-- Servidores y proxy modificables desde la interfaz. Al guardar se reinicia el cliente, sin reiniciar otras apps.
+- Servidores y proxy modificables desde la interfaz. Al guardar se reinicia el cliente, sin reiniciar otras apps. El proxy SOCKS debe ser una IPv4 con puerto entre 1 y 65535; se valida antes de aplicarlo.
 
 No hay adjuntos en la interfaz, llamadas, integración automática de Tor ni promesas de tráfico exclusivamente onion. La configuración XFTP queda disponible para el cliente y usos avanzados. No se aceptan archivos automáticamente.
 
@@ -78,7 +78,7 @@ sudo python3 ./albercoin-store-simplex-chat-cli/scripts/restore.py \
 ```
 
 Sustituye la ruta de archivo de ejemplo por la de tu copia. El asistente no comprueba mediante Docker si la app está detenida: debes detenerla antes.
-Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Solo admite copias de este paquete `1.0.0` con SimpleX `v7.0.3`.
+Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Solo admite copias de este paquete `1.0.0`, `1.0.1` o `1.0.2` con SimpleX `v7.0.3`.
 Arranca después la app desde Umbrel. Se recuperan también la contraseña y el token anteriores. Si eran distintos, actualiza los clientes y usa la contraseña del momento de la copia.
 Para deshacer la restauración, detén la app y recupera los directorios `simplex` y `manager` de `before-restore-FECHA`, conservando primero los restaurados en otra carpeta. No ejecutes dos instancias simultáneas con una misma identidad recuperada de una copia.
 

@@ -54,7 +54,10 @@ class Runtime:
                 if not self.paused and (self.process is None or self.process.returncode is not None):
                     if self.process:
                         self.last_exit_code = self.process.returncode
-                    await self.start()
+                    try:
+                        await self.start()
+                    except Exception:
+                        self.last_exit_code = -1
             await asyncio.sleep(5)
 
     def archive(self):
@@ -68,7 +71,7 @@ class Runtime:
                 for name in ("simplex", "manager"):
                     archive.add(DATA / name, arcname=name, recursive=True)
                 metadata = DATA / "backup-info.json"
-                metadata.write_text(json.dumps({"app": "1.0.1", "simplex": "v7.0.3", "created_utc": stamp}))
+                metadata.write_text(json.dumps({"app": "1.0.2", "simplex": "v7.0.3", "created_utc": stamp}))
                 archive.add(metadata, arcname="backup-info.json")
                 metadata.unlink()
             partial.replace(path)

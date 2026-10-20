@@ -1,0 +1,37 @@
+manifestVersion: 1
+id: albercoin-store-simplex-chat-cli
+category: social
+name: SimpleX Chat CLI
+version: "1.0.0"
+tagline: Private messaging with web management and optional agents
+description: >-
+  Run SimpleX Chat CLI independently on your Umbrel. Manage your profile,
+  contact address, connection requests and text conversations from a web interface.
+
+
+  Your databases, settings and local backups persist in this app's own data directory.
+  An optional authenticated WebSocket connector supports Hermes Agent and other
+  SimpleX API clients. Hermes is not required. Text messaging is the supported
+  integration scope for this release; attachments and calls are not included.
+
+
+  Log in with the app password shown by Umbrel. Integration credentials grant access
+  to the SimpleX API: share them only with trusted clients. No integration port is
+  published on your local network.
+developer: Albercoin
+website: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+repo: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+support: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/issues
+port: 2191
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-simplex-chat-cli/icon.svg
+gallery: []
+path: ""
+defaultUsername: "admin"
+defaultPassword: "$APP_PASSWORD"
+dependencies: []
+submitter: AlbercoinDev
+submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+releaseNotes: >-
+  Initial package with SimpleX Chat CLI v7.0.3, web text messaging, persistent
+  storage, offline backups and an optional authenticated connector for Hermes.
+  Generated source release; runtime validation on Umbrel has not been performed.

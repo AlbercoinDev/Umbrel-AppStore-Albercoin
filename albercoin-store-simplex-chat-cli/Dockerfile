@@ -21,7 +21,9 @@ RUN set -eu; \
     chmod 755 /usr/local/bin/simplex-chat; \
     mkdir -p /usr/share/doc/simplex-chat; \
     curl --fail --location --retry 3 "https://github.com/simplex-chat/simplex-chat/releases/download/${SIMPLEX_VERSION}/LICENSE" -o /usr/share/doc/simplex-chat/LICENSE
-RUN useradd --uid 1000 --create-home simplex && python3 -m venv /opt/venv
+RUN existing="$(getent passwd 1000 | cut -d: -f1)"; \
+    if [ -n "$existing" ]; then userdel -r "$existing" 2>/dev/null || userdel "$existing"; fi; \
+    useradd --uid 1000 --create-home simplex && python3 -m venv /opt/venv
 COPY requirements.txt /app/requirements.txt
 RUN /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt
 COPY src /app/src

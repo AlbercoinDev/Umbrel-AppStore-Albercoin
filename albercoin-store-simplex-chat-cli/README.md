@@ -25,6 +25,7 @@ Este comando construye para AMD64 sin publicar. Para construir localmente ARM64 
 - Interfaz mediante el proxy de Umbrel, puerto público de la app `2191`.
 - Usuario `admin`, contraseña aleatoria por instalación (`APP_PASSWORD`), mostrada por Umbrel gracias a `deterministicPassword: true` y conservada como hash scrypt en el primer arranque.
 - La pantalla de acceso permite cambiar la contraseña indicando la actual. Tras cambiarla, la ficha de Umbrel sigue mostrando la original.
+- Recuperación: si olvidas la contraseña, detén la app, elimina `data/manager/admin-auth.json` y vuelve a iniciarla. Se generará de nuevo desde el `APP_PASSWORD` que muestra Umbrel.
 - Si falta esa variable, contraseña aleatoria en `data/manager/initial-password.txt`, permisos `0600`; también puede establecerse una propia desde la pantalla de acceso.
 - Sesiones de 12 horas, cookies HttpOnly y SameSite, controles CSRF y límite de intentos de acceso.
 - Perfil editable; dirección persistente con QR generado localmente; conexiones y solicitudes con aceptación manual.

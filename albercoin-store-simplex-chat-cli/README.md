@@ -2,15 +2,15 @@
 
 Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.0.3** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
 
-**Estado de esta revisión:** versión 1.0.3 con diagnóstico, en proceso de publicación. Se ha verificado el intercambio de texto en ambos sentidos entre dos identidades reales SimpleX 7.0.3 en contenedores de prueba, la aceptación de solicitudes, el conector autenticado y la exclusión de mensajes/credenciales del informe. No se ha ejecutado el gateway de Hermes ni desplegado esta revisión en tu nodo.
+**Estado de esta revisión:** versión 1.0.3 publicada para AMD64 y ARM64, fijada por digest en la tienda Umbrel. Se ha verificado el intercambio de texto en ambos sentidos entre dos identidades reales SimpleX 7.0.3 en contenedores de prueba, la aceptación de solicitudes, el conector autenticado y la exclusión de mensajes/credenciales del informe. No se ha ejecutado el gateway de Hermes ni desplegado esta revisión en tu nodo.
 
 ## Instalación
 
 Esta carpeta debe situarse en la raíz de `AlbercoinDev/Umbrel-AppStore-Albercoin`, junto a las demás apps. También debe añadirse el nuevo workflow `simplex-chat-cli-image.yml` a `.github/workflows/` sin reemplazar otros workflows.
 
-La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.2` está publicada y fijada por su digest en `docker-compose.yml`; Umbrel la descarga sin credenciales. Para republicarla, utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
+La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.3` está publicada y fijada por su digest en `docker-compose.yml`; Umbrel la descarga sin credenciales. Para publicarla, utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
 
-La imagen está fijada por el digest `sha256:ac17551b8d1f003434f26d319d793a116bcf74ecaab2fa1e15228a68a08c5a3d`. Si se republica `1.0.2`, actualiza el digest en este `docker-compose.yml`; el workflow no impide reemplazar la etiqueta.
+La imagen está fijada por el digest `sha256:52a4a5d5358829027f926adbfbda72e1962b22ea54fc147a194daa523198ba8e`. Si se republica `1.0.3`, actualiza el digest en este `docker-compose.yml`; el workflow no impide reemplazar la etiqueta.
 
 Para construcción local alternativa, desde la raíz del repositorio y con Docker Buildx:
 

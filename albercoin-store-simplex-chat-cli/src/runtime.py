@@ -16,6 +16,24 @@ class Runtime:
         self.stopping = False
         self.paused = False
         self.last_exit_code = None
+        self.stderr_task = None
+
+    def log(self, level, phase, summary, **context):
+        self.broker.log(level, phase, summary, **context)
+
+    async def read_errors(self, stream):
+        # stderr can include private data: retain only recognised failure categories.
+        patterns = {"permission denied": "Permiso denegado", "no space left": "Disco lleno",
+                    "unrecognized option": "Argumento de arranque incompatible", "invalid option": "Argumento de arranque incompatible",
+                    "database is locked": "Base de datos bloqueada", "address already in use": "Puerto ocupado",
+                    "database disk image is malformed": "Base de datos dañada", "migration": "Aviso de migración"}
+        while True:
+            chunk = await stream.read(4096)
+            if not chunk:
+                return
+            lower = chunk.decode(errors="replace").lower()
+            matched = [label for pattern, label in patterns.items() if pattern in lower]
+            self.log("error", "process_stderr", "Salida de error del proceso (texto privado omitido).", categories=matched or ["Error no clasificado"])
 
     async def start(self):
         directory = DATA / "simplex"
@@ -33,7 +51,9 @@ class Runtime:
         # Do not write CLI stdout to container logs: it can contain messages and links.
         self.process = await asyncio.create_subprocess_exec(
             *args, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL)
+            stderr=asyncio.subprocess.PIPE)
+        self.stderr_task = asyncio.create_task(self.read_errors(self.process.stderr))
+        self.log("info", "process_start", "Proceso SimpleX iniciado.", pid=self.process.pid)
 
     async def stop(self):
         await self.broker.disconnect()
@@ -46,6 +66,10 @@ class Runtime:
                 await self.process.wait()
         if self.process:
             self.last_exit_code = self.process.returncode
+            self.log("info", "process_stop", "Proceso SimpleX detenido.", exit_code=self.last_exit_code)
+        if self.stderr_task:
+            await self.stderr_task
+            self.stderr_task = None
         self.process = None
 
     async def supervise(self):
@@ -54,10 +78,14 @@ class Runtime:
                 if not self.paused and (self.process is None or self.process.returncode is not None):
                     if self.process:
                         self.last_exit_code = self.process.returncode
+                        self.log("error", "process_exit", "SimpleX terminó; se intentará reiniciar. Revisa los errores de arranque.", exit_code=self.last_exit_code)
+                        if self.stderr_task:
+                            await self.stderr_task
                     try:
                         await self.start()
-                    except Exception:
+                    except Exception as exc:
                         self.last_exit_code = -1
+                        self.log("error", "process_start_failed", "No se pudo iniciar SimpleX.", error_type=type(exc).__name__, errno=getattr(exc, "errno", None))
             await asyncio.sleep(5)
 
     def archive(self):
@@ -71,7 +99,7 @@ class Runtime:
                 for name in ("simplex", "manager"):
                     archive.add(DATA / name, arcname=name, recursive=True)
                 metadata = DATA / "backup-info.json"
-                metadata.write_text(json.dumps({"app": "1.0.2", "simplex": "v7.0.3", "created_utc": stamp}))
+                metadata.write_text(json.dumps({"app": "1.0.3", "simplex": "v7.0.3", "created_utc": stamp}))
                 archive.add(metadata, arcname="backup-info.json")
                 metadata.unlink()
             partial.replace(path)

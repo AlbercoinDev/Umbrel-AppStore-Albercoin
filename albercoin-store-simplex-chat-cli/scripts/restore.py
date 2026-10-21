@@ -50,7 +50,7 @@ def main():
                     with source, target.open("xb") as output:
                         shutil.copyfileobj(source, output)
             info = json.loads((staging / "backup-info.json").read_text())
-            if info.get("app") not in ("1.0.0", "1.0.1", "1.0.2") or info.get("simplex") != "v7.0.3":
+            if info.get("app") not in ("1.0.0", "1.0.1", "1.0.2", "1.0.3") or info.get("simplex") != "v7.0.3":
                 raise SystemExit("Versión de copia no compatible con esta restauración.")
         if not (staging / "manager/admin-auth.json").is_file() or not list((staging / "simplex").glob("*_chat.db")):
             raise SystemExit("Copia incompleta: faltan las bases de datos o la configuración.")

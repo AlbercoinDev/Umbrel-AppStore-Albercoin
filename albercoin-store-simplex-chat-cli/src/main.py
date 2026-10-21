@@ -9,6 +9,7 @@ import signal
 import time
 from collections import deque
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from aiohttp import web, WSMsgType
 import qrcode
@@ -17,17 +18,26 @@ import qrcode.image.svg
 from .config import Config, DATA
 from .runtime import Runtime
 from .simplex_client import Broker
+from .diagnostics import Diagnostics
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "simplex_session"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 TARGET = re.compile(r"^[@#][1-9][0-9]*$")
+
+
+def valid_link(link):
+    if not isinstance(link, str) or len(link) > 16384 or re.search(r"\s", link):
+        return False
+    parsed = urlsplit(link)
+    return parsed.scheme == "simplex" or (parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password)
 
 
 class Manager:
     def __init__(self):
         self.config = Config()
-        self.broker = Broker()
+        self.diagnostics = Diagnostics(DATA / "manager")
+        self.broker = Broker(self.diagnostics)
         self.runtime = Runtime(self.config, self.broker)
         self.sessions = {}
         self.login_attempts = deque(maxlen=100)
@@ -164,13 +174,35 @@ async def change_password(request):
 
 async def status(request):
     m = request.app["manager"]
-    return web.json_response({"version": APP_VERSION, "simplex_version": "7.0.3",
+    return web.json_response({"version": APP_VERSION, "revision": "diagnostics-1", "simplex_version": "7.0.3",
         "connected": m.broker.connected.is_set(), "generation": m.broker.generation,
         "last_exit_code": m.runtime.last_exit_code, "last_event": m.broker.last_event,
         "last_event_at": m.broker.last_event_at,
         "integration_enabled": m.config.value["integration_enabled"],
         "integration_connections": len(m.integration_sockets), "integration_commands": m.connector_commands,
         "integration_last_command": m.connector_last_command})
+
+
+async def diagnostics(request):
+    m = request.app["manager"]
+    state = json.loads((await status(request)).text)
+    state.update({"process_running": m.runtime.process is not None and m.runtime.process.returncode is None,
+                  "proxy_configured": bool(m.config.value.get("socks_proxy")),
+                  "smp_custom": bool(m.config.value.get("smp_servers")),
+                  "xftp_custom": bool(m.config.value.get("xftp_servers"))})
+    entries = await asyncio.to_thread(m.diagnostics.entries)
+    return web.json_response({"state": state, "entries": entries,
+        "notes": "Horas UTC. Hasta 500 registros recientes; rotación de 4 × 1 MiB. No se incluyen mensajes ni credenciales. La conexión local no acredita entrega SMP. Los campos de texto privado se omiten."})
+
+
+async def client_diagnostic(request):
+    body = await request.json()
+    phase = body.get("phase")
+    if phase not in ("history", "snapshot", "send", "other"):
+        raise ValueError("Fase no válida.")
+    request.app["manager"].diagnostics.record("warning", "panel", phase,
+        "El navegador informa de un fallo al consultar o ejecutar la operación.")
+    return web.json_response({"ok": True})
 
 
 async def snapshot(request):
@@ -198,6 +230,12 @@ async def action(request):
             raise ValueError("Destinatario no válido.")
         if not isinstance(text, str) or not text.strip() or len(text) > 8000:
             raise ValueError("Escribe un mensaje de hasta 8000 caracteres.")
+        current = await m.broker.response(f"/_get chat {target} count=1")
+        info = current.get("chat", {}).get("chatInfo", {})
+        contact = info.get("contact", {})
+        if info.get("type") == "contactRequest" or (contact.get("contactRequestId") and not contact.get("activeConn")):
+            m.diagnostics.record("warning", "panel", "send_blocked", "Envío bloqueado: primero hay que aceptar la solicitud de contacto.", operation="send", target=target)
+            raise ValueError("Este contacto tiene una solicitud pendiente. Acéptala en «Perfil y contactos» antes de enviar.")
         command = f'/_send {target} json ' + json.dumps([{"msgContent": {"type": "text", "text": text}}])
     elif kind in ("accept", "reject"):
         ident = str(body.get("id", ""))
@@ -206,7 +244,7 @@ async def action(request):
         command = "/_" + kind + " " + ident
     elif kind == "connect":
         link = body.get("link", "")
-        if not isinstance(link, str) or len(link) > 16384 or re.search(r"\s", link) or not link.startswith(("simplex:", "https://simplex.chat/")):
+        if not valid_link(link):
             raise ValueError("Pega un enlace de conexión SimpleX válido y sin espacios.")
         command = "/connect " + link
     elif kind == "profile":
@@ -231,7 +269,7 @@ async def action(request):
 
 
 def find_link(value):
-    if isinstance(value, str) and value.startswith(("simplex:", "https://simplex.chat/")):
+    if isinstance(value, str) and valid_link(value):
         return value
     if isinstance(value, dict):
         for key in ("connFullLink", "connLinkContact", "contactLink"):
@@ -353,6 +391,7 @@ async def connector(request):
     except (ValueError, UnicodeError):
         scheme, supplied = "", ""
     if not m.config.value["integration_enabled"] or scheme.lower() != "basic" or not secrets.compare_digest(supplied.encode(), expected.encode()):
+        m.diagnostics.record("warning", "connector", "authentication_failed", "Conector desactivado o credencial incorrecta. Revisa SIMPLEX_WS_URL y si se revocó el token.", source="hermes/connector")
         return web.Response(status=401, headers={"WWW-Authenticate": 'Basic realm="SimpleX"'})
     if len(m.integration_sockets) >= 8:
         raise web.HTTPServiceUnavailable()
@@ -361,6 +400,7 @@ async def connector(request):
     ws = web.WebSocketResponse(heartbeat=30, max_msg_size=65536)
     await ws.prepare(request)
     m.integration_sockets.add(ws)
+    m.diagnostics.record("info", "connector", "connected", "Cliente conectado al conector; su identidad de aplicación no se verifica.", source="hermes/connector", clients=len(m.integration_sockets))
     queue = asyncio.Queue(maxsize=256)
     m.broker.listeners.add(queue)
 
@@ -388,14 +428,16 @@ async def connector(request):
                     raise ValueError("Invalid correlation ID")
                 m.connector_commands += 1
                 m.connector_last_command = time.time()
-                response = await m.broker.request(command)
+                response = await m.broker.request(command, source="hermes/connector")
                 response["corrId"] = corr
                 await ws.send_json(response)
-            except (ValueError, TypeError, AttributeError, ConnectionError, asyncio.TimeoutError):
+            except (ValueError, TypeError, AttributeError, ConnectionError, asyncio.TimeoutError) as exc:
+                m.diagnostics.record("error", "connector", "command_failed", "Orden del conector fallida. Revisa formato, disponibilidad del cliente y operaciones próximas.", source="hermes/connector", error_type=type(exc).__name__)
                 await ws.send_json({"corrId": corr if isinstance(corr, str) else None,
                     "resp": {"type": "chatCmdError", "chatError": {"type": "managerError", "message": "Command failed; inspect chat state before retrying"}}})
     finally:
         m.integration_sockets.discard(ws)
+        m.diagnostics.record("info", "connector", "disconnected", "Cliente desconectado del conector.", source="hermes/connector", clients=len(m.integration_sockets))
         m.broker.listeners.discard(queue)
         pump.cancel()
         with contextlib.suppress(asyncio.CancelledError, ConnectionError):
@@ -413,7 +455,7 @@ async def index(request):
 
 async def static_file(request):
     name = request.match_info["name"]
-    if name not in ("app.js", "styles.css"):
+    if name not in ("app.js", "styles.css", "help.css"):
         raise web.HTTPNotFound()
     return web.FileResponse(STATIC / name)
 
@@ -425,6 +467,7 @@ async def serve():
     app = web.Application(middlewares=[errors, authentication], client_max_size=128 * 1024)
     app["manager"] = manager
     app.add_routes([web.get("/", index), web.get("/healthz", health), web.get("/static/{name}", static_file),
+        web.get("/api/diagnostics", diagnostics), web.post("/api/diagnostics/client", client_diagnostic),
         web.post("/api/login", login), web.post("/api/logout", logout), web.post("/api/password", change_password), web.get("/api/status", status),
         web.get("/api/snapshot", snapshot), web.get("/api/history", history), web.post("/api/action", action),
         web.get("/api/address", address), web.get("/api/qr", qr),

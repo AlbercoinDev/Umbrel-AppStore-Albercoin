@@ -1,8 +1,8 @@
-# SimpleX Chat CLI · Albercoin · v1.0.2
+# SimpleX Chat CLI · Albercoin · v1.0.3
 
 Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.0.3** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
 
-**Estado de esta entrega:** código del parche 1.0.2; la imagen debe reconstruirse y publicarse antes de instalar. Se han validado la construcción local para amd64, el arranque real del cliente, la dirección/QR, el perfil, los backups, la restauración y el conector WebSocket con credenciales. No se ha validado el intercambio de mensajes con un contacto real ni el gateway de Hermes de extremo a extremo.
+**Estado de esta revisión:** versión 1.0.3 con diagnóstico, en proceso de publicación. Se ha verificado el intercambio de texto en ambos sentidos entre dos identidades reales SimpleX 7.0.3 en contenedores de prueba, la aceptación de solicitudes, el conector autenticado y la exclusión de mensajes/credenciales del informe. No se ha ejecutado el gateway de Hermes ni desplegado esta revisión en tu nodo.
 
 ## Instalación
 
@@ -15,7 +15,7 @@ La imagen está fijada por el digest `sha256:ac17551b8d1f003434f26d319d793a116bc
 Para construcción local alternativa, desde la raíz del repositorio y con Docker Buildx:
 
 ```sh
-docker buildx build --platform linux/amd64 --load -t ghcr.io/albercoindev/simplex-chat-cli:1.0.2 ./albercoin-store-simplex-chat-cli
+docker buildx build --platform linux/amd64 --load -t ghcr.io/albercoindev/simplex-chat-cli:1.0.3 ./albercoin-store-simplex-chat-cli
 ```
 
 Este comando construye para AMD64 sin publicar. Para construir localmente ARM64 cambia `linux/amd64` por `linux/arm64`. El despliegue de Umbrel descarga una imagen: no construye el Dockerfile de esta carpeta.
@@ -50,7 +50,7 @@ Para clientes fuera del nodo es necesario un proxy TLS autenticado o un túnel s
 Revocar las credenciales cierra los clientes activos. El contador de conexiones no identifica inequívocamente al cliente como Hermes; cualquier cliente autorizado habla el mismo protocolo.
 Las colas son limitadas; un cliente demasiado lento se desconecta para que no reciba una secuencia de eventos incompleta sin advertencia. Los eventos en tránsito no constituyen una cola durable; el historial persistido por SimpleX es la referencia al reconectar. No se reenvían automáticamente mensajes cuyo resultado sea incierto.
 
-El contenedor inicia brevemente como root para preparar la propiedad del volumen y baja a UID/GID `1000:1000`. Sus capacidades se limitan a esa preparación y al cambio de usuario. No utiliza `privileged`, el socket Docker, red host ni volúmenes de otras apps. Su salida CLI no se registra porque puede contener mensajes o enlaces; la interfaz informa de conexión y código de salida del último proceso.
+El contenedor inicia brevemente como root para preparar la propiedad del volumen y baja a UID/GID `1000:1000`. Sus capacidades se limitan a esa preparación y al cambio de usuario. No utiliza `privileged`, el socket Docker, red host ni volúmenes de otras apps. Su salida normal CLI no se registra porque puede contener mensajes o enlaces. Los errores de stderr se clasifican mediante patrones conocidos (permisos, disco, argumentos, base de datos o puerto); el texto original se omite.
 
 ## Persistencia
 
@@ -78,13 +78,47 @@ sudo python3 ./albercoin-store-simplex-chat-cli/scripts/restore.py \
 ```
 
 Sustituye la ruta de archivo de ejemplo por la de tu copia. El asistente no comprueba mediante Docker si la app está detenida: debes detenerla antes.
-Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Solo admite copias de este paquete `1.0.0`, `1.0.1` o `1.0.2` con SimpleX `v7.0.3`.
+Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0`, `1.0.1`, `1.0.2` y `1.0.3` con SimpleX `v7.0.3`.
 Arranca después la app desde Umbrel. Se recuperan también la contraseña y el token anteriores. Si eran distintos, actualiza los clientes y usa la contraseña del momento de la copia.
 Para deshacer la restauración, detén la app y recupera los directorios `simplex` y `manager` de `before-restore-FECHA`, conservando primero los restaurados en otra carpeta. No ejecutes dos instancias simultáneas con una misma identidad recuperada de una copia.
 
 ## Hermes
 
 Consulta [integrations/hermes/README.md](integrations/hermes/README.md). La referencia inicial es el paquete oficial Umbrel `hermes-agent` con versión declarada `2026.9.24`. Su configuración persistente está en `/opt/data`. No se asume que las futuras versiones mantengan las mismas rutas o dependencias.
+
+## Funcionamiento y diagnóstico
+
+```text
+Panel web → gestor → WebSocket local :5225 → SimpleX CLI → SMP → contacto
+Hermes → WebSocket autenticado :2192/ws → gestor → misma identidad SimpleX
+```
+
+1. En **Perfil y contactos**, crea tu dirección y ábrela desde SimpleX en tu móvil.
+2. Acepta aquí la solicitud. SimpleX 7.0.3 puede representarla como un contacto directo con `contactRequestId` y sin `activeConn`; el panel reconoce ese formato y el anterior. El ID de solicitud puede permanecer tras aceptar: por eso también se comprueba la conexión activa.
+3. Elige el contacto en **Conversaciones** y prueba texto en los dos sentidos. Las solicitudes pendientes no se ofrecen como conversaciones enviables.
+4. Los botones ⓘ explican cada campo y funcionan mediante foco, ratón o pulsación. El esquema desplegable al final de la página explica el recorrido y los datos de Hermes.
+
+**Cliente local conectado** significa que el gestor llega al cliente, no que SMP o el destinatario estén disponibles. El historial distingue pendiente, enviado al servidor, recibido y error. No se repite automáticamente un envío fallido o incierto.
+
+### Compartir un fallo
+
+Abre **Registros y diagnóstico** después de reproducirlo. Filtra por gravedad u operación; despliega la incidencia y pulsa **Copiar incidencia y contexto**, o utiliza **Copiar informe general / Descargar informe**. Si el navegador no permite copiar, se muestra y selecciona el informe para copiarlo manualmente.
+
+El informe contiene estado del proceso y WebSocket, versiones, uso de proxy/servidores personalizados, conexiones al conector, fechas UTC, IDs de seguimiento, duración, códigos estructurados de error, referencias de conversación/mensaje y estados de entrega. Los eventos recibidos y las consultas de historial permiten diferenciar recepción interna de actualización del panel. Los fallos HTTP del panel se anotan cuando el navegador consigue comunicarlos al servidor.
+
+Los errores incluyen una comprobación sugerida; no se atribuye una causa de red sin evidencia. Los informes no contienen el cuerpo de las órdenes, mensajes, nombres, enlaces o credenciales. El texto libre de los errores se omite: se conservan códigos y valores técnicos permitidos. Un error de stderr no clasificado requerirá investigación adicional, no una conclusión automática.
+
+Persistencia: `data/manager/diagnostics.jsonl`, permisos `0600`, rotación de cuatro archivos de hasta aproximadamente 1 MiB cada uno. La API exporta las últimas 500 entradas del archivo actual y el anterior; los más antiguos permanecen en las rotaciones hasta sobrescribirse. Se necesita iniciar sesión. Las copias completas incluyen estos registros.
+
+### Verificación de esta revisión
+
+Pruebas de regresión (dependencias de `requirements.txt` instaladas):
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+Cubren correlación de respuestas fuera de orden, limpieza de timeouts, redacción de errores, extracción de estados sin contenido, rotación/persistencia y enlaces cortos HTTPS de servidores SimpleX. Además se ha comprobado la interfaz en un DOM de prueba y el recorrido real entre dos identidades con SMP. La prueba del conector confirma autenticación, correlación y registros, pero no sustituye una prueba con el gateway y el modelo de Hermes.
 
 ## Fuentes y licencia
 

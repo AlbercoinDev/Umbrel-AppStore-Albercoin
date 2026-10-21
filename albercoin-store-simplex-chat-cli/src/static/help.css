@@ -1,0 +1,9 @@
+.help-wrapper{display:inline-block;position:relative;margin-left:8px;vertical-align:middle}
+.help-button{padding:2px 7px;border-radius:50%;background:transparent;color:var(--accent);border:1px solid var(--line);font-size:.9rem}
+.help-tip{display:none;position:absolute;z-index:20;left:0;top:100%;width:min(300px,65vw);padding:14px;border:1px solid var(--accent);border-radius:9px;background:#172219;color:var(--text);font-size:.88rem;line-height:1.5;box-shadow:0 6px 24px #0008}
+.help-wrapper:hover .help-tip,.help-wrapper:focus-within .help-tip,.help-wrapper.open .help-tip{display:block}
+.diagnostic-entry{padding:14px 0;border-bottom:1px solid var(--line)}
+.diagnostic-entry summary{cursor:pointer;line-height:1.6;overflow-wrap:anywhere}
+.diagnostic-entry pre,#diagnostic-report{white-space:pre-wrap;overflow-wrap:anywhere;max-height:450px;overflow:auto}
+select{font:inherit;background:var(--panel);color:var(--text);padding:8px;margin-left:10px;border:1px solid var(--line);border-radius:8px}
+@media(max-width:600px){.help-tip{position:fixed;left:24px;right:24px;top:25vh;width:auto;max-height:50vh;overflow:auto}}

@@ -15,6 +15,19 @@ El archivo incluye una URL privada con credenciales. No lo subas a GitHub. La di
 
 ## Aplicar en Hermes
 
+### Qué dato corresponde a cada campo
+
+| Variable/campo del adaptador | Dato de esta app |
+| --- | --- |
+| `SIMPLEX_WS_URL` | **Integraciones → URL privada de conexión**, completa, con usuario, token, host, puerto 2192 y `/ws`. |
+| `SIMPLEX_ALLOWED_USERS` | ID numérico del contacto de tu móvil en **Conversaciones**; varios separados por comas, sin `@`. |
+| `SIMPLEX_HOME_CHANNEL` | Uno de esos ID, destino de notificaciones; la exportación usa el primero. |
+| `SIMPLEX_ALLOW_ALL_USERS` | `false`. |
+| `SIMPLEX_AUTO_ACCEPT` | `false`; acepta primero tu contacto en el panel. |
+| `SIMPLEX_GROUP_ALLOWED` | Vacío en esta configuración. |
+
+La dirección pública/QR de **Perfil y contactos** sirve para conectar el móvil, no para configurar el WebSocket de Hermes. El JSON descargado es entrada del asistente descrito abajo: no se presupone que la interfaz de Hermes lo importe. Si tu versión muestra campos para estas variables, utiliza la correspondencia de la tabla; si no, aplica el asistente compatible con la versión de referencia.
+
 Esto se realiza manualmente desde una terminal del nodo. Copia al nodo el archivo exportado y esta carpeta de integración. Sitúate en la raíz del repositorio o ajusta las rutas de los comandos.
 El nombre de contenedor esperado por el paquete oficial es `hermes-agent_web_1`; si tu instalación usa otro, sustituye el nombre por el real.
 
@@ -45,7 +58,7 @@ Hermes debe tener ya un proveedor de modelos configurado para responder: esa con
 ## Información operativa
 
 En la sección **Integraciones** de SimpleX aparecen el número de clientes conectados, las órdenes recibidas y la hora de la última orden. Los valores parten de cero al reiniciar el gestor.
-Esto permite observar el conector; no demuestra que Hermes haya generado o entregado una respuesta. La entrega se observa en la conversación SimpleX. No se incluyen pruebas automáticas ni una validación de ejecución en esta entrega.
+Esto permite observar el conector; no demuestra que Hermes haya generado o entregado una respuesta. La entrega se observa en la conversación SimpleX. **Registros y diagnóstico** permite filtrar las órdenes del conector y copiar el informe. Se ha probado el conector con un cliente WebSocket autenticado y el intercambio entre identidades SimpleX, no el gateway completo de Hermes.
 La integración soportada es texto. No se comparten volúmenes entre las apps para imágenes, audios o adjuntos.
 Hermes recibe eventos de la identidad administrada por la web; no se crea una identidad separada para él. La lista de contactos controla quién puede invocar al agente, pero un agente autorizado conserva las herramientas que ya tenga habilitadas en Hermes.
 

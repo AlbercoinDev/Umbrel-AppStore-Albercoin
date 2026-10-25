@@ -1,6 +1,23 @@
-<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SimpleX Server</title><link rel="stylesheet" href="/static/style.css"><main>
-<header><h1>SimpleX Server</h1><span>SMP · vista previa 0.1.0</span></header>
-<section><h2>Estado</h2><ul><li>SMP: {{ 'proceso activo' if smp else 'detenido / pendiente de configuración' }}</li><li>Tor: {{ 'proceso activo' if tor else 'detenido' }} · {{ 'bootstrap completado en esta instancia' if bootstrap else 'sin bootstrap confirmado' }}</li><li>Clearnet: {{ 'puerta TCP activa' if clearnet else 'desactivado' }}</li><li>Acceso externo: no verificado. Prueba la dirección desde un cliente real.</li></ul><p role="alert">{{ error }}</p></section>
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SimpleX Server</title><link rel="stylesheet" href="/static/style.css"><script defer src="/static/app.js"></script><main>
+<header><h1>SimpleX Server</h1><span>SMP · vista previa 0.1.0 · compilación {{ build }}</span></header>
+<section><h2>Estado</h2><ul><li>SMP: <span id="smp-state">{{ 'proceso activo' if smp else 'detenido / pendiente de configuración' }}</span></li><li>Tor: <span id="tor-state">{{ 'proceso activo' if tor else 'detenido' }} · {{ 'circuitos disponibles' if bootstrap else 'conexión pendiente de confirmar' }}</span></li><li>Clearnet: {{ 'puerta TCP activa' if clearnet else 'desactivado' }}</li><li>Conexión Tor y disponibilidad onion son comprobaciones distintas.</li></ul><p id="service-error" role="alert">{{ error }}</p></section>
+<section id="diagnostics">
+  <h2>Comprobar servidor por Tor</h2>
+  <p>Se utilizará otra instancia Tor, con sus propios datos y circuitos, para conectar a tu dirección onion, verificar la identidad TLS y ejecutar la prueba oficial SMP. No se regeneran direcciones ni certificados.</p>
+  <form method="post" action="/diagnostics">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <button id="probe-button" {{ 'disabled' if diagnostic.status == 'running' or not settings or settings.mode == 'clearnet' }}>Comprobar servidor por Tor</button>
+  </form>
+  <p id="probe-summary" aria-live="polite">
+    {% if diagnostic.status == 'running' %}Comprobación en curso; puede tardar hasta 6 minutos.
+    {% elif diagnostic.status == 'passed' %}Prueba completa superada mediante Tor independiente. {{ diagnostic.finished_at }}
+    {% elif diagnostic.status == 'failed' %}Prueba no superada. Código: {{ diagnostic.code }}. {{ diagnostic.finished_at }}
+    {% else %}Todavía no se ha verificado el acceso mediante un Tor independiente.{% endif %}
+  </p>
+  <ol id="probe-steps">{% for step in diagnostic.steps %}<li>{{ step.label }}: {{ step.status }}{% if step.detail %} — {{ step.detail }}{% endif %}</li>{% endfor %}</ol>
+  <p>La prueba crea y elimina una cola temporal. Si se interrumpe después de crearla, puede quedar una cola de prueba sin eliminar. Máximo una prueba a la vez, con 60 segundos entre inicios.</p>
+  <p>Una prueba superada no garantiza la configuración Tor del móvil ni acceso desde otra máquina. Puedes compartir el resultado textual de esta sección: no contiene la dirección ni credenciales.</p>
+</section>
 <section><h2>{{ 'Conectividad' if settings else 'Configura tu servidor SMP' }}</h2><form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}">
 <label>Modalidad<select name="mode"><option value="tor" {{ 'selected' if not settings or settings.mode == 'tor' }}>Solo Tor — recomendado</option><option value="clearnet" {{ 'selected' if settings and settings.mode == 'clearnet' }}>Solo clearnet</option><option value="both" {{ 'selected' if settings and settings.mode == 'both' }}>Tor + clearnet</option></select></label>
 <label>Dominio o IPv4 pública (solo clearnet)<input name="host" value="{{ settings.host if settings else '' }}" placeholder="smp.ejemplo.org" maxlength="253"></label>

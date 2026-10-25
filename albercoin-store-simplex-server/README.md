@@ -5,6 +5,10 @@ versión estable validada en un nodo Umbrel real.** SMP upstream v7.0.1;
 panel propio en español. XFTP queda para otra entrega, sin servicio ni controles
 ficticios en esta versión.
 
+**Afinado de la misma 0.1.0: compilación `tor-check-1`.** Añade comprobación
+onion con Tor independiente, TLS verificado y prueba oficial SMP desde el panel.
+No regenera identidades. Consulta [cambios y actualización sin borrar datos](docs/tor-check-1.md).
+
 ## Instalar y probar en Umbrel
 
 Actualiza la tienda Albercoin, busca **SimpleX Server** e instala la versión
@@ -12,7 +16,7 @@ Actualiza la tienda Albercoin, busca **SimpleX Server** e instala la versión
 Empieza con **Solo Tor** y perfiles SimpleX desechables. No necesitas abrir
 puertos del router. Consulta la [guía de prueba real](docs/testing-umbrel.md).
 
-La imagen se publica en `ghcr.io/albercoindev/simplex-server:0.1.0` para
+La imagen de esta compilación se publica en `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-1` para
 AMD64 y ARM64; el Compose fija el digest del índice multiarch.
 Detalles y límites de la verificación: [publicación 0.1.0](docs/release-0.1.0.md).
 
@@ -25,12 +29,28 @@ Detalles y límites de la verificación: [publicación 0.1.0](docs/release-0.1.0
 - Dirección seleccionable para copiar y QR SVG generado localmente.
 - Conservación de identidad SMP y onion al cambiar de modalidad.
 - Aplicación de ajustes con parada SIGINT de SMP; sin socket Docker.
+- Botón de diagnóstico asíncrono por Tor independiente, con resultados seguros por fase.
+- Estado Tor consultado en vivo mediante control Unix autenticado con cookie;
+  actualización del panel cada cuatro segundos y recuperación de procesos caídos.
 
 El QR representa la URI SMP; su importación debe comprobarse en cada cliente.
-El panel muestra procesos y bootstrap de la instancia Tor actual, **no certifica accesibilidad
-externa ni entrega real de mensajes**. Actualiza la página para refrescar estado.
-La comprobación de salud Docker solo comprueba el gestor: un fallo de SMP/Tor
-aparece en el panel, no como prueba de salud end-to-end.
+El estado Tor distingue procesos, bootstrap y circuitos. **No equivale a una
+prueba de disponibilidad onion**: utiliza el botón de comprobación, que verifica
+conexión onion, identidad TLS y creación/asegurado/borrado de una cola temporal
+mediante el CLI oficial del asset de la release v7.0.3 (el binario declara
+internamente `v7.0.0.12`). Esa instancia Tor tiene su propio directorio,
+estado, SOCKS local y circuitos; no comparte los del Tor que publica el servicio.
+La misma máquina/red sigue siendo el origen físico: no sustituye una prueba
+desde otro dispositivo ni valida su configuración Android.
+
+La prueba tarda hasta unos seis minutos, no reinicia el relay ni modifica
+certificados. Si se interrumpe tras crear una cola, puede quedar una cola de
+prueba sin eliminar. Solo se permite una prueba concurrente y 60 segundos entre
+inicios. Los resultados no incluyen URI, contraseñas ni salida cruda del CLI.
+El control Tor no se publica como puerto TCP: utiliza socket Unix y cookie
+privados. El healthcheck detecta procesos SMP/Tor detenidos, pero no ejecuta
+la prueba end-to-end. El supervisor reintenta recuperar procesos con backoff,
+sin cambiar identidades ni reiniciar mientras hay una comprobación en curso.
 
 ## Red
 
@@ -79,6 +99,11 @@ ${APP_DATA_DIR}/data/
     └── state/       # colas y mensajes pendientes
 ```
 
+`manager/probe-tor/` conserva únicamente el estado/caché de la instancia Tor de
+diagnóstico. No publica otro onion. Sus procesos solo están activos durante una
+prueba. La base efímera del CLI se elimina al terminar. Se incluye solo el binario
+oficial del cliente y su licencia, no otra app cliente ni tus perfiles.
+
 El contenedor prepara permisos y baja a UID/GID 1000. No requiere `privileged`,
 red host ni capacidades de administración de red. Credenciales, certificados y
 datos no están cifrados adicionalmente en disco. Salida SMP descartada para no
@@ -109,6 +134,9 @@ docker build -t simplex-server:dev albercoin-store-simplex-server
 docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev -m unittest discover -s /workspace/tests -v
 docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev /workspace/tests/smoke_runtime.py
 python3 albercoin-store-simplex-server/tests/smoke_packaged.py
+# Pruebas online: salida a Tor necesaria, datos efímeros, sin puertos publicados.
+docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev /workspace/tests/smoke_diagnostics.py
+PACKAGED_TOR_PROBE=1 python3 albercoin-store-simplex-server/tests/smoke_packaged.py
 ```
 
 Para arrancar un entorno aislado con datos de prueba:
@@ -185,5 +213,9 @@ y configuración separados, sin reutilizar la contraseña SMP.
 
 Servidor oficial: https://github.com/simplex-chat/simplexmq (AGPL-3.0).
 Se distribuye su binario sin modificar; referencia exacta en Dockerfile.
+Cliente de diagnóstico del asset oficial de la release v7.0.3 (cadena interna
+`v7.0.0.12`): https://github.com/simplex-chat/simplex-chat,
+binario sin modificar copiado desde la imagen fijada por digest en Dockerfile;
+licencia completa en `/usr/share/doc/simplex-chat/LICENSE` dentro del contenedor.
 Gestor propio: AGPL-3.0-or-later, véase LICENSE. El icono geométrico de esta app
 es propio y no representa afiliación oficial con SimpleX.

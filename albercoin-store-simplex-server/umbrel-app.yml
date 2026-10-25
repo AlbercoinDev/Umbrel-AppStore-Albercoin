@@ -30,8 +30,9 @@ dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Versión preliminar 0.1.0 para pruebas en Umbrel. Servidor SMP v7.0.1 con
-  panel web, Tor, clearnet o ambos, identidad persistente y QR local.
-  Protección de creación de colas activada por defecto. Imágenes AMD64/ARM64
-  con pruebas nativas automatizadas. XFTP no está incluido. Empieza con
-  perfiles de prueba y modo Solo Tor; no requiere abrir puertos del router.
+  Afinado de la misma 0.1.0, compilación tor-check-1. Añade prueba onion desde
+  otro Tor, verificación de identidad TLS y prueba oficial SMP con resultados
+  por fase. Estado Tor en vivo y recuperación de procesos detenidos. Conserva
+  direcciones, certificados y colas. Al mantener la versión, instalaciones
+  existentes pueden necesitar forzar la actualización con el CLI de Umbrel;
+  consulta la guía tor-check-1 del repositorio. No desinstales para actualizar.

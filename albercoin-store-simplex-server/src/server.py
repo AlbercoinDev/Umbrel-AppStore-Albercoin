@@ -23,6 +23,8 @@ from datetime import timedelta
 
 from flask import Flask, abort, redirect, render_template, request, session, url_for, send_file
 from werkzeug.security import check_password_hash, generate_password_hash
+from diagnostics import BUILD, Diagnostics
+from tor_control import control_config, query as tor_status
 
 
 def validate_settings(form):
@@ -117,6 +119,8 @@ class Runtime:
         self.tor_bootstrap = False
         self.settings = json.loads((root / 'settings.json').read_text()) if (root / 'settings.json').exists() else None
         self.password = self.secret('queue-password', lambda: secrets.token_urlsafe(24))
+        self.diagnostics = Diagnostics(root)
+        self.closed = threading.Event()
 
     def secret(self, name, factory):
         path = self.root / name
@@ -136,6 +140,10 @@ class Runtime:
         setattr(self, name, None)
 
     def stop(self):
+        self.diagnostics.cancelled.set()
+        worker = self.diagnostics.worker
+        if worker and worker is not threading.current_thread():
+            worker.join(timeout=65)
         if self.gateway:
             self.gateway.shutdown()
             self.gateway.server_close()
@@ -145,8 +153,11 @@ class Runtime:
 
     def apply(self, settings):
         with self.lock:
+            if self.diagnostics.snapshot()['status'] == 'running':
+                raise RuntimeError('Espera a que termine la comprobación antes de cambiar la configuración.')
             try:
                 self._apply(settings)
+                self.diagnostics.invalidate()
             except Exception:
                 # Fail closed: never leave a half-applied public service running.
                 self.stop()
@@ -174,8 +185,8 @@ class Runtime:
                 tor_dir.mkdir(exist_ok=True, mode=0o700)
                 onion_dir = tor_dir / 'smp'
                 torrc = self.root / 'torrc'
-                write_private(torrc, f'DataDirectory {tor_dir}\nSocksPort 127.0.0.1:9050\nLog notice stdout\nHiddenServiceDir {onion_dir}\nHiddenServicePort 5223 127.0.0.1:5224\n')
-                self.tor = subprocess.Popen(['tor', '-f', str(torrc)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                write_private(torrc, f'DataDirectory {tor_dir}\nSocksPort 127.0.0.1:9050\nLog notice stdout\nHiddenServiceDir {onion_dir}\nHiddenServicePort 5223 127.0.0.1:5224\n' + control_config(tor_dir))
+                self.tor = subprocess.Popen(['tor', '-f', str(torrc)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 threading.Thread(target=self.capture_tor, args=(self.tor, tor_dir / 'notice.log'), daemon=True).start()
                 for _ in range(100):
                     if (onion_dir / 'hostname').exists():
@@ -253,11 +264,52 @@ class Runtime:
                 hosts.append(onion)
             credential = ':' + self.password if self.settings['private'] else ''
             address = f"smp://{fingerprint.read_text().strip()}{credential}@{','.join(hosts)}:5223"
-        bootstrap = self.tor_bootstrap and self.tor is not None and self.tor.poll() is None
+        progress = None
+        bootstrap = False
+        if self.tor is not None and self.tor.poll() is None:
+            try:
+                current = tor_status(self.root / 'tor')
+                progress = current['progress']
+                bootstrap = current['progress'] == 100 and current['circuit']
+            except OSError:
+                pass
         return dict(settings=self.settings, address=address, error=self.error,
                     smp=self.smp is not None and self.smp.poll() is None,
                     tor=self.tor is not None and self.tor.poll() is None,
-                    bootstrap=bootstrap, clearnet=self.gateway is not None)
+                    bootstrap=bootstrap, progress=progress, clearnet=self.gateway is not None,
+                    diagnostic=self.diagnostics.snapshot(), build=BUILD)
+
+    def start_diagnostics(self):
+        with self.lock:
+            if not self.settings or self.settings['mode'] == 'clearnet':
+                raise ValueError('Activa Tor o modo mixto antes de comprobar el onion.')
+            target = {'onion': (self.root / 'tor/smp/hostname').read_text().strip(),
+                      'fingerprint': Path('/etc/opt/simplex/fingerprint').read_text().strip(),
+                      'ca_pem': Path('/etc/opt/simplex/ca.crt').read_text(),
+                      'password': self.password if self.settings['private'] else ''}
+            return self.diagnostics.start(target)
+
+    def watch(self):
+        """Restart failed children with backoff, without changing their identities."""
+        def supervise():
+            delay = 10
+            while not self.closed.wait(delay):
+                with self.lock:
+                    if not self.settings or self.diagnostics.snapshot()['status'] == 'running':
+                        continue
+                    smp_failed = self.smp is None or self.smp.poll() is not None
+                    tor_failed = self.settings['mode'] != 'clearnet' and (self.tor is None or self.tor.poll() is not None)
+                    if not smp_failed and not tor_failed:
+                        delay = 10
+                        continue
+                    try:
+                        self.apply(self.settings)
+                        self.error = 'Se ha recuperado un proceso detenido. Vuelve a comprobar el acceso por Tor.'
+                        delay = 10
+                    except Exception:
+                        self.error = 'No se pudo recuperar SMP/Tor. Revisa configuración, espacio y permisos; no se regeneró la identidad.'
+                        delay = min(delay * 2, 300)
+        threading.Thread(target=supervise, daemon=True).start()
 
 
 def create_app(runtime):
@@ -294,7 +346,26 @@ def create_app(runtime):
 
     @app.route('/healthz')
     def health():
+        state = runtime.status()
+        if runtime.settings and (not state['smp'] or (runtime.settings['mode'] != 'clearnet' and not state['tor'])):
+            return {'manager': 'ok', 'services': 'degraded'}, 503
         return {'manager': 'ok'}
+
+    @app.route('/diagnostics', methods=['GET', 'POST'])
+    def diagnostics():
+        if request.method == 'POST':
+            try:
+                if not runtime.start_diagnostics():
+                    return {'error': 'Prueba en curso o espera de 60 segundos entre pruebas.'}, 429
+            except (ValueError, OSError):
+                return {'error': 'Configura el servidor con Tor antes de iniciar la prueba.'}, 409
+            return redirect('/#diagnostics')
+        return runtime.diagnostics.snapshot()
+
+    @app.get('/service-status')
+    def service_status():
+        state = runtime.status()
+        return {key: state[key] for key in ('smp', 'tor', 'bootstrap', 'progress', 'build', 'diagnostic', 'error')}
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -359,12 +430,14 @@ if __name__ == '__main__':
             runtime.error = 'No se pudo restaurar el servicio. Revisa ajustes y datos; no se regenerará la identidad.'
 
     def shutdown(signum, frame):
+        runtime.closed.set()
         with runtime.lock:
             runtime.stop()
         raise SystemExit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
+    runtime.watch()
     # Use a production WSGI server, without access logs containing request data.
     from waitress import serve
     serve(app, host='0.0.0.0', port=2193, threads=4, channel_timeout=30)

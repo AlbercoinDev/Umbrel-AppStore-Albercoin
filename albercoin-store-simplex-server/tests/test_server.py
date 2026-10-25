@@ -3,8 +3,10 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+import sys
+from unittest.mock import patch, MagicMock
 
+sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
 spec = importlib.util.spec_from_file_location('server', Path(__file__).parents[1] / 'src/server.py')
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
@@ -49,7 +51,7 @@ class WebTests(unittest.TestCase):
         return self.client.post('/login', data={'csrf': self.csrf(), 'username': 'admin', 'password': 'test-password'})
 
     def test_auth_required(self):
-        for path in ['/', '/qr.svg']:
+        for path in ['/', '/qr.svg', '/diagnostics', '/service-status']:
             self.assertEqual(self.client.get(path).status_code, 302)
 
     def test_csrf_required(self):
@@ -108,6 +110,41 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('text/css', response.content_type)
         response.close()
+
+    def test_diagnostic_requires_csrf(self):
+        self.login()
+        with patch.object(self.runtime, 'start_diagnostics') as start:
+            self.assertEqual(self.client.post('/diagnostics').status_code, 403)
+            start.assert_not_called()
+
+    def test_diagnostic_route_and_safe_status(self):
+        self.login()
+        with self.client.session_transaction() as session:
+            csrf = session['csrf']
+        with patch.object(self.runtime, 'start_diagnostics', return_value=True):
+            self.assertEqual(self.client.post('/diagnostics', data={'csrf': csrf}).status_code, 302)
+        data = self.client.get('/service-status').json
+        self.assertEqual(data['build'], 'tor-check-1')
+        self.assertNotIn(self.runtime.password, str(data))
+        self.assertNotIn('address', data)
+
+    def test_live_tor_state_overrides_old_log(self):
+        self.runtime.tor = MagicMock()
+        self.runtime.tor.poll.return_value = None
+        self.runtime.tor_bootstrap = True
+        with patch.object(server, 'tor_status', return_value={'progress': 80, 'circuit': False}):
+            self.assertFalse(self.runtime.status()['bootstrap'])
+            self.assertEqual(self.runtime.status()['progress'], 80)
+
+    def test_health_detects_dead_service(self):
+        self.runtime.settings = {'mode': 'tor', 'host': '', 'private': True}
+        self.assertEqual(self.client.get('/healthz').status_code, 503)
+
+    def test_configuration_blocked_during_probe_without_stopping(self):
+        self.runtime.diagnostics.state['status'] = 'running'
+        with patch.object(self.runtime, 'stop') as stop, self.assertRaises(RuntimeError):
+            self.runtime.apply({'mode': 'tor', 'host': '', 'private': True})
+        stop.assert_not_called()
 
 
 if __name__ == '__main__':

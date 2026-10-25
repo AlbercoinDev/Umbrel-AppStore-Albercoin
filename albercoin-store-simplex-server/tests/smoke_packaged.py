@@ -10,11 +10,11 @@ image = os.environ.get('SERVER_IMAGE', 'simplex-server:dev')
 
 
 def docker(*args, check=True):
-    return subprocess.run(['docker', *args], check=check, capture_output=True, text=True, timeout=120)
+    return subprocess.run(['docker', *args], check=check, capture_output=True, text=True, timeout=600)
 
 
 probe = '''
-import http.cookiejar, os, re, time, urllib.parse, urllib.request
+import http.cookiejar, json, os, re, time, urllib.parse, urllib.request
 jar = http.cookiejar.CookieJar()
 http = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 base = 'http://127.0.0.1:2193'
@@ -41,12 +41,26 @@ assert b'<svg' in qr.read()
 status = open('/proc/1/status').read()
 assert re.search(r'Uid:\\s+1000\\s+1000', status), 'Manager did not drop privileges'
 print('Packaged entrypoint: non-root manager, login, CSS, setup, SMP and QR OK')
+if os.environ.get('PACKAGED_TOR_PROBE') == '1':
+    data = urllib.parse.urlencode(dict(csrf=token(html), mode='tor', private='on')).encode()
+    html = http.open(base + '/', data, timeout=60).read().decode()
+    data = urllib.parse.urlencode(dict(csrf=token(html))).encode()
+    http.open(base + '/diagnostics', data, timeout=10).read()
+    for _ in range(360):
+        result = json.load(http.open(base + '/diagnostics', timeout=5))
+        if result['status'] != 'running': break
+        time.sleep(1)
+    print(result)
+    assert result['status'] == 'passed', 'Packaged diagnostic failed'
+    assert 'smp://' not in json.dumps(result)
+    print('Authenticated browser diagnostic with UID 1000 and reduced capabilities passed')
 '''
 try:
     docker('run', '-d', '--name', name, '--cap-drop', 'ALL',
            '--cap-add', 'CHOWN', '--cap-add', 'SETUID', '--cap-add', 'SETGID',
            '--cap-add', 'DAC_OVERRIDE', '--security-opt', 'no-new-privileges:true',
-           '-e', 'APP_PASSWORD=' + password, image)
+           '-e', 'APP_PASSWORD=' + password, '-e', 'PACKAGED_TOR_PROBE=' + os.environ.get('PACKAGED_TOR_PROBE', '0'),
+           '--tmpfs', '/tmp:size=64m,mode=1777', image)
     result = docker('exec', name, 'python3', '-c', probe, check=False)
     if result.returncode:
         raise RuntimeError(result.stderr)

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-simplex-chat-cli
 category: social
 name: SimpleX Chat CLI
-version: "1.0.4"
+version: "1.0.5"
 tagline: Private messaging with web management and optional agents
 description: >-
   Run SimpleX Chat CLI independently on your Umbrel. Manage your profile,
@@ -36,13 +36,13 @@ dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Versión 1.0.4: añade vaciado de historial local, eliminación de contactos
-  y mensajes y salida de grupos con confirmación. Incorpora historial paginado,
-  búsqueda, borradores por conversación en memoria, no leídos, fijados,
-  respuestas con cita, edición y actualizaciones en tiempo real.
-  Añade gestión de espacio, eliminación de copias, programación y cifrado age
-  opcionales. IMPORTANTE: las copias locales con más de 10 días se eliminan
-  automáticamente, incluidas las existentes. Descarga antes de actualizar las
-  que quieras conservar fuera del nodo. Vaciar un chat no borra las copias
-  anteriores ni los datos de otros dispositivos. Mantiene SimpleX Chat CLI
-  v7.0.3 y los permisos anteriores del conector; no modifica Hermes.
+  Versión 1.0.5: detecta automáticamente servidores clearnet y onion e incluye
+  Tor local para conectar con servidores propios onion sin configurar un proxy.
+  Si una URI anuncia ambas redes se selecciona onion sin fallback silencioso.
+  El panel muestra la red, ruta, resultado y fecha de la última comprobación.
+  Comprueba SMP y XFTP al guardar y permite repetir la prueba manualmente.
+  Añade logs clasificados de red y Tor, sin URI completas ni credenciales.
+  Las pruebas usan recursos temporales; una interrupción puede impedir su limpieza.
+  Una prueba correcta no acredita entrega de mensajes. Conserva los datos y
+  SimpleX Chat CLI v7.0.3; no modifica Hermes. Se mantiene la retención de
+  copias locales de 10 días: descarga las que quieras conservar fuera del nodo.

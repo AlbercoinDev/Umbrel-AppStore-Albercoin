@@ -38,7 +38,7 @@ No se guarda la URI, contraseña ni salida cruda del CLI. El filtro
 
 ## Despliegue
 
-Estos cambios requieren construir y publicar una imagen nueva y actualizar
-el digest del manifiesto antes de distribuirlos por Umbrel. El manifiesto
-publicado todavía apunta a la imagen anterior; editar el código no actualiza
-una instalación existente.
+La versión 1.0.5 se distribuye mediante imagen multi-arquitectura AMD64/ARM64
+con digest fijado en `docker-compose.yml`. Actualiza la tienda y después la
+app desde Umbrel. No desinstales ni borres su directorio de datos: la
+actualización conserva identidad, conversaciones y configuración.

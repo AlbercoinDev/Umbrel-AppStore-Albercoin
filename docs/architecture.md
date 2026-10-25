@@ -21,6 +21,7 @@
 | Onion Rotator | `src/`; pruebas en `tests/`; herramientas en `scripts/` | Python con `src/` montado desde `${APP_DATA_DIR}`; el Compose no construye su Dockerfile |
 | Machine Doctor | `src/main.py`, `src/modules/cpu/`, `src/static/` | Imagen propia de GHCR, construida desde su Dockerfile |
 | SimpleX Chat CLI | `src/`, `scripts/restore.py`, `integrations/hermes/` | Imagen propia de GHCR, fijada por digest en Compose |
+| SimpleX Server (desarrollo) | `src/server.py`, plantillas y recursos; SMP oficial sin modificar | Imagen derivada local; publicación y digest pendientes |
 
 Modificar fuentes locales no actualiza por sí solo una instalación Umbrel.
 Los módulos `disk`, `thermal` y `ram` de Machine Doctor contienen documentación
@@ -34,6 +35,7 @@ de trabajo futuro, no diagnósticos completos implementados.
 | Onion Rotator | `2180` | Web interna `8900` | Socket Docker, escritura en datos Tor, lectura de app-data |
 | Machine Doctor | `2190` | Web interna `2190` | `privileged`, montajes del host `/proc`, `/sys`, `/dev` |
 | SimpleX Chat CLI | `2191` | Conector interno `2192`; cliente local `5225` | Identidad, mensajes, contraseñas y token del conector |
+| SimpleX Server (desarrollo) | `2193` | TCP `5223` reservado; SMP interno `5224`, SOCKS local `9050` | Certificados SMP, identidad onion, colas y credenciales; red Docker propia |
 
 Los puertos internos no equivalen a puertos publicados en el host. El detalle
 autoritativo está en cada Compose y manifiesto. No publiques conectores internos
@@ -49,5 +51,6 @@ ni compartas datos o copias con credenciales.
   propio de historial persistente declarado en Compose.
 - Machine Doctor: `data/`, con informes en `reports/`.
 - SimpleX: `data/simplex/`, `data/manager/` y `data/backups/`.
+- SimpleX Server: `data/manager/` (incluido Tor), `data/smp/config/`, `data/smp/state/`.
 
 Consulta el README de cada app antes de copiar, restaurar o eliminar datos.

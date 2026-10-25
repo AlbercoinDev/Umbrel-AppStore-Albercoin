@@ -64,6 +64,12 @@ python3 -m unittest discover -s tests -v
 El README detalla el alcance de las pruebas y las verificaciones documentadas
 de la versión. Las pruebas del conector no equivalen a validar Hermes completo.
 
+## SimpleX Server (vista previa)
+
+El [README de desarrollo](../albercoin-store-simplex-server/README.md) describe la
+construcción Docker, pruebas web y el smoke test con procesos reales. Son pruebas
+aisladas: no equivalen a validar clientes externos ni instalación en Umbrel.
+
 ## Límites actuales
 
 No existe un workflow común de validación de toda la tienda. Los workflows

@@ -1,0 +1,32 @@
+manifestVersion: 1
+id: albercoin-store-simplex-server
+name: SimpleX Server
+tagline: Your own private messaging relay over Tor or clearnet
+category: social
+version: "0.1.0"
+port: 2193
+description: >-
+  Host your own SimpleX SMP messaging relay. Configure Tor, clearnet or both
+  from a browser and copy your server address or scan its locally generated QR.
+  Queue creation is password-protected by default. Clients need Tor connectivity
+  to use onion addresses. Clearnet requires an accessible incoming TCP port.
+
+
+  Development preview, not yet published or verified on umbrelOS. XFTP file
+  hosting, calls and push notifications are not included. Keep an offline backup
+  of your server identity. Hosting a relay does not force contacts to use only
+  your infrastructure.
+developer: Albercoin
+website: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+repo: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+support: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/issues
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-simplex-server/icon.svg
+gallery: []
+path: ""
+defaultUsername: admin
+defaultPassword: "$APP_PASSWORD"
+deterministicPassword: true
+dependencies: []
+submitter: AlbercoinDev
+submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+releaseNotes: Initial development preview with SMP, Tor and optional clearnet.

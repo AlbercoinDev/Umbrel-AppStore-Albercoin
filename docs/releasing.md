@@ -29,10 +29,10 @@ El Compose ejecuta las fuentes distribuidas con la app usando una imagen base
 de Python. No utiliza una imagen propia construida por GitHub Actions.
 Tiene un script `scripts/publish.sh`: debe revisarse antes de utilizarlo,
 porque no es una prueba local y puede modificar el repositorio remoto.
-Actualmente el script ejecuta `git push origin main`, mientras que la rama
-principal de este repositorio es `master`. No debe usarse como procedimiento
-de publicación de esta tienda sin resolver primero esa diferencia. Esta
-revisión documental no modifica el script.
+El script ejecuta `git push origin master` y reconoce las URLs SSH y HTTPS
+del repositorio. Publica los commits de la rama `master` del repositorio
+completo, no únicamente los cambios de Onion Rotator. No lo ejecutes si hay
+otros commits locales que todavía no deben publicarse.
 
 ### Machine Doctor
 

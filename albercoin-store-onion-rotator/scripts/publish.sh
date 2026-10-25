@@ -23,7 +23,9 @@ fi
 cd "$APP_DIR"
 
 # Ensure we're in the right repo
-if [ "$(git remote get-url origin 2>/dev/null)" != "https://github.com/$REPO.git" ]; then
+REMOTE_URL="$(git remote get-url origin 2>/dev/null || true)"
+if [ "$REMOTE_URL" != "https://github.com/$REPO.git" ] && \
+   [ "$REMOTE_URL" != "git@github.com:$REPO.git" ]; then
     echo "Warning: This doesn't appear to be the $REPO repository."
     echo "Remote: $(git remote get-url origin 2>/dev/null || echo 'none')"
 fi
@@ -39,7 +41,7 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 echo "Pushing to origin..."
-git push origin main
+git push origin master
 
 echo "Done! Store URL for Umbrel:"
 echo "  https://github.com/$REPO"

@@ -1,5 +1,23 @@
 # Onion Rotator — Umbrel App
 
+[Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
+
+## Referencias del paquete
+
+- Versión y ficha: [`umbrel-app.yml`](umbrel-app.yml).
+- Puerto de la ficha Umbrel: `2180`; servidor interno: `8900`.
+- No declara dependencias de otras apps Umbrel, pero opera sobre servicios y datos del nodo.
+- El Compose ejecuta `src/` montado sobre una imagen base Python; no utiliza el Dockerfile para construir durante la instalación.
+- No declara un volumen propio de historial persistente. Los datos Tor modificados pertenecen a la instalación Umbrel.
+- Las pruebas están en `tests/`; su existencia no acredita por sí sola una rotación real validada en un nodo.
+
+### Servicios onion del sistema
+
+La sección avanzada permite limpiar servicios onion del sistema Umbrel (web/auth).
+Es una operación distinta a rotar los servicios de una app: requiere reiniciar
+el servidor Umbrel completo para regenerarlos. Puede invalidar la dirección
+remota que estás usando para acceder al nodo; conserva acceso local antes de operar.
+
 Rotate Tor onion addresses for installed Umbrel apps.
 
 ## What it does

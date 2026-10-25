@@ -1,12 +1,16 @@
 # SimpleX Chat CLI · Albercoin · v1.0.3
 
+[Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
+
 Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.0.3** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
 
 **Estado de esta revisión:** versión 1.0.3 publicada para AMD64 y ARM64, fijada por digest en la tienda Umbrel. Se ha verificado el intercambio de texto en ambos sentidos entre dos identidades reales SimpleX 7.0.3 en contenedores de prueba, la aceptación de solicitudes, el conector autenticado y la exclusión de mensajes/credenciales del informe. No se ha ejecutado el gateway de Hermes ni desplegado esta revisión en tu nodo.
 
 ## Instalación
 
-Esta carpeta debe situarse en la raíz de `AlbercoinDev/Umbrel-AppStore-Albercoin`, junto a las demás apps. También debe añadirse el nuevo workflow `simplex-chat-cli-image.yml` a `.github/workflows/` sin reemplazar otros workflows.
+Añade la tienda siguiendo el [README principal](../README.md) e instala **SimpleX Chat CLI** desde Umbrel. Esta carpeta y su workflow ya forman parte del repositorio; no hay que copiarlos ni incorporarlos de nuevo.
+
+### Construcción y publicación
 
 La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.3` está publicada y fijada por su digest en `docker-compose.yml`; Umbrel la descarga sin credenciales. Para publicarla, utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
 
@@ -119,6 +123,20 @@ python3 -m unittest discover -s tests -v
 ```
 
 Cubren correlación de respuestas fuera de orden, limpieza de timeouts, redacción de errores, extracción de estados sin contenido, rotación/persistencia y enlaces cortos HTTPS de servidores SimpleX. Además se ha comprobado la interfaz en un DOM de prueba y el recorrido real entre dos identidades con SMP. La prueba del conector confirma autenticación, correlación y registros, pero no sustituye una prueba con el gateway y el modelo de Hermes.
+
+## Mapa del código
+
+| Ruta | Responsabilidad |
+| --- | --- |
+| `src/main.py` | Gestor web, autenticación, API y conector |
+| `src/runtime.py` | Ciclo de vida del cliente SimpleX |
+| `src/simplex_client.py` | Comunicación y correlación de respuestas |
+| `src/config.py` | Configuración persistente |
+| `src/diagnostics.py` | Registros técnicos y redacción de información sensible |
+| `src/static/` | Interfaz web |
+| `tests/` | Pruebas de regresión |
+| `scripts/restore.py` | Restauración offline |
+| `integrations/hermes/` | Documentación y asistente de integración opcional |
 
 ## Fuentes y licencia
 

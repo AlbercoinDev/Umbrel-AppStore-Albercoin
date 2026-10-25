@@ -1,5 +1,19 @@
 # Machine Doctor — Umbrel App
 
+[Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
+
+## Referencias del paquete
+
+- Versión y ficha: [`umbrel-app.yml`](umbrel-app.yml).
+- Puerto web de Umbrel y del servidor: `2190`.
+- Persistencia: `${APP_DATA_DIR}/data`, montado como `/data`; informes en `/data/reports`.
+- No declara dependencias de otras apps Umbrel.
+- Imagen: definida en [`docker-compose.yml`](docker-compose.yml), construida con [`Dockerfile`](Dockerfile) y el [workflow](../.github/workflows/machine-doctor-image.yml).
+- Pruebas: comprobación manual descrita abajo; no se incluye una suite automatizada.
+- CPU y sensores están implementados; los directorios de disco, RAM y térmica completa contienen planes pendientes.
+
+La guía siguiente describe el funcionamiento existente; no acredita una nueva prueba en hardware realizada durante esta revisión documental.
+
 Machine Doctor is a hardware diagnostics app for Umbrel nodes. The first version focuses on CPU health: it runs a controlled `stress-ng` CPU test, tracks per-core load, reads host temperatures and frequencies where available, and saves a JSON report.
 
 ## Features

@@ -18,7 +18,8 @@ puertos del router. Consulta la [guía de prueba real](docs/testing-umbrel.md).
 
 La imagen de esta compilación se publica en `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-1` para
 AMD64 y ARM64; el Compose fija el digest del índice multiarch.
-Detalles y límites de la verificación: [publicación 0.1.0](docs/release-0.1.0.md).
+Historial de la publicación inicial: [0.1.0 original](docs/release-0.1.0.md).
+La revisión actual y su procedimiento de actualización están en [tor-check-1](docs/tor-check-1.md).
 
 ## Funciones
 
@@ -141,7 +142,9 @@ docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/wo
 python3 albercoin-store-simplex-server/tests/smoke_packaged.py
 # Pruebas online: salida a Tor necesaria, datos efímeros, sin puertos publicados.
 docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev /workspace/tests/smoke_diagnostics.py
-PACKAGED_TOR_PROBE=1 python3 albercoin-store-simplex-server/tests/smoke_packaged.py
+PACKAGED_TOR_PROBE=1 PACKAGED_NEGATIVE_PROBE=1 python3 albercoin-store-simplex-server/tests/smoke_packaged.py
+# Conservación de identidad/credenciales al pasar de la imagen inicial a la nueva.
+python3 albercoin-store-simplex-server/tests/smoke_upgrade.py
 ```
 
 Para arrancar un entorno aislado con datos de prueba:

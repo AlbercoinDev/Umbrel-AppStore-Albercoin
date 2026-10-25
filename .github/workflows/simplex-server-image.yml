@@ -32,8 +32,7 @@ jobs:
           docker build --label org.opencontainers.image.source=https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin --label org.opencontainers.image.revision=${{ github.sha }} -t simplex-server:dev albercoin-store-simplex-server
           docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev -m unittest discover -s /workspace/tests -v
           docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev /workspace/tests/smoke_runtime.py
-          PACKAGED_TOR_PROBE=1 python3 albercoin-store-simplex-server/tests/smoke_packaged.py
-          docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev /workspace/tests/smoke_diagnostics.py
+          PACKAGED_TOR_PROBE=1 PACKAGED_NEGATIVE_PROBE=1 python3 albercoin-store-simplex-server/tests/smoke_packaged.py
       - uses: docker/login-action@v3
         if: inputs.publish
         with:

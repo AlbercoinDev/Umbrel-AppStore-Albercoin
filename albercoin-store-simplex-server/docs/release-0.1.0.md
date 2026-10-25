@@ -1,5 +1,8 @@
 # Publicación preliminar 0.1.0
 
+Registro histórico de la imagen inicial. La versión del paquete sigue siendo
+0.1.0; para la compilación posterior consulta [tor-check-1](tor-check-1.md).
+
 ## Identificación
 
 - Paquete Umbrel: `albercoin-store-simplex-server`.

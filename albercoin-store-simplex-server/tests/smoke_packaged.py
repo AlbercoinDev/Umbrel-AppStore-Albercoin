@@ -32,7 +32,8 @@ def token(html):
 data = urllib.parse.urlencode(dict(csrf=token(html), username='admin', password=os.environ['APP_PASSWORD'])).encode()
 html = http.open(base + '/login', data).read().decode()
 assert 'Configura tu servidor' in html
-data = urllib.parse.urlencode(dict(csrf=token(html), mode='clearnet', host='127.0.0.1', private='on')).encode()
+mode = 'tor' if os.environ.get('PACKAGED_TOR_PROBE') == '1' else 'clearnet'
+data = urllib.parse.urlencode(dict(csrf=token(html), mode=mode, host='127.0.0.1', private='on')).encode()
 html = http.open(base + '/', data, timeout=60).read().decode()
 assert 'proceso activo' in html and 'smp://' in html
 qr = http.open(base + '/qr.svg')
@@ -42,8 +43,10 @@ status = open('/proc/1/status').read()
 assert re.search(r'Uid:\\s+1000\\s+1000', status), 'Manager did not drop privileges'
 print('Packaged entrypoint: non-root manager, login, CSS, setup, SMP and QR OK')
 if os.environ.get('PACKAGED_TOR_PROBE') == '1':
-    data = urllib.parse.urlencode(dict(csrf=token(html), mode='tor', private='on')).encode()
-    html = http.open(base + '/', data, timeout=60).read().decode()
+    for _ in range(150):
+        if json.load(http.open(base + '/service-status'))['bootstrap']: break
+        time.sleep(1)
+    else: raise AssertionError('Hosting Tor did not establish circuits')
     data = urllib.parse.urlencode(dict(csrf=token(html))).encode()
     http.open(base + '/diagnostics', data, timeout=10).read()
     for _ in range(450):
@@ -54,6 +57,23 @@ if os.environ.get('PACKAGED_TOR_PROBE') == '1':
     assert result['status'] == 'passed', 'Packaged diagnostic failed'
     assert 'smp://' not in json.dumps(result)
     print('Authenticated browser diagnostic with UID 1000 and reduced capabilities passed')
+'''
+negative_probe = '''
+import os, sys
+from pathlib import Path
+sys.path.insert(0, '/app')
+from diagnostics import Diagnostics
+os.umask(0o077)
+probe = Diagnostics(Path('/data'))
+target = dict(onion=Path('/data/tor/smp/hostname').read_text().strip(),
+              fingerprint=Path('/etc/opt/simplex/fingerprint').read_text().strip(),
+              ca_pem=Path('/etc/opt/simplex/ca.crt').read_text(), password='wrong')
+assert probe.start(target)
+probe.worker.join(timeout=450)
+result = probe.snapshot()
+print(result)
+assert result['status'] == 'failed' and result['code'] == 'authorization', 'Wrong password not classified correctly'
+print('Independent Tor: incorrect queue password rejected without changing the relay identity/configuration')
 '''
 try:
     docker('run', '-d', '--name', name, '--cap-drop', 'ALL',
@@ -66,6 +86,11 @@ try:
         # The probe prints allowlisted diagnostic state only, never its URI/password.
         raise RuntimeError(result.stdout + result.stderr)
     print(result.stdout.strip())
+    if os.environ.get('PACKAGED_NEGATIVE_PROBE') == '1':
+        result = docker('exec', '--user', '1000:1000', name, 'python3', '-c', negative_probe, check=False)
+        if result.returncode:
+            raise RuntimeError(result.stdout + result.stderr)
+        print(result.stdout.strip())
 finally:
     docker('stop', '--time', '110', name, check=False)
     docker('rm', name, check=False)

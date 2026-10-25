@@ -1,0 +1,62 @@
+name: SimpleX Server image
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish preview image to GHCR
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: simplex-server-release
+  cancel-in-progress: false
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and test native image
+        run: |
+          docker build --label org.opencontainers.image.source=https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin --label org.opencontainers.image.revision=${{ github.sha }} -t simplex-server:dev albercoin-store-simplex-server
+          docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev -m unittest discover -s /workspace/tests -v
+          docker run --rm --entrypoint python3 -v "$PWD/albercoin-store-simplex-server:/workspace:ro" simplex-server:dev /workspace/tests/smoke_runtime.py
+          python3 albercoin-store-simplex-server/tests/smoke_packaged.py
+      - uses: docker/login-action@v3
+        if: inputs.publish
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested native image
+        if: inputs.publish
+        run: |
+          docker tag simplex-server:dev ghcr.io/albercoindev/simplex-server:0.1.0-${{ matrix.arch }}
+          docker push ghcr.io/albercoindev/simplex-server:0.1.0-${{ matrix.arch }}
+  manifest:
+    needs: native
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish multiarch index
+        run: |
+          docker buildx imagetools create --tag ghcr.io/albercoindev/simplex-server:0.1.0 ghcr.io/albercoindev/simplex-server:0.1.0-amd64 ghcr.io/albercoindev/simplex-server:0.1.0-arm64
+          docker buildx imagetools inspect ghcr.io/albercoindev/simplex-server:0.1.0 >> "$GITHUB_STEP_SUMMARY"

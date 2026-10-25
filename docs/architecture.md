@@ -21,7 +21,7 @@
 | Onion Rotator | `src/`; pruebas en `tests/`; herramientas en `scripts/` | Python con `src/` montado desde `${APP_DATA_DIR}`; el Compose no construye su Dockerfile |
 | Machine Doctor | `src/main.py`, `src/modules/cpu/`, `src/static/` | Imagen propia de GHCR, construida desde su Dockerfile |
 | SimpleX Chat CLI | `src/`, `scripts/restore.py`, `integrations/hermes/` | Imagen propia de GHCR, fijada por digest en Compose |
-| SimpleX Server (desarrollo) | `src/server.py`, plantillas y recursos; SMP oficial sin modificar | Imagen derivada local; publicación y digest pendientes |
+| SimpleX Server (vista previa) | `src/server.py`, plantillas y recursos; SMP oficial sin modificar | Imagen derivada de SMP oficial, publicada para AMD64/ARM64 y fijada por digest |
 
 Modificar fuentes locales no actualiza por sí solo una instalación Umbrel.
 Los módulos `disk`, `thermal` y `ram` de Machine Doctor contienen documentación

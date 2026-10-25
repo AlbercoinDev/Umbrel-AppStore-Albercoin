@@ -7,8 +7,7 @@ services:
       APP_PORT: 2193
   server:
     networks: [simplex_private]
-    # Development reference: publish and pin the resulting multiarch digest before release.
-    image: ghcr.io/albercoindev/simplex-server:0.1.0
+    image: ghcr.io/albercoindev/simplex-server:0.1.0@sha256:4a9c0324ea93a3ccbf5a5efd0d70d2936c073aa57c90a498b71ce1052e65cfb6
     init: true
     restart: on-failure
     stop_grace_period: 2m

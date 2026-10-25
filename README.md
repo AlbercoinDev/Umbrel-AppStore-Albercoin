@@ -10,7 +10,7 @@ Tienda de aplicaciones personalizada para [umbrelOS](https://umbrel.com).
 | Onion Rotator | Consulta y rotación de direcciones onion de Umbrel | [Guía](albercoin-store-onion-rotator/README.md) |
 | Machine Doctor | Diagnóstico de CPU, sensores e informes | [Guía](albercoin-store-machine-doctor/README.md) |
 | SimpleX Chat CLI | Mensajería con gestor web y conector opcional para agentes | [Guía](albercoin-store-simplex-chat-cli/README.md) |
-| SimpleX Server (en desarrollo) | Relay SMP propio con Tor y clearnet; imagen pendiente de publicación | [Guía](albercoin-store-simplex-server/README.md) |
+| SimpleX Server (vista previa) | Relay SMP propio con Tor y clearnet; versión 0.1.0 para pruebas | [Guía](albercoin-store-simplex-server/README.md) |
 
 Las versiones vigentes se consultan en el `umbrel-app.yml` de cada carpeta.
 La presencia de una app en este repositorio no indica que esté instalada en un nodo.

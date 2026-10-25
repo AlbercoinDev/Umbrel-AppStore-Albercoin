@@ -1,9 +1,20 @@
-# SimpleX Server · desarrollo 0.1.0
+# SimpleX Server · vista previa 0.1.0
 
-**Vista previa en desarrollo: imagen propia no publicada ni fijada aún por digest.
-No instalar desde la tienda como una versión terminada.** SMP upstream v7.0.1;
+**Versión preliminar para instalar y probar desde la tienda Albercoin, no una
+versión estable validada en un nodo Umbrel real.** SMP upstream v7.0.1;
 panel propio en español. XFTP queda para otra entrega, sin servicio ni controles
 ficticios en esta versión.
+
+## Instalar y probar en Umbrel
+
+Actualiza la tienda Albercoin, busca **SimpleX Server** e instala la versión
+`0.1.0`. Abre el panel con usuario `admin` y la contraseña que muestra Umbrel.
+Empieza con **Solo Tor** y perfiles SimpleX desechables. No necesitas abrir
+puertos del router. Consulta la [guía de prueba real](docs/testing-umbrel.md).
+
+La imagen se publica en `ghcr.io/albercoindev/simplex-server:0.1.0` para
+AMD64 y ARM64; el Compose fija el digest del índice multiarch.
+Detalles y límites de la verificación: [publicación 0.1.0](docs/release-0.1.0.md).
 
 ## Funciones
 
@@ -44,8 +55,9 @@ listener de la puerta pública: solo se activa al elegir clearnet. Cambiar el mo
 cierra sus conexiones existentes. Si el puerto está ocupado, la instalación debe
 resolver ese conflicto aunque se vaya a usar solo Tor.
 
-El servidor pertenece a una red Docker propia, compartida únicamente con su
-`app_proxy`, que conecta también con la red predeterminada Umbrel. SMP upstream
+El servidor pertenece a una red Docker propia. En versiones con sidecar,
+`app_proxy` conecta esa red con la red predeterminada Umbrel; las versiones con
+gateway integrado pueden resolver el contenedor desde el anfitrión. SMP upstream
 escucha `5224` en todas las interfaces del contenedor, **no se publica al host**.
 No conectes otras apps a esa red privada. Validar la combinación de redes y
 resolución de nombres con el proxy inyectado por la versión de Umbrel utilizada.
@@ -125,8 +137,10 @@ La variante Tor utiliza un proxy SOCKS de prueba en el mismo espacio de red de
 los contenedores. No prueba un cliente instalado en otro dispositivo ni la
 integración Tor del sistema Umbrel.
 
-El workflow manual construye AMD64/ARM64 y solo publica si se solicita.
-Después de publicar hay que fijar el digest multiarch en Compose.
+El workflow manual construye y prueba AMD64/ARM64 en runners nativos y solo
+publica si se solicita. Publica las imágenes nativas probadas y después compone
+el índice multiarch. No publica `latest`. Las futuras versiones deben fijar el
+digest resultante en Compose antes de actualizar la tienda.
 
 ### Verificado durante este desarrollo (AMD64)
 
@@ -141,19 +155,24 @@ Después de publicar hay que fijar el digest multiarch en Compose.
   usando el SOCKS compartido del entorno aislado: texto en ambos sentidos.
 - Contraseña válida aceptada e incorrecta rechazada en `CreateQueue` con `AUTH`.
 
+Además, el [workflow de publicación](https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/actions/runs/40184873857)
+ejecuta las 14 pruebas unitarias, smoke test de SMP/Tor y prueba del entrypoint
+con capacidades reducidas en runners nativos AMD64 y ARM64. El intercambio
+entre clientes descrito arriba se comprobó en AMD64, no en ARM64.
+
 Estas pruebas no validan aún un cliente onion en otro dispositivo, router,
-CGNAT, ejecución nativa ARM64 ni instalación en Umbrel. No se han publicado
-imágenes ni cambios remotos.
+CGNAT ni instalación en Umbrel. La prueba real en el nodo corresponde a esta
+versión preliminar; no se presenta como validación de producción.
 
 ## Antes de publicar como estable
 
 - [ ] Instalación real Umbrel: proxy, redes privadas, permisos y credenciales.
-- [ ] Dos clientes reales usando colas del relay: texto en ambas direcciones.
+- [x] Dos clientes reales aislados usando colas del relay: texto en ambas direcciones.
 - [ ] Tor: bootstrap actual, prueba onion desde otra máquina y reinicio con identidad estable.
 - [ ] Clearnet y modo mixto probados desde fuera de la LAN.
-- [ ] Contraseña incorrecta rechazada al crear colas.
+- [x] Contraseña incorrecta rechazada al crear colas en el entorno aislado.
 - [ ] Recuperación de mensajes pendientes tras SIGINT y copia/restauración completas.
-- [ ] Construcción y ejecución nativas AMD64 y ARM64.
+- [x] Construcción y ejecución nativas AMD64 y ARM64 en CI.
 - [ ] Supervisión de hijos y límites bajo carga.
 - [ ] Capturas reales sin secretos; galería del manifiesto y digest publicado.
 

@@ -54,9 +54,10 @@ Consulta el README de la app para construcción local y compatibilidad de copias
 
 SimpleX Server dispone de un workflow manual independiente
 `simplex-server-image.yml`, con publicación desactivada por defecto. Su Compose
-contiene una referencia de desarrollo **todavía no publicada ni fijada por digest**.
-Completar las verificaciones de su README, publicar y fijar digest antes de
-presentarla como instalable. No se ha modificado la imagen de SimpleX Chat CLI.
+fija el digest multiarch publicado para la vista previa 0.1.0. El workflow prueba
+las imágenes en runners nativos AMD64/ARM64 antes de componer el índice. Antes
+de declararla estable, completar las verificaciones de su README en un nodo real.
+No se ha modificado la imagen de SimpleX Chat CLI.
 
 1. Confirmar el alcance y revisar el diff para no incluir secretos ni datos.
 2. Revisar versiones, notas de versión, referencias de imágenes y documentación.

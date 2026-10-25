@@ -12,7 +12,7 @@ description: >-
   to use onion addresses. Clearnet requires an accessible incoming TCP port.
 
 
-  Development preview, not yet published or verified on umbrelOS. XFTP file
+  Preview release for testing on umbrelOS, not yet verified on a real node. XFTP file
   hosting, calls and push notifications are not included. Keep an offline backup
   of your server identity. Hosting a relay does not force contacts to use only
   your infrastructure.
@@ -29,4 +29,9 @@ deterministicPassword: true
 dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
-releaseNotes: Initial development preview with SMP, Tor and optional clearnet.
+releaseNotes: >-
+  Versión preliminar 0.1.0 para pruebas en Umbrel. Servidor SMP v7.0.1 con
+  panel web, Tor, clearnet o ambos, identidad persistente y QR local.
+  Protección de creación de colas activada por defecto. Imágenes AMD64/ARM64
+  con pruebas nativas automatizadas. XFTP no está incluido. Empieza con
+  perfiles de prueba y modo Solo Tor; no requiere abrir puertos del router.

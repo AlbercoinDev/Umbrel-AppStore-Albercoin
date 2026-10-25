@@ -1,10 +1,12 @@
 """Check the actual image entrypoint, reduced capabilities and browser flow."""
 import secrets
+import os
 import subprocess
 
 
 name = 'simplex-web-probe-' + secrets.token_hex(5)
 password = secrets.token_urlsafe(24)
+image = os.environ.get('SERVER_IMAGE', 'simplex-server:dev')
 
 
 def docker(*args, check=True):
@@ -44,7 +46,7 @@ try:
     docker('run', '-d', '--name', name, '--cap-drop', 'ALL',
            '--cap-add', 'CHOWN', '--cap-add', 'SETUID', '--cap-add', 'SETGID',
            '--cap-add', 'DAC_OVERRIDE', '--security-opt', 'no-new-privileges:true',
-           '-e', 'APP_PASSWORD=' + password, 'simplex-server:dev')
+           '-e', 'APP_PASSWORD=' + password, image)
     result = docker('exec', name, 'python3', '-c', probe, check=False)
     if result.returncode:
         raise RuntimeError(result.stderr)

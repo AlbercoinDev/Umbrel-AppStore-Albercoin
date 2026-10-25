@@ -9,7 +9,7 @@
     <button id="probe-button" {{ 'disabled' if diagnostic.status == 'running' or not settings or settings.mode == 'clearnet' }}>Comprobar servidor por Tor</button>
   </form>
   <p id="probe-summary" aria-live="polite">
-    {% if diagnostic.status == 'running' %}Comprobación en curso; puede tardar hasta 6 minutos.
+    {% if diagnostic.status == 'running' %}Comprobación en curso; puede tardar hasta 7 minutos.
     {% elif diagnostic.status == 'passed' %}Prueba completa superada mediante Tor independiente. {{ diagnostic.finished_at }}
     {% elif diagnostic.status == 'failed' %}Prueba no superada. Código: {{ diagnostic.code }}. {{ diagnostic.finished_at }}
     {% else %}Todavía no se ha verificado el acceso mediante un Tor independiente.{% endif %}

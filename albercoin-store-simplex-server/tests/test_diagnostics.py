@@ -88,6 +88,25 @@ class DiagnosticTests(unittest.TestCase):
             self.assertEqual(result['steps'][1]['status'], 'failed')
             self.assertNotIn('SECRET', str(result))
 
+    def test_onion_transport_retries_are_visible(self):
+        with tempfile.TemporaryDirectory() as root:
+            probe = Diagnostics(root)
+            probe.state['steps'] = [dict(id='onion', status='running')]
+            connection = MagicMock()
+            with patch('diagnostics.onion_socket', side_effect=[OSError('SECRET'), connection]) as connect, patch.object(probe.cancelled, 'wait'), patch('diagnostics.time.monotonic', return_value=0):
+                self.assertIs(probe.connect_onion(19050, 'fixture.onion'), connection)
+            self.assertEqual(connect.call_count, 2)
+            self.assertEqual(probe.snapshot()['steps'][0]['attempts'], 2)
+            self.assertNotIn('SECRET', str(probe.snapshot()))
+
+    def test_onion_transport_retry_is_bounded(self):
+        with tempfile.TemporaryDirectory() as root:
+            probe = Diagnostics(root)
+            probe.state['steps'] = [dict(id='onion', status='running')]
+            with patch('diagnostics.onion_socket', side_effect=OSError('SECRET')), patch('diagnostics.time.monotonic', side_effect=[0, 0, 100]), self.assertRaises(ProbeError) as error:
+                probe.connect_onion(19050, 'fixture.onion')
+            self.assertEqual(error.exception.code, 'onion_unavailable')
+
     def test_control_errors_not_returned(self):
         stream = MagicMock()
         stream.readline.return_value = b'515 SECRET password rejected\r\n'

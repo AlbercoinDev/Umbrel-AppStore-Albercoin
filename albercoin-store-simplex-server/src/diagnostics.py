@@ -174,6 +174,31 @@ class Diagnostics:
             self.cancelled.wait(1)
         raise ProbeError('tor_timeout')
 
+    def connect_onion(self, port, host):
+        # A fresh onion may not be discoverable when bootstrap completes.
+        # Retry transport only: never silently repeat queue creation.
+        deadline = time.monotonic() + 90
+        attempts = 0
+        while True:
+            self.check_cancelled()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProbeError('onion_unavailable')
+            attempts += 1
+            with self.lock:
+                entry = next(item for item in self.state['steps'] if item['id'] == 'onion')
+                entry.update(attempts=attempts, detail=f'Intento {attempts}; un onion recién publicado puede tardar en ser accesible.')
+            try:
+                connection = onion_socket(port, host, timeout=min(30, remaining))
+                with self.lock:
+                    entry['detail'] = f'Conexión confirmada tras {attempts} intento(s).'
+                return connection
+            except OSError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ProbeError('onion_unavailable') from None
+                self.cancelled.wait(min(5, remaining))
+
     def protocol_test(self, target, socks_port, directory):
         password = ':' + target['password'] if target['password'] else ''
         uri = f"smp://{target['fingerprint']}{password}@{target['onion']}:5223"
@@ -235,13 +260,7 @@ class Diagnostics:
 
             socks_port = self.step('probe_tor', start_probe_tor)
 
-            def connect_onion():
-                try:
-                    return onion_socket(socks_port, target['onion'])
-                except OSError:
-                    raise ProbeError('onion_unavailable') from None
-
-            connection = self.step('onion', connect_onion)
+            connection = self.step('onion', lambda: self.connect_onion(socks_port, target['onion']))
 
             def remote_tls():
                 try:

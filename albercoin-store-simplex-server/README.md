@@ -43,10 +43,12 @@ estado, SOCKS local y circuitos; no comparte los del Tor que publica el servicio
 La misma máquina/red sigue siendo el origen físico: no sustituye una prueba
 desde otro dispositivo ni valida su configuración Android.
 
-La prueba tarda hasta unos seis minutos, no reinicia el relay ni modifica
+La prueba tarda hasta unos siete minutos, no reinicia el relay ni modifica
 certificados. Si se interrumpe tras crear una cola, puede quedar una cola de
 prueba sin eliminar. Solo se permite una prueba concurrente y 60 segundos entre
 inicios. Los resultados no incluyen URI, contraseñas ni salida cruda del CLI.
+La conexión onion se reintenta durante un máximo aproximado de 90 segundos y
+se informa de los intentos; la creación de colas no se reintenta automáticamente.
 El control Tor no se publica como puerto TCP: utiliza socket Unix y cookie
 privados. El healthcheck detecta procesos SMP/Tor detenidos, pero no ejecuta
 la prueba end-to-end. El supervisor reintenta recuperar procesos con backoff,

@@ -11,6 +11,8 @@ el digest inicial. No se cambia el SMP upstream v7.0.1 ni se implementa XFTP.
 3. Pulsa **Comprobar servidor por Tor** y espera al resultado de las cinco fases:
    SMP/TLS local, Tor independiente, conexión onion, TLS remoto y prueba oficial
    de creación/asegurado/eliminación de una cola SMP temporal.
+   Puede tardar hasta siete minutos. El acceso onion tiene reintentos limitados,
+   visibles en el resultado; no se repite automáticamente la creación de colas.
 4. Si falla, comparte solo el resultado textual de esa sección (o su captura),
    sin incluir la dirección ni el QR de la sección de conexión.
 

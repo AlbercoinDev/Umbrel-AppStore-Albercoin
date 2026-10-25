@@ -18,7 +18,7 @@ async function refreshStatus() {
       list.appendChild(item);
     }
     document.getElementById('probe-summary').textContent = probe.status === 'running' ?
-      'Comprobación en curso; puede tardar hasta 6 minutos. No hace falta volver a pulsar.' :
+      'Comprobación en curso; puede tardar hasta 7 minutos. No hace falta volver a pulsar.' :
       probe.status === 'passed' ? `Prueba completa superada mediante Tor independiente. ${probe.finished_at} (${probe.seconds} s).` :
       probe.status === 'failed' ? `Prueba no superada. Código: ${probe.code}. ${probe.finished_at}` :
       'Todavía no se ha verificado el acceso mediante un Tor independiente.';

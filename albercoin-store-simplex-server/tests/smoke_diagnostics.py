@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory() as root:
         fingerprint = Path('/etc/opt/simplex/fingerprint').read_text()
         onion = Path(root, 'tor/smp/hostname').read_text()
         assert runtime.start_diagnostics()
-        runtime.diagnostics.worker.join(timeout=400)
+        runtime.diagnostics.worker.join(timeout=450)
         result = runtime.diagnostics.snapshot()
         print(result, flush=True)  # Allowlisted state only, no target or credentials.
         assert result['status'] == 'passed', 'Independent Tor availability test failed'
@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as root:
         wrong = Diagnostics(Path(root))
         assert wrong.start({'onion': onion.strip(), 'fingerprint': fingerprint.strip(),
                             'ca_pem': Path('/etc/opt/simplex/ca.crt').read_text(), 'password': 'wrong'})
-        wrong.worker.join(timeout=400)
+        wrong.worker.join(timeout=450)
         result = wrong.snapshot()
         print(result, flush=True)
         assert result['status'] == 'failed' and result['code'] == 'authorization'

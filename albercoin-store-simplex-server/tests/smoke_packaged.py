@@ -46,7 +46,7 @@ if os.environ.get('PACKAGED_TOR_PROBE') == '1':
     html = http.open(base + '/', data, timeout=60).read().decode()
     data = urllib.parse.urlencode(dict(csrf=token(html))).encode()
     http.open(base + '/diagnostics', data, timeout=10).read()
-    for _ in range(360):
+    for _ in range(450):
         result = json.load(http.open(base + '/diagnostics', timeout=5))
         if result['status'] != 'running': break
         time.sleep(1)
@@ -63,7 +63,8 @@ try:
            '--tmpfs', '/tmp:size=64m,mode=1777', image)
     result = docker('exec', name, 'python3', '-c', probe, check=False)
     if result.returncode:
-        raise RuntimeError(result.stderr)
+        # The probe prints allowlisted diagnostic state only, never its URI/password.
+        raise RuntimeError(result.stdout + result.stderr)
     print(result.stdout.strip())
 finally:
     docker('stop', '--time', '110', name, check=False)

@@ -2,12 +2,12 @@ FROM ubuntu:24.04
 ARG TARGETARCH
 ARG SIMPLEX_VERSION=v7.0.3
 LABEL org.opencontainers.image.title="SimpleX Chat CLI for Umbrel" \
-       org.opencontainers.image.version="1.0.4" \
+       org.opencontainers.image.version="1.0.5" \
       org.opencontainers.image.source="https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl age python3 python3-venv libgmp10 libnuma1 libssl3t64 zlib1g libtinfo6 libatomic1 libgomp1 libstdc++6 gosu \
+    ca-certificates curl age tor python3 python3-venv libgmp10 libnuma1 libssl3t64 zlib1g libtinfo6 libatomic1 libgomp1 libstdc++6 gosu \
     && rm -rf /var/lib/apt/lists/*
 RUN set -eu; \
     case "$TARGETARCH" in \

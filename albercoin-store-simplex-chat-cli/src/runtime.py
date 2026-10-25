@@ -9,6 +9,7 @@ import subprocess
 from datetime import datetime, timezone
 
 from .config import DATA
+from .network import network_args
 from .backups import inventory, storage
 
 
@@ -48,10 +49,7 @@ class Runtime:
                 "-p", "5225", "--files-folder", str(files), "--auto-accept-files", "0", "-y"]
         if not list(directory.glob("*_chat.db")):
             args += ["--user-display-name", "SimpleX"]
-        for key, flag in (("smp_servers", "--server"), ("xftp_servers", "--xftp-server"),
-                          ("socks_proxy", "--socks-proxy")):
-            if self.config.value.get(key):
-                args += [flag, self.config.value[key]]
+        args += network_args(self.config.value)
         # Do not write CLI stdout to container logs: it can contain messages and links.
         self.process = await asyncio.create_subprocess_exec(
             *args, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,

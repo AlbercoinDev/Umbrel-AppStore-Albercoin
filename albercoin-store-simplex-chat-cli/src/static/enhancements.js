@@ -256,3 +256,33 @@ $('enable-notifications').addEventListener('click', () => work(async () => {
   state.notifications = await Notification.requestPermission() === 'granted'; notice(state.notifications ? 'Notificaciones de actividad activadas, sin contenido.' : 'Notificaciones no autorizadas.');
 }));
 enter().catch(closeWorkspace);
+// Network probes never replace unsaved form fields during polling.
+const networkCard = document.createElement('div');
+const networkLogOption = document.createElement('option');
+networkLogOption.value = 'network'; networkLogOption.textContent = 'Red / Tor / servidores';
+$('log-operation').append(networkLogOption);
+networkCard.className = 'card';
+const networkTitle = document.createElement('h2');
+networkTitle.textContent = 'Estado de los servidores guardados';
+const networkHelp = document.createElement('p');
+networkHelp.textContent = 'Las direcciones onion utilizan Tor automáticamente. Si se anuncian ambas redes se selecciona onion, sin fallback a clearnet. Un proxy manual no acredita que sea Tor. Las pruebas SMP/XFTP crean y eliminan recursos temporales; si se interrumpen pueden quedar sin limpiar.';
+const networkList = document.createElement('div');
+const networkButton = document.createElement('button');
+networkButton.textContent = 'Comprobar conexión';
+networkButton.type = 'button';
+networkButton.addEventListener('click', () => work(async () => { await api('network/check', {}); await refreshNetwork(); }, networkButton));
+networkCard.append(networkTitle, networkHelp, networkList, networkButton);
+$('tab-settings').append(networkCard);
+async function refreshNetwork() {
+  const value = await api('settings');
+  networkList.replaceChildren();
+  const labels = {tor:'Tor / onion', clearnet:'Clearnet', mixed:'Clearnet + onion', proxy:'Proxy SOCKS5 (Tor no verificado)', pending:'Pendiente', checking:'Comprobando', ok:'Conexión correcta', error:'Error'};
+  if (!value.servers?.length) { const p = document.createElement('p'); p.textContent = 'Sin servidores personalizados. Se utilizan los predeterminados; no comprobados aquí.'; networkList.append(p); }
+  for (const server of value.servers || []) {
+    const p = document.createElement('p');
+    p.textContent = `${server.protocol.toUpperCase()} · ${server.host} · Disponible: ${labels[server.available]} · Ruta: ${labels[server.route]} · ${labels[server.status]}` + (server.tor_progress !== undefined && server.status === 'checking' ? ` · Tor ${server.tor_progress}%` : '') + (server.checked_at ? ` · ${new Date(server.checked_at * 1000).toLocaleString()}` : '') + (server.duration !== undefined ? ` · ${server.duration}s` : '') + (server.code ? ` · ${server.code}` : '') + (server.detail ? ` · ${server.detail}` : '') + ` · ID: ${server.id}`;
+    networkList.append(p);
+  }
+  networkButton.disabled = (value.servers || []).some(s => ['checking','pending'].includes(s.status));
+}
+setInterval(() => { if (state.logged && state.currentTab === 'settings' && !document.hidden) refreshNetwork().catch(e => notice(e.message, true)); }, 4000);

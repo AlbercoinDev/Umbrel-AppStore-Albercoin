@@ -184,3 +184,9 @@ copias ni archivos de configuración con credenciales.
 
 El código del gestor de este paquete se distribuye bajo AGPL-3.0-only; véase `LICENSE`. El cliente SimpleX conserva su licencia original, incluida en la imagen en `/usr/share/doc/simplex-chat/LICENSE`. Las dependencias conservan sus respectivas licencias.
 No es una publicación oficial de SimpleX ni de Umbrel. Los hashes y la versión están fijados en el Dockerfile; cambiar la versión requiere revisar también esos valores y la compatibilidad de la API.
+# Red automática y diagnóstico por servidor
+
+Los servidores personalizados onion activan Tor local automáticamente. El panel
+de ajustes muestra la red anunciada, ruta seleccionada y resultado de las pruebas
+SMP/XFTP, con registros clasificados y sin credenciales. Consulta
+[funcionamiento, límites y despliegue](docs/network.md).

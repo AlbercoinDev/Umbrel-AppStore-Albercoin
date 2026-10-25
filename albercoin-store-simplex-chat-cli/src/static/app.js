@@ -39,7 +39,7 @@ async function tab(name) {
   if (name === 'integrations') await refreshIntegration();
   if (name === 'backups') await refreshBackups();
   if (name === 'diagnostics') await refreshDiagnostics();
-  if (name === 'settings') { const value = await api('settings'); $('smp-servers').value = value.smp_servers; $('xftp-servers').value = value.xftp_servers; $('socks-proxy').value = value.socks_proxy; }
+  if (name === 'settings') { const value = await api('settings'); $('smp-servers').value = value.smp_servers; $('xftp-servers').value = value.xftp_servers; $('socks-proxy').value = value.socks_proxy; await refreshNetwork(); }
 }
 async function enter() { state.logged = true; $('login').hidden = true; $('workspace').hidden = false; if (await refreshStatus()) await refreshChats(); }
 $('login-form').addEventListener('submit', async event => { event.preventDefault(); const form = new FormData(event.target); try { await api('login', Object.fromEntries(form)); $('login-error').textContent = ''; event.target.password.value = ''; await enter(); } catch (e) { $('login-error').textContent = e.message; } });
@@ -76,7 +76,7 @@ async function copyReport(text) {
 function renderDiagnostics() {
   if (!diagnosticData) return;
   const level = $('log-level').value, operation = $('log-operation').value;
-  const entries = diagnosticData.entries.filter(e => (!level || e.level === level) && (!operation || (operation === 'connection' ? /connect|process/.test(e.phase) : operation === 'hermes' ? e.source === 'hermes/connector' : operation === 'panel' ? e.component === 'panel' : operation === 'event' ? e.phase === 'event' : e.operation === operation)));
+  const entries = diagnosticData.entries.filter(e => (!level || e.level === level) && (!operation || (operation === 'network' ? e.component === 'network' : operation === 'connection' ? /connect|process/.test(e.phase) : operation === 'hermes' ? e.source === 'hermes/connector' : operation === 'panel' ? e.component === 'panel' : operation === 'event' ? e.phase === 'event' : e.operation === operation)));
   const list = $('diagnostic-list'); list.replaceChildren();
   for (const entry of [...entries].reverse()) {
     const detail = elem('details', undefined, 'diagnostic-entry');
@@ -112,7 +112,7 @@ const help = {
   'allowed-users':'ID numéricos de tus contactos, visibles en Conversaciones. Ejemplo: 1,3. No escribas @, nombres ni el ID de tu propio perfil. El primero será el destino de notificaciones.',
   'smp-servers':'Servidores que transportan mensajes. Vacío usa los predeterminados. Para personalizarlos usa direcciones smp:// completas separadas por espacios.',
   'xftp-servers':'Servidores de archivos; el panel solo admite texto. Vacío usa los predeterminados. Direcciones xftp:// completas separadas por espacios.',
-  'socks-proxy':'IPv4:puerto de un proxy SOCKS5 alcanzable desde el contenedor. Vacío = conexión directa. 127.0.0.1 apunta al propio contenedor, no a Umbrel.',
+  'socks-proxy':'Opcional: IPv4:puerto de un proxy SOCKS5 externo. Vacío activa Tor local automáticamente para servidores onion; los públicos conectan directamente.',
   command:'Una orden de SimpleX, por ejemplo /user. No ejecuta comandos Linux. Los errores técnicos se pueden consultar en Registros.',
   'log-level':'Filtra por errores, advertencias o información. El informe general incluye los registros recientes de todas las categorías.',
   'log-operation':'Filtra el recorrido de envío, los eventos recibidos, el proceso o las órdenes del conector Hermes.'

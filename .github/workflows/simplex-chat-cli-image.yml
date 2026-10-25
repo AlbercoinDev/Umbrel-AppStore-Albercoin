@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish the 1.0.4 image to GHCR (explicit manual action)"
+        description: "Publish the 1.0.5 image to GHCR (explicit manual action)"
         type: boolean
         default: false
         required: true
@@ -49,7 +49,7 @@ jobs:
           context: ./albercoin-store-simplex-chat-cli
           platforms: linux/amd64,linux/arm64
           push: ${{ inputs.publish }}
-          tags: ghcr.io/albercoindev/simplex-chat-cli:1.0.4
+          tags: ghcr.io/albercoindev/simplex-chat-cli:1.0.5
           provenance: true
           sbom: true
           cache-from: type=gha,scope=simplex-chat-cli

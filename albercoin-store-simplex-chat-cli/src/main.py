@@ -17,13 +17,14 @@ import qrcode.image.svg
 
 from .config import Config, DATA
 from .runtime import Runtime
+from .network import Network, servers
 from .simplex_client import Broker
 from .diagnostics import Diagnostics
 from .backups import inventory, storage, NAME, validate_recipient
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "simplex_session"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 TARGET = re.compile(r"^[@#][1-9][0-9]*$")
 
 
@@ -40,6 +41,7 @@ class Manager:
         self.diagnostics = Diagnostics(DATA / "manager")
         self.broker = Broker(self.diagnostics)
         self.runtime = Runtime(self.config, self.broker)
+        self.network = Network(self.config, self.diagnostics)
         self.sessions = {}
         self.login_attempts = deque(maxlen=100)
         self.integration_sockets = set()
@@ -67,7 +69,16 @@ class Manager:
         marker.write_text("v7.0.3")
         await asyncio.to_thread(inventory, DATA / "backups")
         self.tasks = [asyncio.create_task(self.broker.run()), asyncio.create_task(self.runtime.supervise()),
-                      asyncio.create_task(self.runtime.maintain_backups())]
+                      asyncio.create_task(self.runtime.maintain_backups()), asyncio.create_task(self.supervise_network())]
+        self.network.start(force=True)
+
+    async def supervise_network(self):
+        while not self.runtime.stopping:
+            try:
+                await self.network.ensure_tor()
+            except Exception as exc:
+                self.network.log("error", "tor_start_failed", "No se pudo iniciar Tor; se reintentará.", error_type=type(exc).__name__)
+            await asyncio.sleep(5)
 
     async def cleanup(self, app):
         self.runtime.stopping = True
@@ -78,6 +89,7 @@ class Manager:
                 await task
         await self.close_integrations()
         await self.runtime.stop()
+        await self.network.close()
 
     async def shutdown(self, app):
         self.runtime.stopping = True
@@ -417,7 +429,7 @@ async def settings(request):
     m = request.app["manager"]
     keys = ("smp_servers", "xftp_servers", "socks_proxy")
     if request.method == "GET":
-        return web.json_response({key: m.config.value.get(key, "") for key in keys})
+        return web.json_response({**{key: m.config.value.get(key, "") for key in keys}, "servers": m.network.results})
     body = await request.json()
     updates = {}
     for key in keys:
@@ -432,10 +444,19 @@ async def settings(request):
                 or any(int(part) > 255 for part in match.groups()[:4])
                 or not 1 <= int(match.group(5)) <= 65535):
             raise ValueError("SOCKS debe ser una IPv4 válida y un puerto entre 1 y 65535, por ejemplo 10.21.0.2:9050.")
+    targets = servers(updates)
+    await m.network.cancel()
     m.config.value.update(updates)
     m.config.save()
     await m.close_integrations()
     await m.runtime.restart()
+    m.network.log("info", "configuration_saved", "Configuración de red guardada; comprobaciones anteriores invalidadas.", servers=len(targets))
+    m.network.start(force=True)
+    return web.json_response({"ok": True})
+
+
+async def network_check(request):
+    request.app["manager"].network.start()
     return web.json_response({"ok": True})
 
 
@@ -615,6 +636,7 @@ async def serve():
         web.post("/api/preferences", preferences), web.get("/api/events", events),
         web.get("/api/address", address), web.get("/api/qr", qr),
         web.get("/api/settings", settings), web.post("/api/settings", settings),
+        web.post("/api/network/check", network_check),
         web.get("/api/integrations", integrations), web.post("/api/integrations", integrations),
         web.get("/api/hermes-config", hermes_config), web.get("/api/backups", backups),
         web.post("/api/backups", backups), web.post("/api/backup-options", backup_options),

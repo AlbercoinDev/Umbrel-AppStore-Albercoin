@@ -15,6 +15,14 @@ services:
         from html import escape
         from pathlib import Path
         from urllib.parse import parse_qs
+        from urllib.parse import urlsplit
+        from datetime import datetime, timezone
+        import base64
+        import json
+        import socket
+        import threading
+        import queue
+        import urllib.request
         import os
         import re
         import time
@@ -27,16 +35,18 @@ services:
 
         DEFAULTS = {
             "START_HEIGHT": "",
-            "CACHE_SIZE": "10M",
-            "COMPUTE_BACKEND": "AUTO",
-            "DB_THREADS": "",
-            "MEMORY_LIMIT": "",
+            "CACHE_SIZE": "1M",
+            "COMPUTE_BACKEND": "CPU",
+            "DB_THREADS": "2",
+            "MEMORY_LIMIT": "1GB",
             "BATCH_SIZE": "",
             "MAX_LABELS": "10",
-            "MAX_SUBSCRIPTIONS": "100",
+            "MAX_SUBSCRIPTIONS": "5",
             "METRICS_ENABLED": "true",
             "RPC_REQUEST_TIMEOUT_SECONDS": "60",
             "RPC_BATCH_SIZE": "100",
+            "SETUP_REQUIRED": "true",
+            "AUTO_PROFILE": "true",
         }
 
         FIELDS = ["START_HEIGHT", "CACHE_SIZE", "COMPUTE_BACKEND", "DB_THREADS", "MEMORY_LIMIT", "BATCH_SIZE", "MAX_LABELS", "MAX_SUBSCRIPTIONS", "METRICS_ENABLED", "RPC_REQUEST_TIMEOUT_SECONDS", "RPC_BATCH_SIZE"]
@@ -64,10 +74,10 @@ services:
                 "invalid_setting": "Invalid value for {field}. Check the expected format and try again.",
                 "title_status": "Frigate on Umbrel", "title_config": "Frigate configuration",
                 "field_START_HEIGHT_label": "Start height", "field_START_HEIGHT_help": "Optional block height where Frigate starts building its Silent Payments index. Leave empty to use Frigate's official default: 709632 on mainnet (Taproot activation), 0 on test networks. Changing this value requires deleting the DuckDB index and rebuilding from scratch because Frigate stores the index in db/frigate.duckdb and the documented index can be rebuilt from Bitcoin Core.",
-                "field_CACHE_SIZE_label": "Cache size", "field_CACHE_SIZE_help": "scriptPubKey cache size. Default 10M uses roughly 4 GB RAM according to Frigate docs. Reduce on low-memory systems.",
+                "field_CACHE_SIZE_label": "Cache size", "field_CACHE_SIZE_help": "Steady-state scriptPubKey cache entries: 1M is approximately 400 MB (estimate). New installations temporarily boost the unchanged default to 10M (about 4 GB) during initial indexing. Smaller caches slow indexing.",
                 "field_COMPUTE_BACKEND_label": "Compute backend", "field_COMPUTE_BACKEND_help": "AUTO uses GPU if available and CPU otherwise. CPU forces CPU scanning. GPU forces GPU scanning.",
                 "field_DB_THREADS_label": "DB threads", "field_DB_THREADS_help": "Optional DuckDB thread limit. Useful to reduce CPU load when computeBackend is CPU. Leave empty for Frigate default.",
-                "field_MEMORY_LIMIT_label": "Memory limit", "field_MEMORY_LIMIT_help": "Optional DuckDB memory cap, e.g. 4GB, 8GB, 1024MB. Leave empty for Frigate default.",
+                "field_MEMORY_LIMIT_label": "Memory limit", "field_MEMORY_LIMIT_help": "DuckDB pool limit, not the total app RAM. Default: 1GB in steady state, temporarily 2GB during initial indexing if unchanged. Java, scriptPubKey cache and native allocations need additional RAM. Empty uses DuckDB's default (80% of system RAM).",
                 "field_BATCH_SIZE_label": "Batch size", "field_BATCH_SIZE_help": "Optional rows per GPU dispatch. Reduce if scanning hangs or is unstable on older GPUs.",
                 "field_MAX_LABELS_label": "Max labels", "field_MAX_LABELS_help": "Maximum Silent Payments labels accepted per subscription.",
                 "field_MAX_SUBSCRIPTIONS_label": "Max subscriptions", "field_MAX_SUBSCRIPTIONS_help": "Maximum Silent Payments subscriptions per connection.",
@@ -97,10 +107,10 @@ services:
                 "invalid_setting": "Valor no válido para {field}. Revisa el formato esperado e inténtalo de nuevo.",
                 "title_status": "Frigate en Umbrel", "title_config": "Configuración de Frigate",
                 "field_START_HEIGHT_label": "Altura inicial", "field_START_HEIGHT_help": "Altura de bloque opcional donde Frigate empieza a construir su índice de Silent Payments. Déjalo vacío para usar el valor oficial por defecto de Frigate: 709632 en mainnet (activación de Taproot), 0 en redes de prueba. Cambiar este valor requiere borrar el índice DuckDB y reconstruirlo desde cero porque Frigate guarda el índice en db/frigate.duckdb y el índice documentado puede reconstruirse desde Bitcoin Core.",
-                "field_CACHE_SIZE_label": "Tamaño de caché", "field_CACHE_SIZE_help": "Tamaño de caché scriptPubKey. El valor por defecto 10M usa aproximadamente 4 GB de RAM según la documentación de Frigate. Redúcelo en sistemas con poca memoria.",
+                "field_CACHE_SIZE_label": "Tamaño de caché", "field_CACHE_SIZE_help": "Entradas de caché scriptPubKey en uso normal: 1M equivale aproximadamente a 400 MB (estimación). En instalaciones nuevas, el valor sin modificar sube temporalmente a 10M (unos 4 GB) durante la indexación inicial. Una caché menor ralentiza la indexación.",
                 "field_COMPUTE_BACKEND_label": "Backend de cálculo", "field_COMPUTE_BACKEND_help": "AUTO usa GPU si está disponible y CPU en caso contrario. CPU fuerza escaneo por CPU. GPU fuerza escaneo por GPU.",
                 "field_DB_THREADS_label": "Hilos de DB", "field_DB_THREADS_help": "Límite opcional de hilos DuckDB. Útil para reducir carga de CPU cuando computeBackend es CPU. Déjalo vacío para usar el valor por defecto de Frigate.",
-                "field_MEMORY_LIMIT_label": "Límite de memoria", "field_MEMORY_LIMIT_help": "Límite opcional de memoria DuckDB, por ejemplo 4GB, 8GB, 1024MB. Déjalo vacío para usar el valor por defecto de Frigate.",
+                "field_MEMORY_LIMIT_label": "Límite de memoria", "field_MEMORY_LIMIT_help": "Límite del pool DuckDB, no de toda la RAM de la app. Por defecto: 1GB en uso normal; temporalmente 2GB durante la indexación inicial si no se modifica. Java, la caché scriptPubKey y las asignaciones nativas requieren memoria adicional. Vacío usa el valor DuckDB por defecto (80% de la RAM del sistema).",
                 "field_BATCH_SIZE_label": "Tamaño de lote", "field_BATCH_SIZE_help": "Filas opcionales por envío a GPU. Redúcelo si el escaneo se queda colgado o es inestable en GPUs antiguas.",
                 "field_MAX_LABELS_label": "Máximo de etiquetas", "field_MAX_LABELS_help": "Máximo de etiquetas Silent Payments aceptadas por suscripción.",
                 "field_MAX_SUBSCRIPTIONS_label": "Máximo de suscripciones", "field_MAX_SUBSCRIPTIONS_help": "Máximo de suscripciones Silent Payments por conexión.",
@@ -130,6 +140,8 @@ services:
         def read_settings():
             ensure_settings()
             values = DEFAULTS.copy()
+            # Missing flags identify installations created before the setup wizard.
+            values.update(SETUP_REQUIRED="false", AUTO_PROFILE="false")
             for line in SETTINGS_FILE.read_text().splitlines():
                 if not line or line.startswith("#") or "=" not in line:
                     continue
@@ -177,7 +189,14 @@ services:
             try:
                 if not path.exists():
                     return None
-                return path.read_text(errors="replace").splitlines()
+                # Bound RAM per visitor even when Frigate's unrotated log is large.
+                with path.open("rb") as stream:
+                    stream.seek(0, 2)
+                    size = stream.tell()
+                    stream.seek(max(0, size - 131072))
+                    if size > 131072:
+                        stream.readline()
+                    return stream.read().decode(errors="replace").splitlines()
             except OSError:
                 return None
 
@@ -198,7 +217,7 @@ services:
                     error_index = index
             if error_index > ready_index:
                 return "status_attention", "detail_attention"
-            if ready_index >= 0:
+            if ready_index >= 0 or (DATA_DIR / ".service-ready").exists():
                 return "status_ready", "detail_ready"
             return "status_indexing", "detail_indexing"
 
@@ -216,9 +235,10 @@ services:
                 match = re.search(r"Indexing \d+ blocks \((\d+) to (\d+)\)", line)
                 if match:
                     tip_height = int(match.group(2))
-                match = re.search(r"Indexing progress: \d+ / \d+ blocks \([\d.]+%, height (\d+)\)", line)
+                match = re.search(r"Indexing progress: (\d+) / (\d+) blocks \([\d.]+%, height (\d+)\)", line)
                 if match:
-                    indexed_height = int(match.group(1))
+                    indexed_height = int(match.group(3))
+                    tip_height = indexed_height + int(match.group(2)) - int(match.group(1))
             if indexed_height is None or tip_height is None or tip_height <= start_height:
                 return tr(lang, "calculating"), None, start_label, tr(lang, "calculating"), str(tip_height) if tip_height is not None else tr(lang, "calculating")
             percent = max(0.0, min(100.0, ((indexed_height - start_height) / (tip_height - start_height)) * 100.0))
@@ -272,6 +292,7 @@ services:
             const area = document.createElement('textarea'); area.value = value; document.body.appendChild(area); area.select(); document.execCommand('copy'); document.body.removeChild(area); done();
           }}
           function confirmConfigSave(form) {{
+            if (form.dataset.setup === 'true') return confirm('{"¿Confirmar la altura elegida e iniciar la indexación? Una altura posterior al inicio puede omitir pagos antiguos." if lang == "es" else "Confirm the selected height and start indexing? A later start height can omit older payments."}');
             const oldHeight = form.dataset.currentStartHeight || '';
             const newHeight = (form.elements['START_HEIGHT'].value || '').trim();
             if (oldHeight !== newHeight) {{
@@ -285,6 +306,15 @@ services:
 
         def status_body(lang, message=""):
             settings = read_settings()
+            if settings["SETUP_REQUIRED"] == "true":
+                return config_body(lang, message)
+            initial = settings["AUTO_PROFILE"] == "true" and not (DATA_DIR / ".efficient-profile").exists()
+            if initial:
+                profile = "Indexación inicial: al terminar se reiniciará con el perfil eficiente." if lang == "es" else "Initial indexing: will restart with the efficient profile when complete."
+                if settings["CACHE_SIZE"] == "1M":
+                    settings["CACHE_SIZE"] = "10M"
+            else:
+                profile = "Perfil de funcionamiento configurado (sin aumento temporal de memoria)." if lang == "es" else "Configured operating profile (no temporary memory boost)."
             network = os.environ.get("APP_BITCOIN_NETWORK", "mainnet")
             lpath = LOG_FILE
             log_lines = read_log(lpath)
@@ -306,6 +336,7 @@ services:
             {msg}
             <div class="status"><span class="dot"></span>{escape(status)}</div>
             <p>{escape(detail)}</p>
+            <p class="help">{escape(profile)}</p>
             <div class="card"><h2>{escape(tr(lang, "indexing_progress"))}</h2>{progress_bar}<dl><dt>{escape(tr(lang, "progress"))}</dt><dd><code>{escape(progress_label)}</code></dd><dt>{escape(tr(lang, "start_block"))}</dt><dd><code>{escape(start_label)}</code></dd><dt>{escape(tr(lang, "indexed_block"))}</dt><dd><code>{escape(indexed_block)}</code></dd><dt>{escape(tr(lang, "chain_tip"))}</dt><dd><code>{escape(tip_block)}</code></dd></dl></div>
             <div class="connections">
               <div class="connection"><h2>{escape(tr(lang, "clearnet"))}</h2><dl><dt>{escape(tr(lang, "host"))}</dt><dd><div class="copy-row"><code class="endpoint">{escape(clearnet_host)}</code><button class="copy-button" onclick="copyValue('{escape(clearnet_host)}', this)">{escape(tr(lang, "copy"))}</button></div></dd><dt>{escape(tr(lang, "port"))}</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">{escape(tr(lang, "copy"))}</button></div></dd></dl><p>{escape(tr(lang, "clearnet_help"))}</p></div>
@@ -317,6 +348,9 @@ services:
 
         def config_body(lang, message="", values=None):
             settings = read_settings() if values is None else values
+            setup = settings["SETUP_REQUIRED"] == "true"
+            es = lang == "es"
+            setup_notice = ("Frigate está detenido. Elige la altura inicial y confirma para empezar. Vacío: historial completo desde Taproot (709632 en mainnet; 0 en redes de prueba). Una altura posterior puede omitir pagos antiguos. La indexación inicial usa temporalmente caché 10M y DuckDB 2GB; al terminar reinicia una vez con los valores de abajo. El límite DuckDB no es el consumo total de la app." if es else "Frigate is stopped. Choose a start height and confirm to begin. Empty: complete history from Taproot (709632 on mainnet; 0 on test networks). A later height may omit older payments. Initial indexing temporarily uses a 10M cache and 2GB DuckDB pool, then restarts once with the settings below. DuckDB's limit is not the app's total RAM usage.")
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else ""
             fields = []
             for key in FIELDS:
@@ -331,17 +365,149 @@ services:
                     placeholder = tr(lang, "default_suffix") if key == 'START_HEIGHT' else DEFAULTS[key]
                     control = f'<input name="{key}" value="{escape(value)}" placeholder="{escape(placeholder)}">'
                 warning = f'<p class="help"><strong>{escape(tr(lang, "important"))}</strong> {escape(tr(lang, "start_height_warning"))}</p>' if key == "START_HEIGHT" else ""
+                if key == "START_HEIGHT":
+                    control += ('<p class="help">' + ("O busca por fecha (UTC):" if es else "Or find by date (UTC):") + '</p><input type="date" id="block-date"><button type="button" id="find-block">' + ("Buscar bloque" if es else "Find block") + '</button><p class="help" id="date-result" role="status"></p>')
                 fields.append(f'<div class="field"><div><h2>{escape(label)}</h2><p class="help"><code>{escape(key)}</code></p></div><div>{control}<p class="help">{escape(help_text)}</p>{warning}</div></div>')
             return f'''
             <h1>{escape(tr(lang, "configuration"))}</h1>
             <nav><a href="/">{escape(tr(lang, "status"))}</a><a href="/config">{escape(tr(lang, "configuration"))}</a></nav>
             {msg}
-            <div class="card warning"><p>{escape(tr(lang, "config_notice"))}</p></div>
-            <form method="post" action="/config" class="card" data-current-start-height="{escape(settings['START_HEIGHT'])}" onsubmit="return confirmConfigSave(this)">
+            <div class="card warning"><p>{escape(setup_notice if setup else tr(lang, "config_notice"))}</p></div>
+            <form method="post" action="/config" class="card" data-setup="{str(setup).lower()}" data-current-start-height="{escape(settings['START_HEIGHT'])}" onsubmit="return confirmConfigSave(this)">
               {''.join(fields)}
-              <p><button type="submit">{escape(tr(lang, "save_configuration"))}</button></p>
+              <p><button type="submit">{('Confirmar e iniciar indexación' if es else 'Confirm and start indexing') if setup else escape(tr(lang, "save_configuration"))}</button></p>
             </form>
+            <script>
+            document.getElementById('find-block').onclick = async function() {{
+              const result = document.getElementById('date-result');
+              const date = document.getElementById('block-date').value;
+              if (!date) return;
+              this.disabled = true;
+              result.textContent = {'"Buscando en Bitcoin Core y Electrs…"' if es else '"Searching Bitcoin Core and Electrs…"'};
+              try {{
+                const response = await fetch('/api/block-date?date=' + encodeURIComponent(date));
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error);
+                document.querySelector('[name="START_HEIGHT"]').value = data.height;
+                result.textContent = data.height + ' · ' + data.source + ' · ' + data.block_time + ' UTC. ' + {'"Incluye un margen de 144 bloques hacia atrás. Revisa la altura antes de confirmar."' if es else '"Includes a 144-block lookback margin. Review the height before confirming."'};
+              }} catch (error) {{ result.textContent = error.message; }}
+              finally {{ this.disabled = false; }}
+            }};
+            </script>
             '''
+
+        def core_rpc(method, params):
+            host = os.environ["APP_BITCOIN_NODE_IP"]
+            port = os.environ["APP_BITCOIN_RPC_PORT"]
+            credentials = os.environ["APP_BITCOIN_RPC_USER"] + ":" + os.environ["APP_BITCOIN_RPC_PASS"]
+            request = urllib.request.Request(
+                f"http://{host}:{port}",
+                data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(),
+                headers={"Authorization": "Basic " + base64.b64encode(credentials.encode()).decode(), "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=4) as response:
+                payload = json.load(response)
+            if payload.get("error"):
+                raise ValueError("RPC unavailable")
+            return payload["result"]
+
+        def search_height(target, tip, header, floor, deadline):
+            # Median time past is monotonic on a valid chain, unlike raw timestamps.
+            low, high = floor, tip
+            while low < high:
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Date search timed out")
+                mid = (low + high) // 2
+                if header(mid)[1] < target:
+                    low = mid + 1
+                else:
+                    high = mid
+            height = max(floor, low - 144)
+            return height, header(height)[0]
+
+        def find_with_core(target, floor, deadline):
+            info = core_rpc("getblockchaininfo", [])
+            if info.get("initialblockdownload") or info["blocks"] < info.get("headers", info["blocks"]):
+                raise ValueError("Bitcoin Core is still syncing")
+            tip = info["blocks"]
+            if tip < floor:
+                raise ValueError("Chain has not reached the start height")
+            def header(height):
+                block = core_rpc("getblockheader", [core_rpc("getblockhash", [height])])
+                return block["time"], block["mediantime"]
+            if header(tip)[0] < target:
+                raise ValueError("Date is beyond the available chain")
+            return search_height(target, tip, header, floor, deadline)
+
+        def find_with_electrum(target, floor, deadline):
+            with socket.create_connection((os.environ["APP_ELECTRS_NODE_IP"], int(os.environ["APP_ELECTRS_NODE_PORT"])), timeout=4) as connection:
+                connection.settimeout(4)
+                with connection.makefile("rwb") as stream:
+                    request_id = 0
+                    def rpc(method, params):
+                        nonlocal request_id
+                        request_id += 1
+                        stream.write((json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}) + "\n").encode())
+                        stream.flush()
+                        while True:
+                            if time.monotonic() > deadline:
+                                raise TimeoutError("Date search timed out")
+                            line = stream.readline(1048577)
+                            if not line or len(line) > 1048576:
+                                raise ValueError("Invalid Electrum response")
+                            payload = json.loads(line)
+                            if payload.get("id") == request_id:
+                                if payload.get("error"):
+                                    raise ValueError("Electrum request failed")
+                                return payload["result"]
+                    rpc("server.version", ["Umbrel Frigate setup", "1.4"])
+                    tip_info = rpc("blockchain.headers.subscribe", [])
+                    tip = tip_info["height"]
+                    tip_time = int.from_bytes(bytes.fromhex(tip_info["hex"])[68:72], "little")
+                    if tip < floor or tip_time < target:
+                        raise ValueError("Date is beyond the available chain")
+                    if os.environ.get("APP_BITCOIN_NETWORK", "mainnet") == "mainnet" and tip_time < time.time() - 86400:
+                        raise ValueError("Electrs tip is stale; wait for synchronization")
+                    cache = {}
+                    def header(height):
+                        if height not in cache:
+                            start = max(0, height - 10)
+                            result = rpc("blockchain.block.headers", [start, height - start + 1])
+                            raw = bytes.fromhex(result["hex"])
+                            count = height - start + 1
+                            if result["count"] != count or len(raw) != count * 80:
+                                raise ValueError("Incomplete Electrum headers")
+                            stamps = [int.from_bytes(raw[i + 68:i + 72], "little") for i in range(0, len(raw), 80)]
+                            cache[height] = stamps[-1], sorted(stamps)[len(stamps) // 2]
+                        return cache[height]
+                    return search_height(target, tip, header, floor, deadline)
+
+        DATE_SEARCH_LOCK = threading.Lock()
+
+        def find_date(date):
+            target = int(datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+            if target > time.time():
+                raise ValueError("Fecha futura / Future date")
+            floor = 709632 if os.environ.get("APP_BITCOIN_NETWORK", "mainnet") == "mainnet" else 0
+            results = queue.Queue()
+            deadline = time.monotonic() + 30
+            def worker(name, searcher):
+                try:
+                    height, timestamp = searcher(target, floor, deadline)
+                    results.put({"height": height, "source": name, "block_time": datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")})
+                except Exception:
+                    # Never return RPC URLs, credentials or backend exception bodies.
+                    results.put(None)
+            for name, searcher in (("Bitcoin Core", find_with_core), ("Electrs", find_with_electrum)):
+                threading.Thread(target=worker, args=(name, searcher), daemon=True).start()
+            for _ in range(2):
+                try:
+                    result = results.get(timeout=max(0.01, deadline - time.monotonic()))
+                except queue.Empty:
+                    break
+                if result is not None:
+                    return result
+            raise ValueError("No se pudo resolver la fecha. Comprueba que Bitcoin Core o Electrs estén disponibles y sincronizados. / Could not resolve date; check backend availability and synchronization.")
 
         class Handler(BaseHTTPRequestHandler):
             def language(self):
@@ -349,10 +515,23 @@ services:
 
             def do_GET(self):
                 lang = self.language()
+                if urlsplit(self.path).path == "/api/block-date":
+                    if not DATE_SEARCH_LOCK.acquire(blocking=False):
+                        self.respond_json({"error": "Búsqueda en curso / Search in progress"}, 429)
+                        return
+                    try:
+                        date = parse_qs(urlsplit(self.path).query).get("date", [""])[0]
+                        self.respond_json(find_date(date))
+                    except ValueError as error:
+                        self.respond_json({"error": str(error)}, 400)
+                    finally:
+                        DATE_SEARCH_LOCK.release()
+                    return
                 if self.path.startswith("/config"):
                     self.respond(page(tr(lang, "title_config"), config_body(lang), lang, refresh=False))
                 else:
-                    self.respond(page(tr(lang, "title_status"), status_body(lang), lang, refresh=True))
+                    setup = read_settings()["SETUP_REQUIRED"] == "true"
+                    self.respond(page(tr(lang, "title_config" if setup else "title_status"), status_body(lang), lang, refresh=not setup))
 
             def do_POST(self):
                 if not self.path.startswith("/config"):
@@ -374,8 +553,15 @@ services:
                     message = tr(lang, "invalid_setting").format(field=tr(lang, f"field_{invalid}_label"))
                     self.respond(page(tr(lang, "title_config"), config_body(lang, message, new), lang, refresh=False))
                     return
+                new["SETUP_REQUIRED"] = "false"
+                new["AUTO_PROFILE"] = "true" if old["SETUP_REQUIRED"] == "true" else "false"
                 write_settings(new)
-                RESTART_FILE.write_text(str(int(time.time())) + "\n")
+                if old["SETUP_REQUIRED"] == "true":
+                    message = "Configuración confirmada. Frigate comenzará la indexación desde la altura elegida." if lang == "es" else "Setup confirmed. Frigate will begin indexing from the selected height."
+                    self.respond(page(tr(lang, "title_status"), status_body(lang, message), lang))
+                    return
+                if old["SETUP_REQUIRED"] != "true":
+                    RESTART_FILE.write_text(str(int(time.time())) + "\n")
                 if new["START_HEIGHT"] != old["START_HEIGHT"]:
                     message = tr(lang, "saved_start_height")
                 else:
@@ -386,6 +572,14 @@ services:
                 data = html.encode()
                 self.send_response(200)
                 self.send_header("content-type", "text/html; charset=utf-8")
+                self.send_header("content-length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def respond_json(self, payload, status=200):
+                data = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("content-type", "application/json")
                 self.send_header("content-length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -402,6 +596,12 @@ services:
       APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
       APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
       DEVICE_DOMAIN_NAME: "${DEVICE_DOMAIN_NAME}"
+      APP_BITCOIN_NODE_IP: "${APP_BITCOIN_NODE_IP}"
+      APP_BITCOIN_RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
+      APP_BITCOIN_RPC_USER: "${APP_BITCOIN_RPC_USER}"
+      APP_BITCOIN_RPC_PASS: "${APP_BITCOIN_RPC_PASS}"
+      APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
+      APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
     networks:
       default:
         ipv4_address: $APP_FRIGATE_WEB_IP
@@ -418,24 +618,13 @@ services:
       runtime_dir="/data/frigate/runtime"
       settings_file="/data/frigate/settings.env"
       mkdir -p /data/frigate
-      if [ ! -f "$${settings_file}" ]; then
-        {
-          printf "%s\n" "START_HEIGHT="
-          printf "%s\n" "CACHE_SIZE=10M"
-          printf "%s\n" "COMPUTE_BACKEND=AUTO"
-          printf "%s\n" "DB_THREADS="
-          printf "%s\n" "MEMORY_LIMIT="
-          printf "%s\n" "BATCH_SIZE="
-          printf "%s\n" "MAX_LABELS=10"
-          printf "%s\n" "MAX_SUBSCRIPTIONS=100"
-          printf "%s\n" "METRICS_ENABLED=true"
-          printf "%s\n" "RPC_REQUEST_TIMEOUT_SECONDS=60"
-          printf "%s\n" "RPC_BATCH_SIZE=100"
-        } > "$${settings_file}"
-      fi
       read_setting() {
         sed -n "s/^$${1}=//p" "$${settings_file}" | tail -n 1 | tr -d "\r"
       }
+      # The web service is the only creator of settings (atomic rename).
+      # Legacy settings have no SETUP_REQUIRED flag and continue unchanged.
+      while [ ! -f "$${settings_file}" ]; do sleep 2; done
+      while [ "$$(read_setting SETUP_REQUIRED)" = "true" ]; do sleep 2; done
       arch="$$(dpkg --print-architecture)"
       case "$${arch}" in
         amd64) frigate_arch="x86_64"; frigate_sha256="ebddc2f7396035459dd94c8e04bfdccf2332506d907f949d67351fb47c6fbc2f" ;;
@@ -472,6 +661,13 @@ services:
         METRICS_ENABLED="$$(read_setting METRICS_ENABLED)"
         RPC_REQUEST_TIMEOUT_SECONDS="$$(read_setting RPC_REQUEST_TIMEOUT_SECONDS)"
         RPC_BATCH_SIZE="$$(read_setting RPC_BATCH_SIZE)"
+        initial_profile="0"
+        if [ "$$(read_setting AUTO_PROFILE)" = "true" ] && [ ! -f /data/frigate/.efficient-profile ]; then
+          initial_profile="1"
+          # Only boost untouched defaults; honor custom values from the wizard.
+          if [ "$${CACHE_SIZE}" = "1M" ]; then CACHE_SIZE="10M"; fi
+          if [ "$${MEMORY_LIMIT}" = "1GB" ]; then MEMORY_LIMIT="2GB"; fi
+        fi
         network="$${APP_BITCOIN_NETWORK:-mainnet}"
         home_dir="/data/frigate"
         config_dir="$${home_dir}"
@@ -526,6 +722,10 @@ services:
           printf "%s\n" "backendElectrumServer = \"tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}\""
           printf "%s\n" ""
           printf "%s\n" "[limits]"
+          printf "%s\n" "maxConnections = 15"
+          printf "%s\n" "maxConnectionsPerIp = 15"
+          printf "%s\n" "maxSubscriptionsPerIp = 10000"
+          printf "%s\n" "maxSubscriptions = 25000"
           if [ -n "$${APP_FRIGATE_TOR_IP:-}" ]; then
             printf "%s\n" "excludedSubnets = [\"127.0.0.1/32\", \"::1/128\", \"$${APP_FRIGATE_TOR_IP}/32\"]"
           else
@@ -533,11 +733,18 @@ services:
           fi
         } >> "$${config_dir}/config.toml"
         chmod 600 "$${config_dir}/config.toml"
-        rm -f "$${home_dir}/frigate.log" "$${config_dir}/frigate.log"
+        rm -f "$${home_dir}/frigate.log" "$${config_dir}/frigate.log" "$${home_dir}/.service-ready"
         "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args} &
         frigate_pid="$$!"
         restart_requested="0"
         while kill -0 "$${frigate_pid}" 2>/dev/null; do
+          if [ ! -f "$${home_dir}/.service-ready" ] && grep -q "Electrum server listening" "$${home_dir}/frigate.log" "$${config_dir}/frigate.log" 2>/dev/null; then
+            touch "$${home_dir}/.service-ready"
+            if [ "$${initial_profile}" = "1" ] && [ "$$(read_setting AUTO_PROFILE)" = "true" ]; then
+              touch "$${home_dir}/.efficient-profile"
+              touch "$${home_dir}/.restart-requested"
+            fi
+          fi
           if [ -f "$${home_dir}/.restart-requested" ]; then
             restart_requested="1"
             rm -f "$${home_dir}/.restart-requested"

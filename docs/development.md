@@ -15,9 +15,15 @@ datos de producción, identidades reales ni claves Tor como fixtures.
 
 ## Frigate
 
-No hay una suite de pruebas automatizadas incluida. La interfaz y el arranque
-están integrados en Compose y dependen de variables de Umbrel, Bitcoin y Electrs.
-No ejecutes el Compose sin preparar un entorno de prueba. Consulta su
+La interfaz y el arranque están integrados en Compose. Sus pruebas offline usan
+solo la biblioteca estándar Python y backends/binario simulados:
+
+```sh
+python3 -m unittest discover -s albercoin-store-frigate/tests -v
+```
+
+El despliegue real depende de variables de Umbrel, Bitcoin y Electrs. No ejecutes
+el Compose sin preparar un entorno de prueba. Consulta su
 [guía](../albercoin-store-frigate/README.md).
 
 ## Onion Rotator

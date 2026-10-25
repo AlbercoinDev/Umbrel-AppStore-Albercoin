@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-frigate
 category: bitcoin
 name: Frigate
-version: "1.6.1-08"
+version: "1.6.1-09"
 tagline: Electrum server for Silent Payments
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
 description: >-
@@ -29,19 +29,20 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Umbrel package revision 08 for Frigate 1.6.1.
+  Umbrel package revision 09 for Frigate 1.6.1.
 
 
-  Fixes the status page and indexing progress on testnet and signet by reading
-  Frigate's log from its actual location and clearing it before each restart.
-  Mainnet behavior is unchanged and the existing index does not need to be
-  rebuilt.
+  New installations wait for explicit setup confirmation before starting Frigate.
+  Choose complete history, a custom block height, or find a height by UTC date
+  using the first successful local Bitcoin Core or Electrs search.
 
 
-  This revision also includes the 1.6.1 update: request limits, backend
-  reconnection, graceful shutdown and health metrics. Electrum clients connect
-  directly to Frigate on port 50005, improving subscription notifications and
-  per-IP limits. The custom banner is preserved via Frigate's bannerFile option.
+  Initial indexing temporarily uses a larger cache and DuckDB memory pool, then
+  restarts once into an efficient profile (1M cache, 1GB DuckDB pool, two CPU
+  threads). Existing settings are preserved. Small-server connection and
+  subscription limits and bounded dashboard log reads reduce resource exposure.
+  Memory pool limits are not total application RAM limits. No index rebuild is
+  required for this update.
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 backupIgnore:

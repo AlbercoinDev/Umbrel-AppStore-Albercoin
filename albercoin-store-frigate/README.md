@@ -39,6 +39,70 @@ La compatibilidad Silent Payments depende también del cliente utilizado.
 
 ## Configuración
 
+### Primer arranque: confirmación obligatoria
+
+En una instalación nueva se inicia el panel, pero **Frigate no se descarga ni
+arranca hasta confirmar la configuración**. Abre la app y elige:
+
+- **Historial completo**: deja la altura vacía. Usa el inicio oficial: bloque
+  `709632` (Taproot) en mainnet y `0` en redes de prueba.
+- **Bloque concreto**: introduce una altura inicial.
+- **Fecha**: selecciona una fecha UTC y pulsa «Buscar bloque». La altura propuesta
+  se copia al campo editable; compruébala antes de confirmar.
+
+Pulsa **«Confirmar e iniciar indexación»** para empezar. Una altura posterior
+puede omitir pagos anteriores. La confirmación queda guardada; reiniciar la app
+no vuelve a mostrar el asistente. Las instalaciones anteriores con ajustes
+existentes no necesitan confirmarlo y conservan sus valores.
+
+La búsqueda por fecha consulta Bitcoin Core y Electrs locales **en paralelo** y
+devuelve el primer resultado válido, sin servicios externos. Usa búsqueda binaria
+sobre el tiempo mediano de los últimos 11 bloques (las fechas de bloque individuales
+no son ordenadas) y retrocede 144 bloques, sin bajar del inicio permitido. Este
+margen es conservador, no una correspondencia exacta fecha/altura. Se muestra la
+fecha UTC del bloque finalmente seleccionado. Core debe haber terminado su
+sincronización; en mainnet se rechaza Electrs si su cabecera más reciente tiene
+más de 24 horas. Electrum no permite certificar por sí solo que su servidor esté
+completamente sincronizado: comprueba el estado del nodo. Las fechas futuras o
+posteriores a la punta disponible se rechazan. Si ambos servicios fallan o la
+búsqueda supera 30 segundos, el panel informa del error sin iniciar Frigate.
+
+### Memoria y perfil para uso pequeño
+
+Las instalaciones nuevas tienen los siguientes valores:
+
+| Parámetro | Indexación inicial | Funcionamiento normal |
+| --- | --- | --- |
+| Caché scriptPubKey | `10M` (~4 GB según Frigate) | `1M` (~400 MB estimados) |
+| Pool DuckDB | `2GB` | `1GB` |
+| Hilos DuckDB | `2` | `2` |
+| Backend | `CPU` | `CPU` |
+| Suscripciones Silent Payments por conexión | `5` | `5` |
+| Etiquetas por suscripción | `10` | `10` |
+
+El aumento inicial solo se aplica a los valores de caché y memoria sin modificar
+en el asistente. Si el equipo no tiene suficiente RAM para esa fase, configura
+valores diferentes antes de confirmar. Al detectar que Frigate está listo,
+se guarda `.efficient-profile` y se realiza **un único reinicio controlado** sin
+borrar el índice. Los siguientes arranques usan los valores normales. Guardar
+ajustes manuales después del asistente cancela el aumento automático, respetando
+la configuración elegida.
+
+**El límite DuckDB no limita la memoria total de Frigate**: hay que sumar Java,
+la caché y las asignaciones nativas, además de Bitcoin Core y Electrs. No se
+impone un límite duro Docker ni se garantiza una cifra total de consumo. Hay que
+medir picos de indexación y escaneos simultáneos en el hardware de destino.
+
+El paquete limita a 15 conexiones globales, 15 por IP, 10.000 suscripciones
+scripthash por IP y 25.000 globales. Las suscripciones scripthash no son las cinco
+suscripciones Silent Payments por conexión. Son límites orientativos para hasta
+cinco personas con varios dispositivos: **no son autenticación ni un límite de
+usuarios**, y pueden necesitar ajustes para wallets grandes. Tor sigue exento
+de límites por IP; los límites globales sí se aplican.
+
+El panel lee como máximo los últimos 128 KiB del log por petición y muestra las
+últimas 35 líneas. Esto limita los picos de RAM del panel, pero no rota el log.
+
 El panel permite consultar estado y modificar parámetros como altura inicial,
 caché, backend de cómputo y límites. Los ajustes se guardan en
 `data/frigate/settings.env`; al guardarlos se solicita reiniciar Frigate.
@@ -99,7 +163,18 @@ configuraciones o logs sin revisar credenciales y datos privados.
 
 ## Pruebas y actualización
 
-No se incluye una suite automatizada ni se ha desplegado la app como parte de
-esta revisión documental. Una prueba funcional requiere un entorno Umbrel con
-Bitcoin y Electrs. Consulta [desarrollo](../docs/development.md) y
+Pruebas locales sin dependencias externas, desde la raíz del repositorio:
+
+```sh
+python3 -m unittest discover -s albercoin-store-frigate/tests -v
+```
+
+Comprueban el código Python y shell real integrado en Compose: asistente,
+preservación de ajustes anteriores, confirmación HTTP, lectura acotada del log,
+búsqueda por fecha y carrera entre backends, protocolo Electrum simulado y
+transición de perfiles con un binario simulado. No descargan ni ejecutan Frigate.
+Una prueba funcional requiere un entorno Umbrel con Bitcoin y Electrs: verificar
+instalación detenida, consulta de fechas, primer arranque, transición y
+reconexión de cinco wallets, picos de RAM y actualización sin reindexar.
+Consulta [desarrollo](../docs/development.md) y
 [publicación](../docs/releasing.md) para el proceso existente.

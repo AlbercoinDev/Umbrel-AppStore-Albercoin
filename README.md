@@ -31,3 +31,8 @@ distribución. Los datos de una instalación Umbrel no se guardan en este reposi
    https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
    ```
 3. La tienda aparecerá automáticamente en tu App Store
+
+Los nombres y la ubicación de estos menús pueden variar según la versión de
+umbrelOS. Añadir la tienda no instala automáticamente sus apps. Las guías usan
+la interfaz de Umbrel como vía principal; no presuponen que todas las versiones
+incluyan los mismos scripts CLI ni que Umbrel esté en una ruta fija del host.

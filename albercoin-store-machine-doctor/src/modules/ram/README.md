@@ -1,10 +1,11 @@
-# RAM Module Placeholder
+# Diagnóstico de RAM — pendiente
 
-Future RAM diagnostics should live here.
+[Guía de Machine Doctor](../../../README.md)
 
-Candidate tools:
+Esta carpeta reserva el futuro diagnóstico de RAM; no contiene una implementación.
+Se contempla utilizar `memtester` o `stress-ng --vm`, después del diagnóstico de
+disco y del análisis térmico completo.
 
-- `memtester`
-- `stress-ng --vm`
-
-The RAM test should be added after SSD / HDD Check and full Thermal Analysis. It must be bounded, cancellable and safe for low-memory Umbrel nodes.
+La prueba deberá tener duración limitada, permitir cancelación y ser segura en
+nodos con poca memoria. Son requisitos propuestos, no funciones disponibles
+ni un compromiso de entrega.

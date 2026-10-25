@@ -1,143 +1,119 @@
 # Machine Doctor — Umbrel App
 
-[Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
+Diagnóstico de CPU para nodos Umbrel: prueba controlada con `stress-ng`, carga
+por núcleo, sensores disponibles y un informe JSON persistente.
 
-## Referencias del paquete
+[Catálogo](../README.md) · [Arquitectura](../docs/architecture.md) ·
+[Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
 
-- Versión y ficha: [`umbrel-app.yml`](umbrel-app.yml).
-- Puerto web de Umbrel y del servidor: `2190`.
-- Persistencia: `${APP_DATA_DIR}/data`, montado como `/data`; informes en `/data/reports`.
-- No declara dependencias de otras apps Umbrel.
-- Imagen: definida en [`docker-compose.yml`](docker-compose.yml), construida con [`Dockerfile`](Dockerfile) y el [workflow](../.github/workflows/machine-doctor-image.yml).
-- Pruebas: comprobación manual descrita abajo; no se incluye una suite automatizada.
-- CPU y sensores están implementados; los directorios de disco, RAM y térmica completa contienen planes pendientes.
+## Índice
 
-La guía siguiente describe el funcionamiento existente; no acredita una nueva prueba en hardware realizada durante esta revisión documental.
+- [Funciones y límites](#funciones-y-límites)
+- [Instalación y acceso](#instalación-y-acceso)
+- [Uso y configuración](#uso-y-configuración)
+- [Datos, permisos y seguridad](#datos-permisos-y-seguridad)
+- [Problemas frecuentes](#problemas-frecuentes)
+- [Desarrollo y mapa del código](#desarrollo-y-mapa-del-código)
 
-Machine Doctor is a hardware diagnostics app for Umbrel nodes. The first version focuses on CPU health: it runs a controlled `stress-ng` CPU test, tracks per-core load, reads host temperatures and frequencies where available, and saves a JSON report.
+## Funciones y límites
 
-## Features
+- Prueba CPU de cinco minutos por defecto, cancelable y de una en una.
+- Carga total y por núcleo; temperaturas y frecuencias cuando el host las expone.
+- Inventario de sensores térmicos y hwmon.
+- Resultado `PASS`, `WARNING` o `FAIL` e informe con muestras.
+- El diagnóstico puede ralentizar otras apps, especialmente en equipos modestos.
+- Temperaturas por núcleo y contadores de throttling no están disponibles en
+  todos los equipos. La ausencia de un sensor no demuestra una avería.
 
-- 5-minute CPU stress test by default
-- Live total CPU usage and per-core usage
-- CPU temperature detection when exposed by the host
-- Sensor inventory from `/sys/class/thermal` and `/sys/class/hwmon`
-- Per-core frequency readings where available
-- PASS / WARNING / FAIL result
-- Persistent JSON reports in `/data/reports`
-- Cancel button and single-test-at-a-time protection
+Los diagnósticos de disco, RAM y análisis térmico completo están pendientes.
+Sus carpetas contienen propuestas, no implementaciones. El orden previsto es
+disco (SMART con `smartctl`), análisis térmico completo y RAM (herramienta por
+decidir entre `memtester` y `stress-ng --vm`); no es un compromiso de entrega.
 
-## Installation
+## Instalación y acceso
 
-Add the Albercoin Store to Umbrel:
+Añade la tienda según el [catálogo](../README.md) e instala **Machine Doctor**
+desde Umbrel. No requiere otras apps. Abre su icono en el panel; el puerto
+de la ficha y del servidor es `2190`.
 
-```bash
-sudo ~/umbrel/scripts/repo add https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
-sudo ~/umbrel/scripts/repo update
-```
+La versión está en [`umbrel-app.yml`](umbrel-app.yml). Umbrel descarga la imagen
+de GHCR indicada en [`docker-compose.yml`](docker-compose.yml); no construye
+el Dockerfile al instalar.
 
-Then install **Machine Doctor** from the Umbrel App Store UI.
+## Uso y configuración
 
-## Permissions Required
+Pulsa **Start CPU test**, observa las muestras y consulta **View latest report**
+al terminar. Puedes cancelar la prueba. Planifica el diagnóstico cuando el nodo
+no esté ejecutando tareas sensibles al rendimiento.
 
-Machine Doctor runs inside Docker and reads host hardware information through read-only mounts:
+Variables de ejecución declaradas en Compose:
 
-- `/proc:/host/proc:ro` for CPU stats, CPU model and load average
-- `/sys:/host/sys:ro` for thermal zones, hwmon sensors and CPU frequencies
-- `/dev:/host/dev:ro` reserved for future disk diagnostics
+| Variable | Valor predeterminado | Significado |
+| --- | --- | --- |
+| `TEST_DURATION_SECONDS` | `300` | Duración; el código la limita a 5–3600 segundos |
+| `CPU_WARNING_TEMP` | `80` | Umbral de advertencia térmica, °C |
+| `CPU_CRITICAL_TEMP` | `90` | Umbral crítico, °C |
+| `CPU_FAIL_TEMP` | `100` | Umbral de fallo térmico, °C |
+| `CPU_MIN_EXPECTED_LOAD` | `90` | Carga mínima esperada, % |
 
-The first release uses `privileged: true` for broad Umbrel OS, Raspberry Pi and mini PC compatibility. The app does not expose a shell and does not accept arbitrary commands from the web interface.
+Son parámetros del contenedor, no controles editables desde el panel.
+Modificar variables de ejecución no exige reconstruir la imagen, pero sí
+recrear el servicio con el entorno actualizado. Un simple reinicio no cambia
+el entorno de un contenedor existente. No edites el despliegue de producción
+para una prueba de desarrollo.
 
-The Umbrel package uses the prebuilt `ghcr.io/albercoindev/machine-doctor` image so `stress-ng` and Python dependencies are already available when the app starts.
+## Datos, permisos y seguridad
 
-## Configuration
+`${APP_DATA_DIR}/data` se monta como `/data`; los informes se guardan en
+`/data/reports`. Incluyen metadatos, inicio y fin, CPU y núcleos, máximos y medias,
+advertencias, errores, muestras por segundo y salida de `stress-ng`.
+No hay un asistente propio de copia/restauración. Conserva los JSON que necesites
+fuera del nodo antes de desinstalar; revisa su información de hardware antes de
+compartirlos.
 
-The CPU test is controlled with environment variables in `docker-compose.yml`:
+El servicio se ejecuta como root con `privileged: true` y estos montajes:
 
-```text
-TEST_DURATION_SECONDS=300
-CPU_WARNING_TEMP=80
-CPU_CRITICAL_TEMP=90
-CPU_FAIL_TEMP=100
-CPU_MIN_EXPECTED_LOAD=90
-```
+- `/proc:/host/proc:ro`: CPU y estadísticas del host.
+- `/sys:/host/sys:ro`: sensores, frecuencias y señales del kernel.
+- `/dev:/host/dev:ro`: reservado para futuros diagnósticos de disco.
 
-`TEST_DURATION_SECONDS` is clamped between 5 and 3600 seconds.
+Los montajes de solo lectura no anulan los permisos amplios de `privileged`.
+No se expone una shell ni se aceptan órdenes arbitrarias desde la interfaz.
+La orden diagnóstica es `stress-ng --cpu <trabajadores> --timeout <duración>s
+--metrics-brief`: los trabajadores se calculan según afinidad y cuotas CPU
+detectadas, con un mínimo de uno. Al cancelar o cerrar se intenta terminar el
+proceso hijo.
 
-## How To Test
+## Problemas frecuentes
 
-For a quick development test, temporarily set:
+| Situación | Qué comprobar |
+| --- | --- |
+| No aparecen temperaturas | Disponibilidad de sensores en el host y montaje de `/sys`; algunos equipos no los exponen |
+| Carga inferior a la esperada | Cuotas CPU, núcleos disponibles, otras cargas y advertencias del informe; no concluir una avería solo por este dato |
+| Resultado `WARNING` o `FAIL` | Advertencias, errores, temperaturas y salida de `stress-ng` del JSON; el resultado resume esta prueba, no certifica toda la máquina |
+| No hay informe reciente | Si la prueba terminó, espacio disponible y escritura en `/data/reports` |
+| El nodo se ralentiza | Cancela la prueba y repítela en una ventana de mantenimiento |
 
-```yaml
-TEST_DURATION_SECONDS: "30"
-```
+No borres datos ni cambies umbrales para ocultar un resultado sin investigar.
 
-Then rebuild the Docker image for development, or install the published app through Umbrel. Open Machine Doctor, click **Start CPU test**, watch live samples, and open **View latest report** after the test finishes.
+## Desarrollo y mapa del código
 
-## Report Format
+| Ruta | Responsabilidad |
+| --- | --- |
+| `src/main.py` | Servidor FastAPI y rutas |
+| `src/modules/cpu/service.py` | Estado, muestras y coordinación de la prueba |
+| `src/modules/cpu/stress.py` | Proceso `stress-ng` y cálculo de trabajadores |
+| `src/modules/cpu/sensors.py` | Lectura de CPU, sensores y frecuencias |
+| `src/modules/cpu/report.py` | Construcción y almacenamiento de informes |
+| `src/modules/{disk,thermal,ram}/README.md` | Alcance futuro |
+| `src/static/` | Interfaz web |
 
-Reports are saved as JSON files in `/data/reports` and include:
+No hay una suite automatizada incluida. Para una comprobación manual en un
+entorno de desarrollo, establece `TEST_DURATION_SECONDS=30` al crear el
+contenedor. Reconstruye la imagen únicamente si has cambiado su código o
+dependencias. Observa inicio, muestras, cancelación e informe final. Consulta
+[desarrollo](../docs/development.md) y el
+[workflow de imagen](../.github/workflows/machine-doctor-image.yml).
 
-- App and test metadata
-- Start and finish timestamps
-- CPU model and core count
-- Max and average CPU usage
-- Max and average temperature
-- Warnings and errors
-- Full per-second samples
-- `stress-ng` output
-
-## Known Limitations
-
-- Some systems do not expose CPU temperature inside containers, even with `/sys` mounted.
-- Per-core temperatures are not universally available; Machine Doctor lists detected sensors instead.
-- Throttling detection depends on Linux exposing CPU throttle counters or processor cooling state to the container.
-- CPU frequency paths vary by kernel and CPU governor.
-- The first release does not yet implement disk, full thermal or RAM checks.
-- A CPU stress test can temporarily slow down other services on low-power nodes.
-
-## Roadmap
-
-Priority order:
-
-1. CPU Check
-2. SSD / HDD Check using `smartctl`
-3. Full Thermal Analysis
-4. RAM Check using `memtester` or `stress-ng --vm`
-
-## Architecture
-
-```text
-src/
-  main.py
-  modules/
-    cpu/
-      service.py
-      sensors.py
-      stress.py
-      report.py
-    disk/
-      README.md
-    thermal/
-      README.md
-    ram/
-      README.md
-  static/
-    index.html
-    styles.css
-    app.js
-```
-
-## Security
-
-- No arbitrary commands can be submitted from the UI.
-- The only executed diagnostic command is fixed: `stress-ng --cpu 0 --timeout <duration>s --metrics-brief`.
-- Only one CPU test can run at a time.
-- The CPU test has a bounded duration.
-- The app attempts to terminate the `stress-ng` child process when cancelling or shutting down.
-
-## Support
-
-Report issues at:
-
-https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/issues
+Esta documentación no acredita una nueva prueba en hardware.
+Soporte: [incidencias del repositorio](https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/issues).

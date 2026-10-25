@@ -45,6 +45,9 @@ parte de una comprobación documental o de estructura.
 
 ## SimpleX Chat CLI
 
+La construcción local sin publicación se describe en la
+[guía de la app](../albercoin-store-simplex-chat-cli/docs/development.md).
+
 Desde `albercoin-store-simplex-chat-cli/`, con las dependencias de
 `requirements.txt` instaladas en el entorno virtual:
 

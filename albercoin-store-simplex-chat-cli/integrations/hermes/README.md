@@ -1,5 +1,15 @@
 # Hermes Agent oficial de Umbrel
 
+[SimpleX Chat CLI](../../README.md) · [Catálogo](../../../README.md) ·
+[Arquitectura](../../../docs/architecture.md)
+
+## Índice
+
+- [Configuración desde SimpleX](#configuración-desde-simplex)
+- [Aplicar en Hermes](#aplicar-en-hermes)
+- [Información operativa](#información-operativa)
+- [Desconectar y revertir](#desconectar-y-revertir)
+
 La app SimpleX es independiente. Esta integración opcional conecta el adaptador nativo de Hermes mediante su API WebSocket y no requiere Hermes en el manifiesto Umbrel.
 Referencia de configuración: `hermes-agent` de la tienda oficial, versión `2026.9.24`. No se ha probado la conexión en un nodo real.
 

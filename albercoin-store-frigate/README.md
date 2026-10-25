@@ -6,6 +6,17 @@ Servidor Electrum para Bitcoin Silent Payments (BIP352), basado en
 [Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) ·
 [Publicación](../docs/releasing.md)
 
+## Índice
+
+- [Funcionamiento y dependencias](#funcionamiento-y-dependencias)
+- [Instalación y acceso](#instalación-y-acceso)
+- [Configuración](#configuración)
+- [Persistencia y copias](#persistencia-y-copias)
+- [Código y despliegue](#código-y-despliegue)
+- [Permisos y diagnóstico](#permisos-y-diagnóstico)
+- [Problemas frecuentes](#problemas-frecuentes)
+- [Pruebas y actualización](#pruebas-y-actualización)
+
 ## Funcionamiento y dependencias
 
 Requiere las apps Umbrel `bitcoin` y `electrs`. Utiliza Bitcoin Core para
@@ -75,6 +86,16 @@ Ante un fallo, consulta primero el panel y los logs de los servicios mediante
 las herramientas de tu instalación Umbrel. Comprueba dependencias, red Bitcoin
 y espacio disponible antes de considerar reconstruir el índice. No compartas
 configuraciones o logs sin revisar credenciales y datos privados.
+
+## Problemas frecuentes
+
+| Situación | Qué comprobar |
+| --- | --- |
+| No conecta con Bitcoin o Electrs | Que ambas dependencias estén instaladas, arrancadas y accesibles en la red de Umbrel |
+| Progreso inesperado o indexación lenta | Red Bitcoin seleccionada, sincronización del nodo, estado/logs y recursos disponibles; no borrar el índice como primera medida |
+| La wallet no conecta | Host del nodo, puerto Electrum `50005` y compatibilidad del cliente; `2125` es el panel, no Electrum |
+| No aparece dirección onion | Estado del servicio Tor y generación de su hostname; el valor provisional no es una dirección utilizable |
+| Cambiar altura exige reconstrucción | Es un efecto previsto del ajuste; revisar la advertencia antes de guardar y planificar el tiempo de reindexación |
 
 ## Pruebas y actualización
 

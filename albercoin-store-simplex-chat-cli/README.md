@@ -4,25 +4,29 @@
 
 Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.0.3** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
 
-**Estado de esta revisión:** versión 1.0.3 publicada para AMD64 y ARM64, fijada por digest en la tienda Umbrel. Se ha verificado el intercambio de texto en ambos sentidos entre dos identidades reales SimpleX 7.0.3 en contenedores de prueba, la aceptación de solicitudes, el conector autenticado y la exclusión de mensajes/credenciales del informe. No se ha ejecutado el gateway de Hermes ni desplegado esta revisión en tu nodo.
+**Estado documentado de la versión 1.0.3:** publicada para AMD64 y ARM64 y fijada por digest en la tienda. La documentación de la entrega registra intercambio de texto en ambos sentidos entre dos identidades reales SimpleX 7.0.3 en contenedores de prueba, aceptación de solicitudes, conector autenticado y exclusión de mensajes/credenciales del informe. No registra una ejecución del gateway de Hermes ni un despliegue de esta revisión en tu nodo. Estas comprobaciones no se han repetido durante la revisión documental.
+
+## Índice
+
+- [Instalación](#instalación)
+- [Acceso y funciones](#acceso-y-funciones)
+- [Procesos, red y permisos](#procesos-red-y-permisos)
+- [Persistencia](#persistencia)
+- [Restaurar una copia](#restaurar-una-copia)
+- [Hermes](#hermes)
+- [Funcionamiento y diagnóstico](#funcionamiento-y-diagnóstico)
+- [Problemas frecuentes](#problemas-frecuentes)
+- [Mapa del código](#mapa-del-código)
+- [Fuentes y licencia](#fuentes-y-licencia)
 
 ## Instalación
 
 Añade la tienda siguiendo el [README principal](../README.md) e instala **SimpleX Chat CLI** desde Umbrel. Esta carpeta y su workflow ya forman parte del repositorio; no hay que copiarlos ni incorporarlos de nuevo.
 
-### Construcción y publicación
-
-La imagen `ghcr.io/albercoindev/simplex-chat-cli:1.0.3` está publicada y fijada por su digest en `docker-compose.yml`; Umbrel la descarga sin credenciales. Para publicarla, utiliza el workflow manual **Build SimpleX Chat CLI** con `publish=true`. No se dispara por push. Las plataformas de construcción son `linux/amd64` y `linux/arm64`. El binario original se descarga de una versión fija y se comprueba contra su SHA256 oficial.
-
-La imagen está fijada por el digest `sha256:52a4a5d5358829027f926adbfbda72e1962b22ea54fc147a194daa523198ba8e`. Si se republica `1.0.3`, actualiza el digest en este `docker-compose.yml`; el workflow no impide reemplazar la etiqueta.
-
-Para construcción local alternativa, desde la raíz del repositorio y con Docker Buildx:
-
-```sh
-docker buildx build --platform linux/amd64 --load -t ghcr.io/albercoindev/simplex-chat-cli:1.0.3 ./albercoin-store-simplex-chat-cli
-```
-
-Este comando construye para AMD64 sin publicar. Para construir localmente ARM64 cambia `linux/amd64` por `linux/arm64`. El despliegue de Umbrel descarga una imagen: no construye el Dockerfile de esta carpeta.
+Umbrel descarga la imagen pública fijada en [`docker-compose.yml`](docker-compose.yml);
+no construye el Dockerfile al instalar. No requiere otras apps Umbrel.
+Las instrucciones para mantenedores están en la
+[guía de construcción](docs/development.md) y en [publicación](../docs/releasing.md).
 
 ## Acceso y funciones
 
@@ -116,13 +120,27 @@ Persistencia: `data/manager/diagnostics.jsonl`, permisos `0600`, rotación de cu
 
 ### Verificación de esta revisión
 
-Pruebas de regresión (dependencias de `requirements.txt` instaladas):
+Pruebas de regresión desde `albercoin-store-simplex-chat-cli/`, con las dependencias de `requirements.txt` instaladas en un entorno virtual:
 
 ```sh
 python3 -m unittest discover -s tests -v
 ```
 
 Cubren correlación de respuestas fuera de orden, limpieza de timeouts, redacción de errores, extracción de estados sin contenido, rotación/persistencia y enlaces cortos HTTPS de servidores SimpleX. Además se ha comprobado la interfaz en un DOM de prueba y el recorrido real entre dos identidades con SMP. La prueba del conector confirma autenticación, correlación y registros, pero no sustituye una prueba con el gateway y el modelo de Hermes.
+
+## Problemas frecuentes
+
+| Situación | Qué comprobar |
+| --- | --- |
+| Cliente local desconectado | Estado del proceso y códigos en **Registros y diagnóstico**; no borrar bases de datos como primera medida |
+| Mensaje pendiente o resultado incierto | Estado de entrega, conexión con SMP y disponibilidad del destinatario; no repetir automáticamente el envío |
+| Llegan mensajes pero no aparecen en el panel | Historial y eventos del informe para distinguir recepción interna de actualización de interfaz |
+| Contraseña distinta a la ficha Umbrel | Si se cambió desde el panel, la ficha sigue mostrando la original; consulta la recuperación en **Acceso y funciones** |
+| Conector activo pero Hermes no responde | Un cliente conectado no demuestra que Hermes esté configurado ni que su gateway/modelo funcione; revisar la guía de integración |
+| Una copia no se restaura | Compatibilidad de versiones, espacio y app detenida; conservar el original y no modificar bases manualmente |
+
+Al compartir una incidencia utiliza el informe técnico, no bases de datos,
+copias ni archivos de configuración con credenciales.
 
 ## Mapa del código
 

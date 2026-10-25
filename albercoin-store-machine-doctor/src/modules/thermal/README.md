@@ -1,13 +1,17 @@
-# Thermal Module Placeholder
+# Análisis térmico completo — pendiente
 
-Future full thermal analysis should live here.
+[Guía de Machine Doctor](../../../README.md)
 
-Planned scope:
+Esta carpeta reserva el futuro análisis térmico completo; no contiene una
+implementación. La lectura de sensores del diagnóstico CPU sí existe en el
+módulo CPU, pero no equivale a este análisis independiente.
 
-- Inventory all host sensors
-- Distinguish CPU, board, NVMe/SATA and GPU temperatures where possible
-- Track minimum, maximum and average values
-- Reuse sample history from CPU, disk and RAM checks
-- Generate thermal-focused reports
+Alcance propuesto:
 
-This module is intentionally not implemented in v0.1.0.
+- Inventariar sensores del host.
+- Distinguir temperaturas de CPU, placa, NVMe/SATA y GPU cuando sea posible.
+- Registrar mínimos, máximos y medias.
+- Reutilizar muestras de diagnósticos CPU, disco y RAM.
+- Generar informes específicos de temperatura.
+
+Son planes, no funciones disponibles ni un compromiso de entrega.

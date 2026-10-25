@@ -1,13 +1,14 @@
-# Disk Module Placeholder
+# Diagnóstico de disco — pendiente
 
-Future SSD / HDD diagnostics should live here.
+[Guía de Machine Doctor](../../../README.md)
 
-Planned scope:
+Esta carpeta reserva el futuro diagnóstico SSD/HDD; no contiene una implementación.
+Alcance propuesto:
 
-- Detect disks from `/host/dev` and `/host/sys/block`
-- Read SMART data with `smartctl`
-- Report disk temperature, power-on hours, reallocated sectors and errors
-- Detect SSD/NVMe life percentage when available
-- Produce disk health reports without destructive writes
+- Detectar discos mediante `/host/dev` y `/host/sys/block`.
+- Consultar SMART con `smartctl`.
+- Informar de temperatura, horas de uso, sectores reasignados y errores.
+- Leer vida útil SSD/NVMe cuando esté disponible.
+- Generar informes sin escrituras destructivas.
 
-This module is intentionally not implemented in v0.1.0. CPU Check is the first priority.
+Son planes, no funciones disponibles ni un compromiso de entrega.

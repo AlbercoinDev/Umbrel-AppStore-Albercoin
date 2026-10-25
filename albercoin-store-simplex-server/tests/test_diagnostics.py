@@ -18,7 +18,7 @@ class DiagnosticTests(unittest.TestCase):
         protocol_result('Current user: ServerProbe\nSMP server test passed', 0)
 
     def test_protocol_errors_sanitized(self):
-        for output, code in [('smp://SECRET CreateQueue AUTH PASSWORD', 'authorization'), ('BROKER TIMEOUT SECRET', 'smp_timeout'), ('SECRET other', 'smp_failed')]:
+        for output, code in [('SMP server test failed at CreateQueue, error: SECRET AUTH PASSWORD', 'authorization'), ('BROKER TIMEOUT SECRET', 'smp_timeout'), ('SMP server test failed at Connect, error: SECRET HOST', 'smp_connect'), ('SMP server test failed at Connect, error: SECRET TRANSPORT', 'smp_tls'), ('SECRET other', 'smp_failed')]:
             with self.subTest(code=code), self.assertRaises(ProbeError) as error:
                 protocol_result(output, 1)
             self.assertEqual(error.exception.code, code)
@@ -106,6 +106,35 @@ class DiagnosticTests(unittest.TestCase):
             with patch('diagnostics.onion_socket', side_effect=OSError('SECRET')), patch('diagnostics.time.monotonic', side_effect=[0, 0, 100]), self.assertRaises(ProbeError) as error:
                 probe.connect_onion(19050, 'fixture.onion')
             self.assertEqual(error.exception.code, 'onion_unavailable')
+
+    def test_cli_retries_only_explicit_connect_failure(self):
+        with tempfile.TemporaryDirectory() as root:
+            probe = Diagnostics(root)
+            probe.state['steps'] = [dict(id='smp', status='running')]
+            first, second = MagicMock(), MagicMock()
+            first.communicate.return_value = ('SMP server test failed at Connect, error: SECRET HOST', None)
+            second.communicate.return_value = ('SMP server test passed', None)
+            for child in (first, second):
+                child.returncode = 0
+                child.poll.return_value = 0
+            with patch('diagnostics.subprocess.Popen', side_effect=[first, second]) as launch, patch('diagnostics.time.monotonic', return_value=0), patch.object(probe.cancelled, 'wait'):
+                probe.protocol_test({'password': 'SECRET', 'fingerprint': 'fp', 'onion': 'fixture.onion'}, 9050, Path(root))
+            self.assertEqual(launch.call_count, 2)
+            self.assertEqual(probe.snapshot()['steps'][0]['attempts'], 2)
+            self.assertNotIn('SECRET', str(probe.snapshot()))
+
+    def test_cli_does_not_retry_queue_auth_failure(self):
+        with tempfile.TemporaryDirectory() as root:
+            probe = Diagnostics(root)
+            probe.state['steps'] = [dict(id='smp', status='running')]
+            child = MagicMock()
+            child.communicate.return_value = ('SMP server test failed at CreateQueue, error: AUTH', None)
+            child.returncode = 0
+            child.poll.return_value = 0
+            with patch('diagnostics.subprocess.Popen', return_value=child) as launch, patch('diagnostics.time.monotonic', return_value=0), self.assertRaises(ProbeError) as error:
+                probe.protocol_test({'password': 'SECRET', 'fingerprint': 'fp', 'onion': 'fixture.onion'}, 9050, Path(root))
+            self.assertEqual(launch.call_count, 1)
+            self.assertEqual(error.exception.code, 'authorization')
 
     def test_control_errors_not_returned(self):
         stream = MagicMock()

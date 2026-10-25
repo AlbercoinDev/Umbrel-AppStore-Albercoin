@@ -49,6 +49,9 @@ prueba sin eliminar. Solo se permite una prueba concurrente y 60 segundos entre
 inicios. Los resultados no incluyen URI, contraseñas ni salida cruda del CLI.
 La conexión onion se reintenta durante un máximo aproximado de 90 segundos y
 se informa de los intentos; la creación de colas no se reintenta automáticamente.
+Si el CLI informa explícitamente un fallo en `Connect` (antes de crear colas),
+se permiten hasta tres intentos dentro de su límite total de 90 segundos.
+No se reintentan rechazos TLS ni fallos posteriores a la conexión.
 El control Tor no se publica como puerto TCP: utiliza socket Unix y cookie
 privados. El healthcheck detecta procesos SMP/Tor detenidos, pero no ejecuta
 la prueba end-to-end. El supervisor reintenta recuperar procesos con backoff,

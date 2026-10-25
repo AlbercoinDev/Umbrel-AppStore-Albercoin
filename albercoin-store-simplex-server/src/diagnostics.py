@@ -35,6 +35,8 @@ MESSAGES = {
     'onion_unavailable': 'El Tor independiente no ha podido alcanzar el onion:5223. Puede no estar publicado o disponible todavía.',
     'authorization': 'SMP rechazó la autorización para crear colas. La contraseña no coincide con la configuración del relay.',
     'smp_timeout': 'La conexión TLS funciona, pero la prueba SMP agotó su tiempo límite.',
+    'smp_connect': 'El CLI no pudo abrir una nueva conexión Tor al relay. No llegó a crear una cola; revisa el acceso onion y vuelve a probar.',
+    'smp_tls': 'El CLI rechazó el transporte o la identidad TLS del relay; no se ha confirmado la prueba SMP.',
     'smp_failed': 'La prueba SMP no terminó correctamente. No se ha confirmado la autorización ni la limpieza de la cola.',
     'cancelled': 'Prueba cancelada; no se modificó la identidad del servidor.',
     'internal': 'No se pudo completar la prueba. Comprueba espacio disponible y vuelve a intentarlo.',
@@ -42,8 +44,9 @@ MESSAGES = {
 
 
 class ProbeError(Exception):
-    def __init__(self, code):
+    def __init__(self, code, step=None):
         self.code = code
+        self.step = step
 
 
 def read_exact(connection, size):
@@ -105,8 +108,14 @@ def tls_context(ca_pem, fingerprint):
 def protocol_result(output, returncode):
     if returncode == 0 and 'SMP server test passed' in output:
         return
-    if re.search(r'\bAUTH\b', output) and 'CreateQueue' in output:
-        raise ProbeError('authorization')
+    match = re.search(r'failed at\s+(Connect|Disconnect|CreateQueue|SecureQueue|DeleteQueue)\b', output, re.IGNORECASE)
+    step = match.group(1).lower() if match else None
+    if re.search(r'\bAUTH\b', output) and step == 'createqueue':
+        raise ProbeError('authorization', step)
+    if step == 'connect':
+        if any(token in output.upper() for token in ('CERTIFICATE', 'HANDSHAKE', 'TRANSPORT', 'IDENTITY')):
+            raise ProbeError('smp_tls', step)
+        raise ProbeError('smp_connect', step)
     if 'TIMEOUT' in output:
         raise ProbeError('smp_timeout')
     raise ProbeError('smp_failed')
@@ -206,25 +215,49 @@ class Diagnostics:
                    '--user-display-name', 'ServerProbe', '--server', uri, '--smp-proxy', 'never',
                    '--socks-proxy', f'127.0.0.1:{socks_port}', '--socks-mode', 'always',
                    '--execute-log', 'none', '-e', '/smp test ' + uri, '-t', '1']
-        child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        try:
-            deadline = time.monotonic() + 90
-            while time.monotonic() < deadline:
-                self.check_cancelled()
-                try:
-                    output, _ = child.communicate(timeout=.5)
-                    protocol_result(output, child.returncode)
-                    return
-                except subprocess.TimeoutExpired:
-                    pass
-            raise ProbeError('smp_timeout')
-        finally:
-            if child.poll() is None:
-                try:
-                    child.kill()
-                except ProcessLookupError:
-                    pass
-            child.communicate()
+        deadline = time.monotonic() + 90
+        attempts = 0
+        while time.monotonic() < deadline:
+            self.check_cancelled()
+            attempts += 1
+            with self.lock:
+                entry = next(item for item in self.state['steps'] if item['id'] == 'smp')
+                entry.update(attempts=attempts)
+            child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try:
+                while time.monotonic() < deadline:
+                    self.check_cancelled()
+                    try:
+                        output, _ = child.communicate(timeout=.5)
+                        with self.lock:
+                            entry['exit_status'] = child.returncode
+                            entry['signals'] = [token for token in ('BROKER', 'NETWORK', 'SOCKS', 'HOST', 'AUTH', 'TIMEOUT', 'TRANSPORT', 'TLS', 'DATABASE', 'SQLITE', 'LOCKED') if re.search(r'\b' + token + r'\b', output, re.IGNORECASE)]
+                        try:
+                            protocol_result(output, child.returncode)
+                        except ProbeError as error:
+                            with self.lock:
+                                entry['test_step'] = error.step
+                            # Explicit Connect failure means no queue was created.
+                            # Never retry any later protocol stage or TLS rejection.
+                            if error.code == 'smp_connect' and attempts < 3 and deadline - time.monotonic() > 10:
+                                self.cancelled.wait(3)
+                                break
+                            raise
+                        with self.lock:
+                            entry.pop('test_step', None)
+                        return
+                    except subprocess.TimeoutExpired:
+                        pass
+                else:
+                    raise ProbeError('smp_timeout')
+            finally:
+                if child.poll() is None:
+                    try:
+                        child.kill()
+                    except ProcessLookupError:
+                        pass
+                child.communicate()
+        raise ProbeError('smp_timeout')
 
     def run(self, target):
         child = None

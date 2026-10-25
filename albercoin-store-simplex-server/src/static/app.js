@@ -14,7 +14,7 @@ async function refreshStatus() {
     list.replaceChildren();
     for (const step of probe.steps) {
       const item = document.createElement('li');
-      item.textContent = `${step.label}: ${labels[step.status] || step.status}${step.detail ? ' — ' + step.detail : ''}${step.seconds !== undefined ? ' (' + step.seconds + ' s)' : ''}`;
+      item.textContent = `${step.label}: ${labels[step.status] || step.status}${step.detail ? ' — ' + step.detail : ''}${step.test_step ? ' [fase CLI: ' + step.test_step + ']' : ''}${step.status === 'failed' && step.signals?.length ? ' [códigos: ' + step.signals.join(', ') + ']' : ''}${step.status === 'failed' && step.exit_status !== undefined ? ' [salida: ' + step.exit_status + ']' : ''}${step.attempts > 1 ? ' [intentos: ' + step.attempts + ']' : ''}${step.seconds !== undefined ? ' (' + step.seconds + ' s)' : ''}`;
       list.appendChild(item);
     }
     document.getElementById('probe-summary').textContent = probe.status === 'running' ?

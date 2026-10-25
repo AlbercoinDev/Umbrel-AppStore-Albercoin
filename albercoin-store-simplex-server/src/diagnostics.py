@@ -220,13 +220,20 @@ class Diagnostics:
                     raise ProbeError('local_unavailable') from None
 
             self.step('local_tls', local_tls)
-            directory = self.root / 'probe-tor'
-            directory.mkdir(mode=0o700, exist_ok=True)
-            config = directory / 'torrc'
-            config.write_text(f'DataDirectory {directory}\nSocksPort auto\nClientOnly 1\nAvoidDiskWrites 1\nLog notice stdout\n' + control_config(directory))
-            config.chmod(0o600)
-            child = subprocess.Popen(['tor', '-f', str(config)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            socks_port = self.step('probe_tor', lambda: self.wait_tor(child, directory))
+            def start_probe_tor():
+                nonlocal child
+                directory = self.root / 'probe-tor'
+                try:
+                    directory.mkdir(mode=0o700, exist_ok=True)
+                    config = directory / 'torrc'
+                    config.write_text(f'DataDirectory {directory}\nSocksPort auto\nClientOnly 1\nAvoidDiskWrites 1\nLog notice stdout\n' + control_config(directory))
+                    config.chmod(0o600)
+                    child = subprocess.Popen(['tor', '-f', str(config)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except OSError:
+                    raise ProbeError('tor_start') from None
+                return self.wait_tor(child, directory)
+
+            socks_port = self.step('probe_tor', start_probe_tor)
 
             def connect_onion():
                 try:
@@ -246,8 +253,11 @@ class Diagnostics:
                     raise ProbeError('onion_unavailable') from None
 
             self.step('tls', remote_tls)
-            with tempfile.TemporaryDirectory(prefix='smp-probe-') as temporary:
-                self.step('smp', lambda: self.protocol_test(target, socks_port, Path(temporary)))
+            def test_protocol():
+                with tempfile.TemporaryDirectory(prefix='smp-probe-') as temporary:
+                    self.protocol_test(target, socks_port, Path(temporary))
+
+            self.step('smp', test_protocol)
         except ProbeError as error:
             failure = error.code
         except Exception:

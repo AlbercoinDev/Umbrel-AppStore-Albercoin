@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
-from diagnostics import Diagnostics, ProbeError, onion_socket, protocol_result, tls_context
+from diagnostics import Diagnostics, ProbeError, STEPS, onion_socket, protocol_result, tls_context
 from tor_control import command, query
 
 
@@ -75,6 +75,18 @@ class DiagnosticTests(unittest.TestCase):
             state = probe.snapshot()
             state['status'] = 'running'
             self.assertEqual(probe.snapshot()['status'], 'idle')
+
+    def test_tor_start_failure_is_assigned_to_correct_phase(self):
+        with tempfile.TemporaryDirectory() as root:
+            probe = Diagnostics(root)
+            probe.state = {'status': 'running', 'steps': [dict(id=key, label=label, status='pending') for key, label in STEPS]}
+            with patch('diagnostics.tls_context', return_value=MagicMock()), patch('diagnostics.socket.create_connection'), patch('diagnostics.Path.mkdir', side_effect=OSError('SECRET raw filesystem error')):
+                probe.run({'ca_pem': 'pem', 'fingerprint': 'fp', 'onion': 'fixture.onion'})
+            result = probe.snapshot()
+            self.assertEqual(result['code'], 'tor_start')
+            self.assertEqual(result['steps'][0]['status'], 'passed')
+            self.assertEqual(result['steps'][1]['status'], 'failed')
+            self.assertNotIn('SECRET', str(result))
 
     def test_control_errors_not_returned(self):
         stream = MagicMock()

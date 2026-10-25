@@ -1,4 +1,4 @@
-# SimpleX Chat CLI 1.0.4 · preparación de actualización
+# SimpleX Chat CLI 1.0.4 · actualización de la tienda
 
 El gestor pasa a 1.0.4; el binario SimpleX permanece en v7.0.3. Esta revisión
 no cambia los permisos del conector ni la configuración de Hermes.
@@ -54,12 +54,20 @@ sudo python3 ./albercoin-store-simplex-chat-cli/scripts/restore.py \
 El descifrado temporal necesita espacio adicional y se elimina al terminar.
 La copia sigue incluyendo credenciales y ajustes del gestor.
 
-## Publicación pendiente
+## Publicación
 
-El Compose de la tienda y su manifiesto mantienen la última imagen publicada
-1.0.3 hasta disponer de una imagen 1.0.4 multi-arquitectura verificada y su digest.
-No sustituir el digest por uno local ni anunciar una actualización instalable
-que siga descargando el gestor antiguo.
+Publicada el 25 de octubre de 2026 para AMD64 y ARM64 mediante
+[GitHub Actions](https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/actions/runs/40179963294),
+con las pruebas Python y DOM correctas. La imagen procede del commit `2078481`.
+El manifiesto Umbrel anuncia 1.0.4 y el Compose fija la imagen pública por digest:
+
+```text
+ghcr.io/albercoindev/simplex-chat-cli:1.0.4@sha256:3a367038894d8845cdecd885b0a244c4d36618d975d70cec7338383a19cd1eda
+```
+
+Se han comprobado el índice multi-arquitectura, su descarga anónima y la versión
+del gestor y presencia de age en la imagen AMD64 publicada. No se ha modificado
+la instalación de ningún nodo Umbrel.
 
 Para probar las fuentes localmente sin publicar:
 
@@ -75,9 +83,9 @@ acceso a SMP público y no debe apuntarse a datos o puertos de producción.
 `tests/ui.cjs` utiliza jsdom (26) para comprobar respuestas fuera de orden,
 borradores, envío lento, cancelación de borrado y limpieza al cerrar sesión.
 
-Antes de publicar: reconstruir las fuentes finales para AMD64 y ARM64, ejecutar
-las pruebas, publicar por el workflow manual y actualizar conjuntamente la imagen,
-el digest, el manifiesto Umbrel y las notas de versión.
+Para futuras entregas: reconstruir las fuentes finales para AMD64 y ARM64,
+ejecutar las pruebas, publicar por el workflow manual y actualizar conjuntamente
+la imagen, el digest, el manifiesto Umbrel y las notas de versión.
 
 ## Verificación realizada en esta revisión
 
@@ -91,5 +99,6 @@ el digest, el manifiesto Umbrel y las notas de versión.
 - Copia age sin archivo descargable en claro y restauración offline verificadas.
 - Revisión visual en navegador, escritorio y marco móvil de 390 px, sin desbordamiento.
 
-No se ha construido ni ejecutado ARM64, publicado la imagen, actualizado un nodo
-Umbrel ni probado Hermes completo. El conector mantiene sus permisos anteriores.
+La imagen ARM64 se ha construido y publicado, pero no se ha probado funcionalmente
+en hardware ARM64. No se ha actualizado ningún nodo Umbrel ni probado Hermes
+completo. El conector mantiene sus permisos anteriores.

@@ -1,7 +1,8 @@
-# SimpleX Chat CLI · Albercoin · fuentes v1.0.4
+# SimpleX Chat CLI · Albercoin · v1.0.4
 
-**Actualización 1.0.4 preparada en las fuentes; publicación pendiente.** La imagen
-de la tienda sigue fijada a 1.0.3 hasta publicar y verificar ambas arquitecturas.
+**Actualización 1.0.4 publicada para AMD64 y ARM64 y fijada por digest en la tienda.**
+Las copias locales con más de 10 días se eliminan automáticamente al actualizar;
+descarga antes las que quieras conservar fuera del nodo.
 Consulta [cambios, retención de copias y restauración cifrada](docs/release-1.0.4.md).
 
 [Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)

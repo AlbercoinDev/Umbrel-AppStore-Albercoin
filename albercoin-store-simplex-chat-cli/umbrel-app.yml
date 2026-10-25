@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-simplex-chat-cli
 category: social
 name: SimpleX Chat CLI
-version: "1.0.3"
+version: "1.0.4"
 tagline: Private messaging with web management and optional agents
 description: >-
   Run SimpleX Chat CLI independently on your Umbrel. Manage your profile,
@@ -10,6 +10,9 @@ description: >-
 
 
   Your databases, settings and local backups persist in this app's own data directory.
+  Local backups expire automatically after 10 days. Optional scheduled backups and
+  age encryption are available; keep downloaded backups and private keys outside
+  the node if you need longer retention.
   An optional authenticated WebSocket connector supports Hermes Agent and other
   SimpleX API clients. Hermes is not required. Text messaging is the supported
   integration scope for this release; attachments and calls are not included.
@@ -33,11 +36,13 @@ dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Versión 1.0.3: corrige la detección y aceptación de solicitudes de contacto
-  de SimpleX 7.0.3 y evita enviar a contactos pendientes. Añade Registros y
-  diagnóstico con filtros, códigos de error, seguimiento de operaciones e
-  informes copiables y descargables sin mensajes ni credenciales. Incluye
-  ayudas en los campos, estados de entrega legibles y una guía para conectar
-  Hermes Agent. Admite enlaces cortos HTTPS de servidores SimpleX. Envío y
-  recepción verificados entre dos identidades SimpleX. Conserva los datos y
-  mantiene SimpleX Chat CLI v7.0.3.
+  Versión 1.0.4: añade vaciado de historial local, eliminación de contactos
+  y mensajes y salida de grupos con confirmación. Incorpora historial paginado,
+  búsqueda, borradores por conversación en memoria, no leídos, fijados,
+  respuestas con cita, edición y actualizaciones en tiempo real.
+  Añade gestión de espacio, eliminación de copias, programación y cifrado age
+  opcionales. IMPORTANTE: las copias locales con más de 10 días se eliminan
+  automáticamente, incluidas las existentes. Descarga antes de actualizar las
+  que quieras conservar fuera del nodo. Vaciar un chat no borra las copias
+  anteriores ni los datos de otros dispositivos. Mantiene SimpleX Chat CLI
+  v7.0.3 y los permisos anteriores del conector; no modifica Hermes.

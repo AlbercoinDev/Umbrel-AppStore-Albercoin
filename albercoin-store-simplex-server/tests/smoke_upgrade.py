@@ -36,7 +36,7 @@ else:
     assert 'tor-check-1' in html
     assert json.load(http.open(base + '/service-status'))['smp']
 assert 'smp://' in html
-paths = ['/etc/opt/simplex/ca.crt', '/etc/opt/simplex/fingerprint', '/data/tor/smp/hostname', '/data/tor/smp/hs_ed25519_secret_key', '/data/queue-password', '/data/admin-hash', '/data/session-key']
+paths = ['/etc/opt/simplex/ca.crt', '/etc/opt/simplex/ca.key', '/etc/opt/simplex/server.crt', '/etc/opt/simplex/server.key', '/etc/opt/simplex/fingerprint', '/data/tor/smp/hostname', '/data/tor/smp/hs_ed25519_secret_key', '/data/queue-password', '/data/admin-hash', '/data/session-key']
 print(json.dumps({path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in paths}, sort_keys=True))
 '''
 try:

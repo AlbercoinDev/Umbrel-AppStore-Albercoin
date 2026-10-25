@@ -60,3 +60,30 @@ una copia offline de los datos antes de actualizar una app preliminar.
 No se ha confirmado todavía la causa del error del móvil en el nodo del usuario.
 Esta revisión permite identificarla; no promete resolver una configuración Tor
 ausente en el cliente.
+
+## Publicación y verificación
+
+- Imagen: `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-1`.
+- Digest del índice AMD64/ARM64: `sha256:32571f01b8fa52cbfcaf7824287609e7467d2a4abe9031604c97b565d9944836`.
+- Código de la imagen: `fa60ad92122c86f8067ff5ed649ce3b0af0ef2db`.
+- [Workflow nativo de publicación](https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin/actions/runs/40198924013).
+
+En ambas arquitecturas pasaron 34 pruebas unitarias, el smoke test SMP/Tor y la
+instalación inicial **Solo Tor** mediante el panel, con el entrypoint real, UID
+1000 y capacidades reducidas. Desde otro Tor se completó TLS y la prueba oficial
+SMP. Contra la misma identidad se probó una contraseña incorrecta: se detectó
+`AUTH` en `createqueue` sin modificar la configuración del relay.
+
+También se comprobó en AMD64 la actualización de la imagen inicial a la imagen
+publicada conservando certificados y claves SMP, huella, dirección/clave onion,
+contraseña SMP, hash administrativo y clave de sesión. El manifiesto del registro
+se consultó anónimamente y se verificó su SHA-256. La imagen publicada se descargó
+con configuración Docker de credenciales vacía y se comprobó su arranque. Las
+pruebas utilizan datos desechables, no los del nodo del usuario.
+
+Durante el afinado hubo pruebas online fallidas con servicios onion recién
+creados: se añadieron reintentos de transporte acotados y más diagnóstico. La
+prueba de CI se consolidó en el contenedor real (no en una sucesión de fixtures
+root con servicios nuevos), manteniendo positivos y negativos contra una misma
+identidad. No se ocultó la necesidad de comprobar desde un Tor independiente ni
+se relajó la verificación TLS. Sigue pendiente la prueba en tu Umbrel y móvil.

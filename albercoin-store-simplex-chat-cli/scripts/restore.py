@@ -6,6 +6,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -14,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--identity", type=Path, help="Clave privada age para copias .age; requiere age instalado")
     parser.add_argument("--confirm", required=True, choices=["APP-STOPPED-RESTORE"])
     args = parser.parse_args()
     data, archive_path = args.data.resolve(), args.archive.resolve()
@@ -23,7 +25,16 @@ def main():
         raise SystemExit("No existe el directorio de datos de la app.")
     os.umask(0o077)
     staging = Path(tempfile.mkdtemp(prefix=".simplex-restore-", dir=data))
+    decrypted = None
     try:
+        if archive_path.name.endswith(".age"):
+            if args.identity is None:
+                raise SystemExit("Indica --identity con tu clave privada age (guardada fuera del nodo).")
+            if archive_path.stat().st_size > shutil.disk_usage(data).free - 256 * 1024 * 1024:
+                raise SystemExit("Espacio insuficiente para descifrar la copia temporalmente.")
+            decrypted = staging / "decrypted.tar.gz"
+            subprocess.run(["age", "--decrypt", "-i", str(args.identity), "-o", str(decrypted), str(archive_path)], check=True)
+            archive_path = decrypted
         with tarfile.open(archive_path, "r:gz") as archive:
             members = archive.getmembers()
             if len(members) > 200000:
@@ -50,7 +61,7 @@ def main():
                     with source, target.open("xb") as output:
                         shutil.copyfileobj(source, output)
             info = json.loads((staging / "backup-info.json").read_text())
-            if info.get("app") not in ("1.0.0", "1.0.1", "1.0.2", "1.0.3") or info.get("simplex") != "v7.0.3":
+            if info.get("app") not in ("1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4") or info.get("simplex") != "v7.0.3":
                 raise SystemExit("Versión de copia no compatible con esta restauración.")
         if not (staging / "manager/admin-auth.json").is_file() or not list((staging / "simplex").glob("*_chat.db")):
             raise SystemExit("Copia incompleta: faltan las bases de datos o la configuración.")

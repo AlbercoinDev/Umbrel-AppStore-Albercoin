@@ -1,4 +1,8 @@
-# SimpleX Chat CLI · Albercoin · v1.0.3
+# SimpleX Chat CLI · Albercoin · fuentes v1.0.4
+
+**Actualización 1.0.4 preparada en las fuentes; publicación pendiente.** La imagen
+de la tienda sigue fijada a 1.0.3 hasta publicar y verificar ambas arquitecturas.
+Consulta [cambios, retención de copias y restauración cifrada](docs/release-1.0.4.md).
 
 [Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
 
@@ -37,9 +41,16 @@ Las instrucciones para mantenedores están en la
 - Si falta esa variable, contraseña aleatoria en `data/manager/initial-password.txt`, permisos `0600`; también puede establecerse una propia desde la pantalla de acceso.
 - Sesiones de 12 horas, cookies HttpOnly y SameSite, controles CSRF y límite de intentos de acceso.
 - Perfil editable; dirección persistente con QR generado localmente; conexiones y solicitudes con aceptación manual.
-- Chats de texto directos y de grupo. Lista de hasta 200 conversaciones recientes y 100 entradas por historial; la consola permite otras consultas.
+- Chats de texto directos y de grupo. Páginas de 200 conversaciones y 100 entradas,
+  con carga de anteriores, búsqueda de mensajes, filtros y conversaciones fijadas.
+- Borradores independientes en memoria, copiar, citar y editar mensajes compatibles.
+  Vaciado local, eliminación de contactos y mensajes y salida de grupos con confirmación.
+- Vista previa opcional desactivada inicialmente; avisos SSE sin contenido y notificaciones
+  privadas opcionales del navegador, no push con el panel cerrado.
 - El estado técnico de entrega del cliente aparece junto al mensaje. Aceptación de una orden no significa recepción en el otro dispositivo.
-- Copias consistentes mediante parada del cliente; descarga y restauración offline.
+- Copias consistentes mediante parada del cliente; descarga, borrado individual,
+  programación opcional, cifrado age opcional y restauración offline.
+  **Retención máxima obligatoria de 10 días**, también para copias existentes.
 - Consola de órdenes SimpleX, con permisos administrativos completos, accesible solo tras autenticarse.
 - Servidores y proxy modificables desde la interfaz. Al guardar se reinicia el cliente, sin reiniciar otras apps. El proxy SOCKS debe ser una IPv4 con puerto entre 1 y 65535; se valida antes de aplicarlo.
 
@@ -66,10 +77,15 @@ El contenedor inicia brevemente como root para preparar la propiedad del volumen
 ${APP_DATA_DIR}/data/
 ├── simplex/              # Bases de datos y carpeta files del cliente
 ├── manager/              # Ajustes y hash de contraseña; token del conector en settings.json
-└── backups/              # Archivos tar.gz, sin borrado automático
+└── backups/              # tar.gz o tar.gz.age; caducan a los 10 días
 ```
 
-Recrear el contenedor no elimina estos datos. Desinstalar la app en Umbrel puede eliminarlos. Las bases de datos y las copias no reciben cifrado adicional por parte de este gestor: protege el disco y las copias. La confidencialidad del protocolo SimpleX no equivale al cifrado de estos archivos en reposo.
+Recrear el contenedor no elimina estos datos. Desinstalar la app en Umbrel puede eliminarlos. Las bases de datos no reciben cifrado adicional por parte del gestor. Las copias solo se cifran si configuras una clave pública age; las antiguas no se recifran. Protege el disco y las claves privadas. La confidencialidad del protocolo SimpleX no equivale al cifrado de estos archivos en reposo.
+
+La limpieza de copias se realiza al arrancar, cada minuto y al listar o descargar;
+se basa en la fecha UTC del nombre generado por la app. Si la app está detenida,
+se limpiarán al siguiente arranque. Descarga fuera del nodo las copias que quieras
+conservar más de diez días. Vaciar un chat no borra las copias anteriores.
 
 Las copias incluyen identidad, mensajes, archivos y credenciales del gestor. Descárgalas y guárdalas en almacenamiento privado fuera del nodo. Antes de una migración de versión el gestor conserva una copia offline si detecta una base existente con un marcador de versión diferente. No se realiza un downgrade automático de bases de datos.
 
@@ -86,7 +102,7 @@ sudo python3 ./albercoin-store-simplex-chat-cli/scripts/restore.py \
 ```
 
 Sustituye la ruta de archivo de ejemplo por la de tu copia. El asistente no comprueba mediante Docker si la app está detenida: debes detenerla antes.
-Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0`, `1.0.1`, `1.0.2` y `1.0.3` con SimpleX `v7.0.3`.
+Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0` a `1.0.4` con SimpleX `v7.0.3`. Para `.tar.gz.age` requiere `age` instalado y `--identity /ruta/clave-privada`; consulta la guía enlazada al principio.
 Arranca después la app desde Umbrel. Se recuperan también la contraseña y el token anteriores. Si eran distintos, actualiza los clientes y usa la contraseña del momento de la copia.
 Para deshacer la restauración, detén la app y recupera los directorios `simplex` y `manager` de `before-restore-FECHA`, conservando primero los restaurados en otra carpeta. No ejecutes dos instancias simultáneas con una misma identidad recuperada de una copia.
 
@@ -148,6 +164,7 @@ copias ni archivos de configuración con credenciales.
 | --- | --- |
 | `src/main.py` | Gestor web, autenticación, API y conector |
 | `src/runtime.py` | Ciclo de vida del cliente SimpleX |
+| `src/backups.py` | Inventario, espacio y caducidad obligatoria de copias |
 | `src/simplex_client.py` | Comunicación y correlación de respuestas |
 | `src/config.py` | Configuración persistente |
 | `src/diagnostics.py` | Registros técnicos y redacción de información sensible |

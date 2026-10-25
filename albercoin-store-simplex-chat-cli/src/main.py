@@ -19,10 +19,11 @@ from .config import Config, DATA
 from .runtime import Runtime
 from .simplex_client import Broker
 from .diagnostics import Diagnostics
+from .backups import inventory, storage, NAME, validate_recipient
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "simplex_session"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 TARGET = re.compile(r"^[@#][1-9][0-9]*$")
 
 
@@ -64,7 +65,9 @@ class Manager:
                 not marker.exists() or marker.read_text() != "v7.0.3"):
             await asyncio.to_thread(self.runtime.archive)
         marker.write_text("v7.0.3")
-        self.tasks = [asyncio.create_task(self.broker.run()), asyncio.create_task(self.runtime.supervise())]
+        await asyncio.to_thread(inventory, DATA / "backups")
+        self.tasks = [asyncio.create_task(self.broker.run()), asyncio.create_task(self.runtime.supervise()),
+                      asyncio.create_task(self.runtime.maintain_backups())]
 
     async def cleanup(self, app):
         self.runtime.stopping = True
@@ -75,6 +78,13 @@ class Manager:
                 await task
         await self.close_integrations()
         await self.runtime.stop()
+
+    async def shutdown(self, app):
+        self.runtime.stopping = True
+        for queue in tuple(self.broker.listeners):
+            while not queue.empty():
+                queue.get_nowait()
+            queue.put_nowait(None)
 
 
 @web.middleware
@@ -174,7 +184,7 @@ async def change_password(request):
 
 async def status(request):
     m = request.app["manager"]
-    return web.json_response({"version": APP_VERSION, "revision": "diagnostics-1", "simplex_version": "7.0.3",
+    return web.json_response({"version": APP_VERSION, "revision": "chat-management-1", "simplex_version": "7.0.3",
         "connected": m.broker.connected.is_set(), "generation": m.broker.generation,
         "last_exit_code": m.runtime.last_exit_code, "last_event": m.broker.last_event,
         "last_event_at": m.broker.last_event_at,
@@ -208,15 +218,34 @@ async def client_diagnostic(request):
 async def snapshot(request):
     m = request.app["manager"]
     user = await m.user()
-    chats = await m.broker.response(f'/_get chats {int(user["userId"])} pcc=on count=200')
-    return web.json_response({"user": user, "chats": chats.get("chats", [])})
+    query = await request.json() if getattr(request, "method", "GET") == "POST" else request.query
+    before = query.get("before", "")
+    if before and not re.fullmatch(r"[0-9T:.+Z-]{1,40}", before):
+        raise ValueError("Cursor no válido.")
+    pagination = f"before={before} count=200" if before else "count=200"
+    search = query.get("search", "")
+    if not isinstance(search, str) or len(search) > 256 or any(ord(c) < 32 for c in search):
+        raise ValueError("Búsqueda no válida.")
+    filters = {"type": "search", "search": search} if search else {"type": "filters", "favorite": False, "unread": query.get("unread") is True}
+    chats = await m.broker.response(f'/_get chats {int(user["userId"])} pcc=on {pagination} ' + json.dumps(filters))
+    return web.json_response({"user": user, "chats": chats.get("chats", []),
+                              "preferences": m.config.value.get("chat_preferences", {})})
 
 
 async def history(request):
-    target = request.query.get("target", "")
+    query = await request.json() if getattr(request, "method", "GET") == "POST" else request.query
+    target = query.get("target", "")
     if not TARGET.fullmatch(target):
         raise ValueError("Conversación no válida.")
-    resp = await request.app["manager"].broker.response(f"/_get chat {target} count=100")
+    before = str(query.get("before") or "")
+    if before and not re.fullmatch(r"[1-9][0-9]*", before):
+        raise ValueError("Cursor no válido.")
+    pagination = f"before={before} count=100" if before else "count=100"
+    query = query.get("search", "")
+    if not isinstance(query, str) or len(query) > 256 or any(ord(c) < 32 for c in query):
+        raise ValueError("Búsqueda no válida.")
+    search = " search=" + query if query else ""
+    resp = await request.app["manager"].broker.response(f"/_get chat {target} {pagination}{search}")
     return web.json_response(resp)
 
 
@@ -236,7 +265,46 @@ async def action(request):
         if info.get("type") == "contactRequest" or (contact.get("contactRequestId") and not contact.get("activeConn")):
             m.diagnostics.record("warning", "panel", "send_blocked", "Envío bloqueado: primero hay que aceptar la solicitud de contacto.", operation="send", target=target)
             raise ValueError("Este contacto tiene una solicitud pendiente. Acéptala en «Perfil y contactos» antes de enviar.")
-        command = f'/_send {target} json ' + json.dumps([{"msgContent": {"type": "text", "text": text}}])
+        composed = {"msgContent": {"type": "text", "text": text}}
+        if body.get("quote") is not None:
+            composed["quotedItemId"] = positive_id(body["quote"])
+        command = f'/_send {target} json ' + json.dumps([composed])
+    elif kind in ("clear", "delete_contact", "leave", "delete_message", "edit", "read"):
+        target = body.get("target", "")
+        if not isinstance(target, str) or not TARGET.fullmatch(target):
+            raise ValueError("Conversación no válida.")
+        if kind in ("clear", "delete_contact", "leave", "delete_message") and body.get("confirm") != target:
+            raise ValueError("Confirma la conversación afectada.")
+        if kind == "clear":
+            command = f"/_clear chat {target}"
+        elif kind == "delete_contact":
+            if not target.startswith("@"):
+                raise ValueError("Solo se pueden eliminar contactos con esta acción.")
+            command = f"/_delete {target} full notify=on"
+        elif kind == "leave":
+            if not target.startswith("#"):
+                raise ValueError("Solo se puede salir de un grupo.")
+            command = f"/_leave {target}"
+        elif kind == "read":
+            ids = body.get("ids")
+            if ids is not None:
+                if not isinstance(ids, list) or not 1 <= len(ids) <= 100:
+                    raise ValueError("Lista de mensajes no válida.")
+                command = f"/_read chat items {target} " + ",".join(str(positive_id(i)) for i in ids)
+            else:
+                command = f"/_read chat {target}"
+        else:
+            ident = positive_id(body.get("id"))
+            if kind == "delete_message":
+                mode = body.get("mode", "internal")
+                if mode not in ("internal", "broadcast"):
+                    raise ValueError("Modo de borrado no válido.")
+                command = f"/_delete item {target} {ident} {mode}"
+            else:
+                text = body.get("text")
+                if not isinstance(text, str) or not text.strip() or len(text) > 8000:
+                    raise ValueError("Texto no válido.")
+                command = f"/_update item {target} {ident} json " + json.dumps({"msgContent": {"type": "text", "text": text}, "mentions": {}})
     elif kind in ("accept", "reject"):
         ident = str(body.get("id", ""))
         if not re.fullmatch(r"[1-9][0-9]*", ident):
@@ -266,6 +334,49 @@ async def action(request):
     else:
         raise ValueError("Acción desconocida.")
     return web.json_response(await m.broker.response(command))
+
+
+def positive_id(value):
+    if isinstance(value, bool) or not re.fullmatch(r"[1-9][0-9]*", str(value)):
+        raise ValueError("ID no válido.")
+    return int(value)
+
+
+async def preferences(request):
+    m = request.app["manager"]
+    body = await request.json()
+    pins = body.get("pins", [])
+    if not isinstance(pins, list) or len(pins) > 200 or any(not isinstance(p, str) or not TARGET.fullmatch(p) for p in pins):
+        raise ValueError("Referencias no válidas.")
+    m.config.value["chat_preferences"] = {"pins": list(dict.fromkeys(pins)), "preview": body.get("preview") is True}
+    m.config.save()
+    return web.json_response({"ok": True})
+
+
+async def events(request):
+    m = request.app["manager"]
+    queue = asyncio.Queue(maxsize=32)
+    m.broker.listeners.add(queue)
+    response = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+    try:
+        await response.prepare(request)
+        await response.write(b"data: refresh\n\n")
+        while m.sessions.get(request.cookies.get(COOKIE, ""), 0) > time.time():
+            try:
+                packet = await asyncio.wait_for(queue.get(), 15)
+                if packet is None or m.sessions.get(request.cookies.get(COOKIE, ""), 0) <= time.time():
+                    break
+                # Never transmit message content or credentials through this channel.
+                event = packet.get("resp", {}).get("type", "")
+                invalidate = event in ("chatCleared", "chatDeleted", "chatItemDeleted", "chatItemsDeleted")
+                await response.write(b"data: " + json.dumps({"invalidate": invalidate}).encode() + b"\n\n")
+            except asyncio.TimeoutError:
+                await response.write(b": heartbeat\n\n")
+    except (ConnectionError, RuntimeError):
+        pass
+    finally:
+        m.broker.listeners.discard(queue)
+    return response
 
 
 def find_link(value):
@@ -366,13 +477,43 @@ async def backups(request):
         await m.close_integrations()
         name = await m.runtime.backup()
         return web.json_response({"name": name})
-    items = [{"name": p.name, "size": p.stat().st_size} for p in sorted((DATA / "backups").glob("*.tar.gz"), reverse=True)]
-    return web.json_response({"backups": items})
+    items = await asyncio.to_thread(inventory, DATA / "backups")
+    return web.json_response({"backups": items, "storage": await asyncio.to_thread(storage, DATA),
+        "interval": m.config.value.get("backup_interval", 0), "recipient": m.config.value.get("backup_recipient", "")})
+
+
+async def backup_options(request):
+    m = request.app["manager"]
+    body = await request.json()
+    interval = body.get("interval", 0)
+    recipient = body.get("recipient", "")
+    if type(interval) is not int or interval not in (0, 24, 48, 168):
+        raise ValueError("Intervalo no válido.")
+    if not isinstance(recipient, str) or (recipient and not re.fullmatch(r"age1[0-9a-z]{58}", recipient)):
+        raise ValueError("Indica una clave pública age X25519 válida.")
+    if recipient:
+        await asyncio.to_thread(validate_recipient, recipient)
+    m.config.value.update(backup_interval=interval, backup_recipient=recipient, backup_last=time.time())
+    m.config.save()
+    return web.json_response({"ok": True})
+
+
+async def delete_backup(request):
+    body = await request.json()
+    name = body.get("name", "")
+    if not isinstance(name, str) or not NAME.fullmatch(name) or body.get("confirm") != name:
+        raise ValueError("Copia no válida o sin confirmar.")
+    path = DATA / "backups" / name
+    if path.is_symlink() or not path.is_file():
+        raise web.HTTPNotFound()
+    path.unlink()
+    return web.json_response({"ok": True})
 
 
 async def download_backup(request):
     name = request.match_info["name"]
-    if not re.fullmatch(r"[0-9T-]+\.tar\.gz", name):
+    await asyncio.to_thread(inventory, DATA / "backups")
+    if not NAME.fullmatch(name):
         raise web.HTTPNotFound()
     path = DATA / "backups" / name
     if not path.is_file() or path.is_symlink():
@@ -455,7 +596,7 @@ async def index(request):
 
 async def static_file(request):
     name = request.match_info["name"]
-    if name not in ("app.js", "styles.css", "help.css"):
+    if name not in ("app.js", "enhancements.js", "enhancements.css", "styles.css", "help.css"):
         raise web.HTTPNotFound()
     return web.FileResponse(STATIC / name)
 
@@ -470,12 +611,16 @@ async def serve():
         web.get("/api/diagnostics", diagnostics), web.post("/api/diagnostics/client", client_diagnostic),
         web.post("/api/login", login), web.post("/api/logout", logout), web.post("/api/password", change_password), web.get("/api/status", status),
         web.get("/api/snapshot", snapshot), web.get("/api/history", history), web.post("/api/action", action),
+        web.post("/api/snapshot", snapshot), web.post("/api/history", history),
+        web.post("/api/preferences", preferences), web.get("/api/events", events),
         web.get("/api/address", address), web.get("/api/qr", qr),
         web.get("/api/settings", settings), web.post("/api/settings", settings),
         web.get("/api/integrations", integrations), web.post("/api/integrations", integrations),
         web.get("/api/hermes-config", hermes_config), web.get("/api/backups", backups),
-        web.post("/api/backups", backups), web.get("/api/backups/{name}", download_backup)])
+        web.post("/api/backups", backups), web.post("/api/backup-options", backup_options),
+        web.post("/api/backups/delete", delete_backup), web.get("/api/backups/{name}", download_backup)])
     app.on_startup.append(manager.startup)
+    app.on_shutdown.append(manager.shutdown)
     app.on_cleanup.append(manager.cleanup)
     integration_app = web.Application(client_max_size=65536)
     integration_app["manager"] = manager

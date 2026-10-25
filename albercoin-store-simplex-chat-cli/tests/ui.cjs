@@ -1,0 +1,80 @@
+// npm install --prefix /tmp/opencode/simplex-ui-tests jsdom@26
+// NODE_PATH=/tmp/opencode/simplex-ui-tests/node_modules node tests/ui.cjs
+const {JSDOM} = require('jsdom');
+const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+const root = path.join(__dirname,'../src/static');
+const dom = new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'), {url:'https://simplex.test',runScripts:'outside-only',pretendToBeVisual:true});
+const w = dom.window, d = w.document;
+const chats = [1,2].map(id => ({chatInfo:{type:'direct',contact:{contactId:id,localDisplayName:'Contact ' + id,activeConn:{},chatTs:'2026-10-25T00:00:00Z'}},chatStats:{unreadCount:0},chatItems:[]}));
+const calls = [], pending = [];
+let holdHistory = false, sendResolve, failClear = false, received = false;
+const item = (id,text) => ({meta:{itemId:id,itemTs:'2026-10-25T00:00:00Z',itemStatus:{type:'sndSent'},editable:true},chatDir:{type:'directSnd'},content:{msgContent:{type:'text',text}}});
+w.fetch = async (url,options={}) => {
+  const name = String(url).replace('/api/',''), body = options.body ? JSON.parse(options.body) : null; calls.push({name,body});
+  let result = {};
+  if (name === 'status') result = {connected:true,integration_connections:0,integration_commands:0};
+  if (name === 'snapshot') result = {user:{userId:1,profile:{displayName:'Test'}},chats,preferences:{pins:[],preview:false}};
+  if (name.startsWith('history')) {
+    const target = body?.target || new URL('https://simplex.test/' + name).searchParams.get('target');
+    if (holdHistory) return new Promise(resolve => pending.push({target,resolve}));
+    const message = item(1,'Message ' + target);
+    if (received) { message.meta.itemStatus.type = 'rcvNew'; message.chatDir.type = 'directRcv'; }
+    result = {chat:{chatItems:[message],chatStats:{unreadCount:received ? 1 : 0}}};
+  }
+  if (name === 'action' && body.action === 'clear' && failClear) return {ok:false,status:503,json:async () => ({error:'timeout'})};
+  if (name === 'action' && body.action === 'send') await new Promise(resolve => {sendResolve = resolve;});
+  return {ok:true,status:200,json:async () => result};
+};
+w.setInterval = () => 0;
+w.EventSource = class {close() {this.closed=true;}};
+w.confirm = () => false;
+const vm = require('node:vm');
+vm.runInContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),dom.getInternalVMContext());
+vm.runInContext(fs.readFileSync(path.join(root,'enhancements.js'),'utf8'),dom.getInternalVMContext());
+const tick = () => new Promise(resolve => setTimeout(resolve,10));
+const response = text => ({ok:true,status:200,json:async () => ({chat:{chatItems:[item(1,text)],chatStats:{unreadCount:0}}})});
+(async () => {
+  await tick();
+  assert.equal(d.querySelectorAll('.chat-entry').length,2);
+  holdHistory = true;
+  d.querySelectorAll('.chat-entry')[0].click(); await tick();
+  d.querySelectorAll('.chat-entry')[1].click(); await tick();
+  pending[1].resolve(response('Second conversation')); await tick();
+  pending[0].resolve(response('First conversation stale')); await tick();
+  assert(d.querySelector('#messages').textContent.includes('Second conversation'));
+  assert(!d.querySelector('#messages').textContent.includes('First conversation stale'));
+  holdHistory = false;
+  const input = d.querySelector('#message'); input.value = 'draft two'; input.dispatchEvent(new w.Event('input'));
+  d.querySelectorAll('.chat-entry')[0].click(); await tick();
+  input.value = 'draft one'; input.dispatchEvent(new w.Event('input'));
+  d.querySelectorAll('.chat-entry')[1].click(); await tick();
+  assert.equal(input.value,'draft two');
+  d.querySelector('#send-form').dispatchEvent(new w.Event('submit',{cancelable:true})); await tick();
+  input.value = 'new text while sending'; input.dispatchEvent(new w.Event('input'));
+  sendResolve(); await tick(); await tick();
+  assert.equal(input.value,'new text while sending');
+  const send = calls.find(c => c.body?.action === 'send'); assert.equal(send.body.target,'@2'); assert.equal(send.body.text,'draft two');
+  const count = calls.filter(c => c.body?.action === 'clear').length;
+  d.querySelector('#clear-chat').click(); await tick();
+  assert.equal(calls.filter(c => c.body?.action === 'clear').length,count,'cancel must not send a destructive action');
+  w.confirm = () => true; failClear = true;
+  d.querySelector('#clear-chat').click(); await tick(); await tick();
+  assert.equal(calls.filter(c => c.body?.action === 'clear').length,count + 1,'uncertain action must not be retried automatically');
+  assert(d.querySelector('#notice').textContent.includes('incierto'));
+  received = true;
+  Object.defineProperty(d,'visibilityState',{configurable:true,value:'hidden'});
+  const readBefore = calls.filter(c => c.body?.action === 'read').length;
+  await vm.runInContext('refreshHistory()',dom.getInternalVMContext());
+  assert.equal(calls.filter(c => c.body?.action === 'read').length,readBefore,'hidden conversation must not be marked read');
+  Object.defineProperty(d,'visibilityState',{configurable:true,value:'visible'});
+  await vm.runInContext('refreshHistory()',dom.getInternalVMContext());
+  const read = calls.filter(c => c.body?.action === 'read').at(-1);
+  assert.deepEqual(read.body.ids,[1]);
+  d.querySelector('#contact-search').value = 'contact 1'; d.querySelector('#contact-search').dispatchEvent(new w.Event('input'));
+  assert.equal(d.querySelectorAll('.chat-entry').length,1);
+  d.querySelector('#logout').click(); await tick();
+  assert.equal(input.value,''); assert.equal(d.querySelector('#messages').textContent,'');
+  assert.equal(d.querySelector('#workspace').hidden,true);
+  console.log('PASS: stale history, independent drafts, safe sending, destructive cancellation/reconciliation, visible read IDs, search and logout');
+  dom.window.close();
+})().catch(error => { console.error(error); dom.window.close(); process.exitCode=1; });

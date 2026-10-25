@@ -1,11 +1,15 @@
 import asyncio
 import contextlib
 import json
+import io
 import tarfile
 import time
+import re
+import subprocess
 from datetime import datetime, timezone
 
 from .config import DATA
+from .backups import inventory, storage
 
 
 class Runtime:
@@ -91,6 +95,9 @@ class Runtime:
     def archive(self):
         directory = DATA / "backups"
         directory.mkdir(exist_ok=True)
+        usage = storage(DATA)
+        if usage["free"] < usage["data"] * (2 if self.config.value.get("backup_recipient") else 1) + 256 * 1024 * 1024:
+            raise ValueError("Espacio insuficiente para una copia (estimación conservadora).")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         path = directory / (stamp + "-" + str(time.time_ns() % 1000000) + ".tar.gz")
         partial = path.with_suffix(".partial")
@@ -98,23 +105,53 @@ class Runtime:
             with tarfile.open(partial, "w:gz", dereference=False) as archive:
                 for name in ("simplex", "manager"):
                     archive.add(DATA / name, arcname=name, recursive=True)
-                metadata = DATA / "backup-info.json"
-                metadata.write_text(json.dumps({"app": "1.0.3", "simplex": "v7.0.3", "created_utc": stamp}))
-                archive.add(metadata, arcname="backup-info.json")
-                metadata.unlink()
-            partial.replace(path)
-            path.chmod(0o600)
+                metadata = json.dumps({"app": "1.0.4", "simplex": "v7.0.3", "created_utc": stamp}).encode()
+                info = tarfile.TarInfo("backup-info.json")
+                info.size, info.mode, info.mtime = len(metadata), 0o600, int(time.time())
+                archive.addfile(info, io.BytesIO(metadata))
+            partial.chmod(0o600)
+            recipient = self.config.value.get("backup_recipient", "")
+            if recipient:
+                if not re.fullmatch(r"age1[0-9a-z]{58}", recipient):
+                    raise ValueError("Destinatario age no válido.")
+                encrypted = path.with_name(path.name + ".age")
+                encrypted_partial = encrypted.with_suffix(".partial")
+                try:
+                    subprocess.run(["age", "-r", recipient, "-o", str(encrypted_partial), str(partial)],
+                                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    encrypted_partial.chmod(0o600)
+                    encrypted_partial.replace(encrypted)
+                    path = encrypted
+                finally:
+                    encrypted_partial.unlink(missing_ok=True)
+            else:
+                partial.replace(path)
         finally:
             with contextlib.suppress(FileNotFoundError):
                 partial.unlink()
         return path.name
+
+    async def maintain_backups(self):
+        while True:
+            try:
+                await asyncio.to_thread(inventory, DATA / "backups")
+                hours = self.config.value.get("backup_interval", 0)
+                last = self.config.value.get("backup_last", time.time())
+                if hours and time.time() - last >= hours * 3600:
+                    await self.backup()
+            except Exception as exc:
+                self.log("error", "backup_maintenance", "Falló el mantenimiento de copias.", error_type=type(exc).__name__)
+            await asyncio.sleep(60)
 
     async def backup(self):
         async with self.lock:
             self.paused = True
             try:
                 await self.stop()
-                return await asyncio.to_thread(self.archive)
+                name = await asyncio.to_thread(self.archive)
+                self.config.value["backup_last"] = time.time()
+                self.config.save()
+                return name
             finally:
                 self.paused = False
                 await self.start()

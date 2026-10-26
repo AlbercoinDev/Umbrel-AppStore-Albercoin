@@ -57,10 +57,10 @@ La imagen del gateway se construye y publica desde el repositorio de código
 (workflow `gateway-image.yml`, AMD64/ARM64). Esta tienda solo contiene el
 manifiesto, el Compose y el icono. Para publicar una versión:
 
-1. Actualiza `version` en `umbrel-tunnel/umbrel-app.yml` y en el repositorio de
+1. Actualiza `version` en `albercoin-store-umbrel-tunnel/umbrel-app.yml` y en el repositorio de
    código.
 2. Publica la imagen multiarquitectura desde el repositorio de código.
-3. Fija etiqueta y digest en `umbrel-tunnel/docker-compose.yml`.
+3. Fija etiqueta y digest en `albercoin-store-umbrel-tunnel/docker-compose.yml`.
 4. Publica el release del VPS en el repositorio de código con los binarios,
    `SHA256SUMS` e `install.sh`.
 

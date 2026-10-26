@@ -1,12 +1,12 @@
 manifestVersion: 1.1
-id: umbrel-tunnel
+id: albercoin-store-umbrel-tunnel
 storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
 version: "1.0.0"
 tagline: Expose Umbrel services through your own VPS over WireGuard
-icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/umbrel-tunnel/icon.svg
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
   Umbrel Tunnel connects your Umbrel to a VPS with a fixed public IP through a
   WireGuard tunnel. The app detects installed apps and UmbrelOS services, lets

@@ -50,6 +50,23 @@ El Compose fija el digest: publicar una etiqueta no cambia automáticamente
 el contenido que descarga Umbrel. El workflow permite reemplazar la etiqueta.
 Consulta el README de la app para construcción local y compatibilidad de copias.
 
+### Umbrel Tunnel
+
+La imagen del gateway se construye y publica desde el repositorio de código
+[AlbercoinDev/umbrel-tunnel](https://github.com/AlbercoinDev/umbrel-tunnel)
+(workflow `gateway-image.yml`, AMD64/ARM64). Esta tienda solo contiene el
+manifiesto, el Compose y el icono. Para publicar una versión:
+
+1. Actualiza `version` en `umbrel-tunnel/umbrel-app.yml` y en el repositorio de
+   código.
+2. Publica la imagen multiarquitectura desde el repositorio de código.
+3. Fija etiqueta y digest en `umbrel-tunnel/docker-compose.yml`.
+4. Publica el release del VPS en el repositorio de código con los binarios,
+   `SHA256SUMS` e `install.sh`.
+
+El comando de instalación que muestra la app apunta a ese repositorio de código,
+no a esta tienda.
+
 ## Comprobaciones antes de una futura publicación
 
 SimpleX Server dispone de un workflow manual independiente

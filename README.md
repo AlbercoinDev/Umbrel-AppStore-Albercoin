@@ -11,6 +11,7 @@ Tienda de aplicaciones personalizada para [umbrelOS](https://umbrel.com).
 | Machine Doctor | Diagnóstico de CPU, sensores e informes | [Guía](albercoin-store-machine-doctor/README.md) |
 | SimpleX Chat CLI | Mensajería con gestor web y conector opcional para agentes | [Guía](albercoin-store-simplex-chat-cli/README.md) |
 | SimpleX Server (vista previa) | Relay SMP propio con Tor y clearnet; versión 0.1.0 para pruebas | [Guía](albercoin-store-simplex-server/README.md) |
+| Umbrel Tunnel | Expone servicios de Umbrel por un VPS con WireGuard | [Guía](umbrel-tunnel/README.md) |
 
 Las versiones vigentes se consultan en el `umbrel-app.yml` de cada carpeta.
 La presencia de una app en este repositorio no indica que esté instalada en un nodo.

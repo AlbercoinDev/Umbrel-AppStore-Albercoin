@@ -7,9 +7,9 @@
 | Ruta | Contenido |
 | --- | --- |
 | `umbrel-app-store.yml` | Identidad de la tienda |
-| `albercoin-store-*/umbrel-app.yml` | Identidad, versión, dependencias y ficha de cada app |
-| `albercoin-store-*/docker-compose.yml` | Servicios, imágenes, volúmenes y configuración de ejecución |
-| `albercoin-store-*/README.md` | Guía específica de cada app |
+| `<app>/umbrel-app.yml` | Identidad, versión, dependencias y ficha de cada app |
+| `<app>/docker-compose.yml` | Servicios, imágenes, volúmenes y configuración de ejecución |
+| `<app>/README.md` | Guía específica de cada app |
 | `.github/workflows/` | Construcción y publicación de imágenes propias |
 | `docs/` | Documentación transversal; no contiene configuración de ejecución |
 
@@ -22,6 +22,7 @@
 | Machine Doctor | `src/main.py`, `src/modules/cpu/`, `src/static/` | Imagen propia de GHCR, construida desde su Dockerfile |
 | SimpleX Chat CLI | `src/`, `scripts/restore.py`, `integrations/hermes/` | Imagen propia de GHCR, fijada por digest en Compose |
 | SimpleX Server (vista previa) | `src/server.py`, plantillas y recursos; SMP oficial sin modificar | Imagen derivada de SMP oficial, publicada para AMD64/ARM64 y fijada por digest |
+| Umbrel Tunnel | Código, instalador y releases en [AlbercoinDev/umbrel-tunnel](https://github.com/AlbercoinDev/umbrel-tunnel); aquí solo manifiesto, Compose e icono | Imagen propia de GHCR para AMD64/ARM64, fijada por digest en Compose |
 
 Modificar fuentes locales no actualiza por sí solo una instalación Umbrel.
 Los módulos `disk`, `thermal` y `ram` de Machine Doctor contienen documentación
@@ -36,6 +37,7 @@ de trabajo futuro, no diagnósticos completos implementados.
 | Machine Doctor | `2190` | Web interna `2190` | `privileged`, montajes del host `/proc`, `/sys`, `/dev` |
 | SimpleX Chat CLI | `2191` | Conector interno `2192`; cliente local `5225` | Identidad, mensajes, contraseñas y token del conector |
 | SimpleX Server (desarrollo) | `2193` | TCP `5223` reservado; SMP interno `5224`, SOCKS local `9050` | Certificados SMP, identidad onion, colas y credenciales; red Docker propia |
+| Umbrel Tunnel | `8642` | Web interna `8081`; puertos públicos elegidos en el VPS | `NET_ADMIN`, `SYS_MODULE`, `/lib/modules` y lectura de `${UMBREL_ROOT}/app-data` |
 
 Los puertos internos no equivalen a puertos publicados en el host. El detalle
 autoritativo está en cada Compose y manifiesto. No publiques conectores internos
@@ -52,5 +54,7 @@ ni compartas datos o copias con credenciales.
 - Machine Doctor: `data/`, con informes en `reports/`.
 - SimpleX: `data/simplex/`, `data/manager/` y `data/backups/`.
 - SimpleX Server: `data/manager/` (incluido Tor), `data/smp/config/`, `data/smp/state/`.
+- Umbrel Tunnel: `data/wireguard/` (clave privada `600`), `data/config.json`
+  (VPS vinculado, exposiciones y ajustes) y `data/haproxy.cfg`.
 
 Consulta el README de cada app antes de copiar, restaurar o eliminar datos.

@@ -1,0 +1,38 @@
+manifestVersion: 1.1
+id: umbrel-tunnel
+storage:
+  dataRoot: data
+category: networking
+name: Umbrel Tunnel
+version: "1.0.0"
+tagline: Expose Umbrel services through your own VPS over WireGuard
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/umbrel-tunnel/icon.svg
+description: >-
+  Umbrel Tunnel connects your Umbrel to a VPS with a fixed public IP through a
+  WireGuard tunnel. The app detects installed apps and UmbrelOS services, lets
+  you choose which ports to expose, and opens or closes the matching public
+  ports on the VPS. The VPS control API only listens inside the tunnel and is
+  protected by a Bearer token. The interface is available in Spanish (default)
+  and English, and follows the browser/UmbrelOS language on first open.
+
+
+  Requirements: a Debian 12/13 or Ubuntu Server 22.04/24.04+ VPS (amd64/arm64)
+  with a fixed public IP. Run the one-line installer on the VPS, then paste the
+  pairing code in the app.
+releaseNotes: >-
+  First release: automatic app detection without the Docker socket, ut1
+  pairing, per-peer WireGuard key registration and rotation, local TCP proxying
+  with HAProxy, and opening/closing public ports on the VPS. Spanish and English
+  UI with automatic language detection.
+developer: AlbercoinDev
+website: https://github.com/AlbercoinDev/umbrel-tunnel
+dependencies: []
+repo: https://github.com/AlbercoinDev/umbrel-tunnel
+support: https://github.com/AlbercoinDev/umbrel-tunnel/issues
+port: 8642
+gallery: []
+path: ""
+deterministicPassword: true
+torOnly: false
+submitter: AlbercoinDev
+submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin

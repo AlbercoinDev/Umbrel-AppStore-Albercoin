@@ -1,0 +1,45 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      # <app-id>_<service-name>_1, the container name umbrelOS assigns.
+      APP_HOST: umbrel-tunnel_gateway_1
+      APP_PORT: 8081
+
+  gateway:
+    # Published multi-arch image (linux/amd64 + linux/arm64), pinned by digest
+    # so every install uses the exact same image.
+    image: ghcr.io/albercoindev/umbrel-tunnel-gateway:1.0.0@sha256:a876e1d7865ae85fb262e1dda3d6067e00bbb73a1954c0fa42037120950db326
+    # Restart after crashes. A clean exit is treated as an intentional stop.
+    restart: on-failure
+    stop_grace_period: 30s
+    init: true
+    # NET_ADMIN creates wg0 and binds HAProxy to the tunnel address.
+    # SYS_MODULE + /lib/modules lets the container load the host WireGuard
+    # module on first start, as the official Umbrel WireGuard app does.
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      # Read-only app definitions (umbrel-app.yml, docker-compose.yml) and
+      # static exports.sh values, needed to detect installed apps without the
+      # Docker socket. The Docker socket is never mounted.
+      - ${UMBREL_ROOT}/app-data:/umbrel-app-data:ro
+      # Only used by the first-start modprobe. Read-only.
+      - /lib/modules:/lib/modules:ro
+    environment:
+      - TZ=UTC
+      - APP_VERSION=${APP_VERSION}
+      - APP_PASSWORD=${APP_PASSWORD}
+      - UMBREL_APP_DATA=/umbrel-app-data
+      - NETWORK_IP=${NETWORK_IP}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

@@ -40,28 +40,27 @@ comando que generó antes de vincular el VPS.
 ## Detección de servicios
 
 La app **no monta el socket de Docker**. Lee en modo solo lectura los
-manifiestos, Compose y `exports.sh` de `${UMBREL_ROOT}/app-data`, y usa los
-nombres DNS de la red Docker como destino. Los servicios del sistema
-(SSH/panel de umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir
-un servicio manual desde **Servicios y puertos → Añadir servicio manual**.
+manifiestos, Compose, `.env` y `exports.sh` de `${UMBREL_ROOT}/app-data`, y usa
+los nombres DNS de la red Docker como destino. Cada puerto se clasifica por tipo
+(web/HTTP, RPC, P2P, ZMQ, Electrum, Lightning, métricas, base de datos, TCP o
+UDP) combinando lo declarado en Compose con variables de entorno, flags del
+comando y un escaneo TCP/HTTP acotado a la red privada de Docker. Los puertos
+marcados como internos o sensibles se pueden ocultar con un filtro. Los
+servicios detectados como web se publican por subdominio en 80/443; el resto usa
+un puerto público personalizable. Los servicios del sistema (SSH/panel de
+umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir un
+servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.3.2
+## Actualizar a 1.4.0
 
 Actualiza primero el VPS y después esta app desde la tienda de Umbrel.
 
-La primera subida a 1.3.2 necesita la URL una vez: el `update` sin `--from` que
-se actualiza solo se estrena en 1.3.2, así que una instalación anterior responde
-`error: falta --from`.
-
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
-sudo umbrel-tunnel update \
-  --from "https://github.com/AlbercoinDev/umbrel-tunnel/releases/latest/download/umbrel-tunnel-linux-$(dpkg --print-architecture)"
-umbrel-tunnel version   # 1.3.2
+sudo umbrel-tunnel update
+umbrel-tunnel version   # 1.4.0
 sudo umbrel-tunnel doctor
 ```
-
-A partir de ahí, `sudo umbrel-tunnel update` ya resuelve la última release solo.
 
 `update` verifica el checksum, comprueba que el binario nuevo se ejecuta,
 actualiza las unidades systemd y reinicia el servicio. Si vienes de antes de
@@ -71,8 +70,11 @@ token y publicaciones; los servicios se reinician brevemente. No desinstales ni
 vuelvas a vincular.
 
 La pantalla unificada permite publicar, pausar, reanudar y retirar publicaciones.
-TCP + UDP crea dos reglas independientes. Los cambios desde la CLI del VPS se
-detectan para adoptar o restaurar, sin sobrescribirlos silenciosamente.
+TCP + UDP crea dos reglas independientes. Los servicios web se publican por
+subdominio en 80/443 y los puertos HTTP/HTTPS no se editan; el puerto interno de
+la app nunca se expone como público. TCP, UDP y TLS mantienen un puerto público
+personalizable. Los cambios desde la CLI del VPS se detectan para adoptar o
+restaurar, sin sobrescribirlos silenciosamente.
 Las ayudas se abren con ratón, teclado o toque. Configura el dominio base en
 **Configuración y diagnóstico → Dominio base y certificados**. En cada servicio,
 **Añadir publicación** reúne subdominio, puerto y cifrado opcional. Puedes crear

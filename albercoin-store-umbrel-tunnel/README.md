@@ -45,21 +45,29 @@ nombres DNS de la red Docker como destino. Los servicios del sistema
 (SSH/panel de umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir
 un servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.1.0
+## Actualizar a 1.2.0
 
-Actualiza primero el VPS a **1.1.0** y después esta app desde la tienda de Umbrel.
-No es necesario reinstalar ni volver a vincular. Conserva una copia de seguridad
-de la configuración del VPS antes de actualizar. La actualización del binario
-reinicia el servicio brevemente y mantiene claves, token, peers y puertos.
+Actualiza primero el VPS a **1.2.0 con el instalador del tarball** y después esta
+app desde la tienda de Umbrel. No basta con sustituir el binario: también cambia
+la unidad systemd para permitir los listeners 80/443. Haz backup antes y no uses
+`--force` ni `--purge`. Se mantienen configuración, claves, token y publicaciones;
+los servicios se reinician brevemente. No desinstales ni vuelvas a vincular.
 
 La pantalla unificada permite publicar, pausar, reanudar y retirar publicaciones.
 TCP + UDP crea dos reglas independientes. Los cambios desde la CLI del VPS se
 detectan para adoptar o restaurar, sin sobrescribirlos silenciosamente.
-Las ayudas se abren con ratón, teclado o toque. Dominios y certificados
-automáticos siguen siendo una función futura, no incluida en esta versión.
+Las ayudas se abren con ratón, teclado o toque. La sección opcional **Dominios,
+HTTPS y TLS** publica varios dominios HTTPS en 443 o TLS TCP dedicado, por ejemplo
+Electrs público 50002 hacia TCP 50001. Puede activarse en cualquier momento tras
+vincular el VPS. Los certificados individuales de Let's Encrypt se emiten y
+renuevan automáticamente; no necesitas credenciales DNS ni certificado wildcard.
+El proveedor debe permitir DNS wildcard apuntando al VPS en **Solo DNS** y el
+puerto TCP 80 debe permanecer accesible para emisión y renovación. El puerto del
+servicio TLS dedicado y el 443 de HTTPS también deben permitirse en el firewall.
 
-Consulta los comandos de actualización y los límites del relay UDP en
-[Publicaciones](https://github.com/AlbercoinDev/umbrel-tunnel/blob/main/docs/PUBLICATIONS.md).
+Consulta los comandos de actualización con backup/checksum y los requisitos DNS en
+[HTTPS y TLS](https://github.com/AlbercoinDev/umbrel-tunnel/blob/main/docs/TLS.md).
+Los certificados no sustituyen la autenticación de las apps.
 
 ## Puertos y permisos
 

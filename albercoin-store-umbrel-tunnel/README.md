@@ -45,22 +45,26 @@ nombres DNS de la red Docker como destino. Los servicios del sistema
 (SSH/panel de umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir
 un servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.2.0
+## Actualizar a 1.3.0
 
-Actualiza primero el VPS a **1.2.0 con el instalador del tarball** y después esta
-app desde la tienda de Umbrel. No basta con sustituir el binario: también cambia
-la unidad systemd para permitir los listeners 80/443. Haz backup antes y no uses
+Actualiza primero el VPS a **1.3.0 con el instalador del tarball** y después esta
+app desde la tienda de Umbrel. Si vienes de antes de 1.2.0 no basta con sustituir
+el binario: actualiza también la unidad systemd para 80/443. Haz backup antes y no uses
 `--force` ni `--purge`. Se mantienen configuración, claves, token y publicaciones;
 los servicios se reinician brevemente. No desinstales ni vuelvas a vincular.
 
 La pantalla unificada permite publicar, pausar, reanudar y retirar publicaciones.
 TCP + UDP crea dos reglas independientes. Los cambios desde la CLI del VPS se
 detectan para adoptar o restaurar, sin sobrescribirlos silenciosamente.
-Las ayudas se abren con ratón, teclado o toque. La sección opcional **Dominios,
-HTTPS y TLS** publica varios dominios HTTPS en 443 o TLS TCP dedicado, por ejemplo
-Electrs público 50002 hacia TCP 50001. Puede activarse en cualquier momento tras
-vincular el VPS. Los certificados individuales de Let's Encrypt se emiten y
-renuevan automáticamente; no necesitas credenciales DNS ni certificado wildcard.
+Las ayudas se abren con ratón, teclado o toque. Configura el dominio base en
+**Configuración y diagnóstico → Dominio base y certificados**. En cada servicio,
+**Añadir publicación** reúne subdominio, puerto y cifrado opcional. Puedes crear
+varias publicaciones del mismo destino: por ejemplo Electrs con el mismo nombre
+en 50001 sin TLS añadido y 50002 con TLS, ambas hacia el puerto interno 50001.
+Cada entrada permite editar, pausar o retirar por separado. Los dominios también
+se pueden usar sin certificados; HTTP enruta nombres distintos en el mismo puerto.
+Cambiar el dominio base no reescribe las entradas existentes. Los certificados
+de Let's Encrypt se emiten y renuevan automáticamente, sin credenciales DNS.
 El proveedor debe permitir DNS wildcard apuntando al VPS en **Solo DNS** y el
 puerto TCP 80 debe permanecer accesible para emisión y renovación. El puerto del
 servicio TLS dedicado y el 443 de HTTPS también deben permitirse en el firewall.

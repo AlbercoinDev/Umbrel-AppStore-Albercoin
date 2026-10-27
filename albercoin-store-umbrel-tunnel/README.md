@@ -45,13 +45,24 @@ nombres DNS de la red Docker como destino. Los servicios del sistema
 (SSH/panel de umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir
 un servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.3.1
+## Actualizar a 1.3.2
 
-Actualiza primero el VPS a **1.3.1 con el instalador del tarball** y después esta
-app desde la tienda de Umbrel. Si vienes de antes de 1.2.0 no basta con sustituir
-el binario: actualiza también la unidad systemd para 80/443. Haz backup antes y no uses
-`--force` ni `--purge`. Se mantienen configuración, claves, token y publicaciones;
-los servicios se reinician brevemente. No desinstales ni vuelvas a vincular.
+Actualiza primero el VPS y después esta app desde la tienda de Umbrel:
+
+```sh
+sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
+sudo umbrel-tunnel update
+umbrel-tunnel version   # 1.3.2
+sudo umbrel-tunnel doctor
+```
+
+`update` sin `--from` instala la última release de tu arquitectura, verifica el
+checksum, comprueba que el binario nuevo se ejecuta, actualiza las unidades
+systemd y reinicia el servicio. Si vienes de antes de 1.2.0, usa el instalador
+del tarball para actualizar también `tmpfiles`, `sysctl` y la unidad. No uses
+`--force` ni `--purge`. Se mantienen configuración, claves, token y
+publicaciones; los servicios se reinician brevemente. No desinstales ni vuelvas
+a vincular.
 
 La pantalla unificada permite publicar, pausar, reanudar y retirar publicaciones.
 TCP + UDP crea dos reglas independientes. Los cambios desde la CLI del VPS se
@@ -66,11 +77,14 @@ se pueden usar sin certificados; HTTP enruta nombres distintos en el mismo puert
 Cambiar el dominio base no reescribe las entradas existentes. Los certificados
 de Let's Encrypt se emiten y renuevan automáticamente, sin credenciales DNS.
 Si el nombre no resuelve, la app muestra `DNS: ... no resuelve` con una sugerencia
-en vez de `no viable challenge type found`; **Reintentar emisión** comprueba de
-inmediato sin esperar el límite automático. El proveedor debe permitir DNS wildcard
-apuntando al VPS en **Solo DNS** y el puerto TCP 80 debe permanecer accesible para
-emisión y renovación. El puerto del servicio TLS dedicado y el 443 de HTTPS también
-deben permitirse en el firewall.
+en vez de `no viable challenge type found`; si el VPS no puede escuchar en los
+puertos del reto, muestra `Puerto: ...` y no gasta intentos de la CA.
+**Reintentar emisión** comprueba de inmediato sin esperar el límite automático y
+la app sondea además 80/443 desde tu red (`Puertos desde Umbrel: 80 ✓ · 443 ✗`),
+que es donde se ve un firewall del proveedor. El proveedor debe permitir DNS
+wildcard apuntando al VPS en **Solo DNS** y el puerto TCP 80 debe permanecer
+accesible para emisión y renovación. El puerto del servicio TLS dedicado y el 443
+de HTTPS también deben permitirse en el firewall.
 
 Consulta los comandos de actualización con backup/checksum y los requisitos DNS en
 [HTTPS y TLS](https://github.com/AlbercoinDev/umbrel-tunnel/blob/main/docs/TLS.md).

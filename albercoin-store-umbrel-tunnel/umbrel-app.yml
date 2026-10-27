@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
-version: "1.3.0"
+version: "1.3.1"
 tagline: Expose Umbrel services through your own VPS over WireGuard
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
@@ -20,15 +20,15 @@ description: >-
   with a fixed public IP. Run the one-line installer on the VPS, then paste the
   pairing code in the app.
 releaseNotes: >-
-  Update the VPS to 1.3.0 before updating this app. Configure a base domain
-  once in Settings, then manage domain, public port and encryption together
-  in each service's publication form. One service can have multiple independent
-  publications: Electrs can use the same hostname on port 50001 without added
-  TLS and port 50002 with VPS TLS, both targeting internal TCP 50001. HTTP
-  domain routing without certificates is also supported. Existing publications
-  and fully qualified domain names are preserved; changing the base domain
-  never rewrites them. Let's Encrypt issuance and renewal remain automatic.
-  Requires wildcard DNS pointing to the VPS (DNS only) and TCP 80 for ACME.
+  Update the VPS to 1.3.1 before updating this app. Certificate failures now
+  show the real cause: the VPS checks A/AAAA resolution before contacting
+  Let's Encrypt and reports an actionable DNS error instead of the misleading
+  "no viable challenge type found". Failed issuance is shown as an error rather
+  than pending, with a hint in each publication row and in certificate status.
+  The retry button bypasses the per-domain cooldown and refreshes the result
+  automatically. A valid certificate remains ready if a renewal attempt fails.
+  Requires wildcard DNS pointing to the VPS in DNS-only mode and TCP 80 for
+  ACME; HTTPS also requires TCP 443.
 developer: AlbercoinDev
 website: https://github.com/AlbercoinDev/umbrel-tunnel
 dependencies: []

@@ -45,9 +45,9 @@ nombres DNS de la red Docker como destino. Los servicios del sistema
 (SSH/panel de umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir
 un servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.3.0
+## Actualizar a 1.3.1
 
-Actualiza primero el VPS a **1.3.0 con el instalador del tarball** y después esta
+Actualiza primero el VPS a **1.3.1 con el instalador del tarball** y después esta
 app desde la tienda de Umbrel. Si vienes de antes de 1.2.0 no basta con sustituir
 el binario: actualiza también la unidad systemd para 80/443. Haz backup antes y no uses
 `--force` ni `--purge`. Se mantienen configuración, claves, token y publicaciones;
@@ -65,9 +65,12 @@ Cada entrada permite editar, pausar o retirar por separado. Los dominios tambié
 se pueden usar sin certificados; HTTP enruta nombres distintos en el mismo puerto.
 Cambiar el dominio base no reescribe las entradas existentes. Los certificados
 de Let's Encrypt se emiten y renuevan automáticamente, sin credenciales DNS.
-El proveedor debe permitir DNS wildcard apuntando al VPS en **Solo DNS** y el
-puerto TCP 80 debe permanecer accesible para emisión y renovación. El puerto del
-servicio TLS dedicado y el 443 de HTTPS también deben permitirse en el firewall.
+Si el nombre no resuelve, la app muestra `DNS: ... no resuelve` con una sugerencia
+en vez de `no viable challenge type found`; **Reintentar emisión** comprueba de
+inmediato sin esperar el límite automático. El proveedor debe permitir DNS wildcard
+apuntando al VPS en **Solo DNS** y el puerto TCP 80 debe permanecer accesible para
+emisión y renovación. El puerto del servicio TLS dedicado y el 443 de HTTPS también
+deben permitirse en el firewall.
 
 Consulta los comandos de actualización con backup/checksum y los requisitos DNS en
 [HTTPS y TLS](https://github.com/AlbercoinDev/umbrel-tunnel/blob/main/docs/TLS.md).

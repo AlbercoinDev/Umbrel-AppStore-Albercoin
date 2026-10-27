@@ -25,13 +25,13 @@ VPS. La API del VPS solo escucha dentro del túnel y está protegida con un toke
 1. Añade esta tienda en UmbrelOS (**App Store → Community App Stores**) con la
    URL `https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin`.
 2. Instala **Umbrel Tunnel**.
-3. Abre la app. La pestaña **Conexión** te pide la IP pública del VPS y genera
+3. Abre la app. **Configuración y diagnóstico** te pide la IP pública del VPS y genera
    el comando exacto que debes ejecutar en el VPS como root.
 4. Ejecuta ese comando. El instalador imprime un bloque de emparejamiento con
    `Código: ut1.…` y lo guarda en `/root/umbrel-tunnel-pairing.txt`.
 5. Pega el bloque completo en la app y pulsa **Vincular VPS**.
 6. La app levanta WireGuard, registra su clave pública en el VPS y pasa a
-   **Servicios**, donde puedes abrir los puertos que necesites.
+   **Servicios y puertos**, donde puedes publicar TCP y UDP.
 
 La app genera su propio par de claves WireGuard y el token de la API. El código
 `ut1` no contiene ninguna clave privada y la app comprueba que coincide con el
@@ -43,7 +43,23 @@ La app **no monta el socket de Docker**. Lee en modo solo lectura los
 manifiestos, Compose y `exports.sh` de `${UMBREL_ROOT}/app-data`, y usa los
 nombres DNS de la red Docker como destino. Los servicios del sistema
 (SSH/panel de umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir
-un servicio manual desde **Avanzado**.
+un servicio manual desde **Servicios y puertos → Añadir servicio manual**.
+
+## Actualizar a 1.1.0
+
+Actualiza primero el VPS a **1.1.0** y después esta app desde la tienda de Umbrel.
+No es necesario reinstalar ni volver a vincular. Conserva una copia de seguridad
+de la configuración del VPS antes de actualizar. La actualización del binario
+reinicia el servicio brevemente y mantiene claves, token, peers y puertos.
+
+La pantalla unificada permite publicar, pausar, reanudar y retirar publicaciones.
+TCP + UDP crea dos reglas independientes. Los cambios desde la CLI del VPS se
+detectan para adoptar o restaurar, sin sobrescribirlos silenciosamente.
+Las ayudas se abren con ratón, teclado o toque. Dominios y certificados
+automáticos siguen siendo una función futura, no incluida en esta versión.
+
+Consulta los comandos de actualización y los límites del relay UDP en
+[Publicaciones](https://github.com/AlbercoinDev/umbrel-tunnel/blob/main/docs/PUBLICATIONS.md).
 
 ## Puertos y permisos
 

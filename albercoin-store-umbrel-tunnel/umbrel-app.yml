@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
-version: "1.0.3"
+version: "1.1.0"
 tagline: Expose Umbrel services through your own VPS over WireGuard
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
@@ -20,10 +20,12 @@ description: >-
   with a fixed public IP. Run the one-line installer on the VPS, then paste the
   pairing code in the app.
 releaseNotes: >-
-  Resolve app destinations to stable container DNS names and display their
-  internal IP as information. Avoid assigning backend ports to the web
-  container in multi-service apps such as Electrs and Mempool. Manual public
-  ports now default to the service port and remain editable.
+  Update the VPS to 1.1.0 before updating this app. Services and ports now
+  share one screen with filters, manual entries, pause/resume and accessible
+  help. Publish TCP and UDP with independent reply sessions. Changes made
+  from the VPS terminal are detected instead of silently overwritten.
+  The VPS CLI adds editing, checks and reconciliation through its local API.
+  Automatic domain certificates are planned, not included in this release.
 developer: AlbercoinDev
 website: https://github.com/AlbercoinDev/umbrel-tunnel
 dependencies: []

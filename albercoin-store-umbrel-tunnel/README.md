@@ -47,22 +47,28 @@ un servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
 ## Actualizar a 1.3.2
 
-Actualiza primero el VPS y después esta app desde la tienda de Umbrel:
+Actualiza primero el VPS y después esta app desde la tienda de Umbrel.
+
+La primera subida a 1.3.2 necesita la URL una vez: el `update` sin `--from` que
+se actualiza solo se estrena en 1.3.2, así que una instalación anterior responde
+`error: falta --from`.
 
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
-sudo umbrel-tunnel update
+sudo umbrel-tunnel update \
+  --from "https://github.com/AlbercoinDev/umbrel-tunnel/releases/latest/download/umbrel-tunnel-linux-$(dpkg --print-architecture)"
 umbrel-tunnel version   # 1.3.2
 sudo umbrel-tunnel doctor
 ```
 
-`update` sin `--from` instala la última release de tu arquitectura, verifica el
-checksum, comprueba que el binario nuevo se ejecuta, actualiza las unidades
-systemd y reinicia el servicio. Si vienes de antes de 1.2.0, usa el instalador
-del tarball para actualizar también `tmpfiles`, `sysctl` y la unidad. No uses
-`--force` ni `--purge`. Se mantienen configuración, claves, token y
-publicaciones; los servicios se reinician brevemente. No desinstales ni vuelvas
-a vincular.
+A partir de ahí, `sudo umbrel-tunnel update` ya resuelve la última release solo.
+
+`update` verifica el checksum, comprueba que el binario nuevo se ejecuta,
+actualiza las unidades systemd y reinicia el servicio. Si vienes de antes de
+1.2.0, usa el instalador del tarball para actualizar también `tmpfiles`, `sysctl`
+y la unidad. No uses `--force` ni `--purge`. Se mantienen configuración, claves,
+token y publicaciones; los servicios se reinician brevemente. No desinstales ni
+vuelvas a vincular.
 
 La pantalla unificada permite publicar, pausar, reanudar y retirar publicaciones.
 TCP + UDP crea dos reglas independientes. Los cambios desde la CLI del VPS se

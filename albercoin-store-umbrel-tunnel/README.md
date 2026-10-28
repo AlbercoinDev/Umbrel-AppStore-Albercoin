@@ -51,14 +51,14 @@ un puerto público personalizable. Los servicios del sistema (SSH/panel de
 umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir un
 servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.4.0
+## Actualizar a 1.4.1
 
 Actualiza primero el VPS y después esta app desde la tienda de Umbrel.
 
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
 sudo umbrel-tunnel update
-umbrel-tunnel version   # 1.4.0
+umbrel-tunnel version   # 1.4.1
 sudo umbrel-tunnel doctor
 ```
 
@@ -68,6 +68,22 @@ actualiza las unidades systemd y reinicia el servicio. Si vienes de antes de
 y la unidad. No uses `--force` ni `--purge`. Se mantienen configuración, claves,
 token y publicaciones; los servicios se reinician brevemente. No desinstales ni
 vuelvas a vincular.
+
+Si vienes de un VPS anterior a 1.3.2, su `update` aún exige `--from`:
+
+```sh
+sudo umbrel-tunnel update \
+  --from "https://github.com/AlbercoinDev/umbrel-tunnel/releases/latest/download/umbrel-tunnel-linux-$(dpkg --print-architecture)"
+```
+
+La revisión 1.4.1 coordina la rotación WireGuard por el túnel anterior y confirma
+el nuevo; si no se confirma, el VPS restaura la clave anterior en aproximadamente
+un minuto. Requiere actualizar **primero el VPS a 1.4.1**. Desvincular limpia las
+publicaciones antes de retirar el peer y conserva la conexión si falla. Si el
+VPS es irrecuperable, la segunda confirmación permite olvidar la conexión solo
+en Umbrel; debes comprobar y retirar las reglas/peer remotos por SSH.
+Rotar el token de API no exige volver a vincular: guárdalo en
+**Configuración y diagnóstico → Opciones avanzadas** de Umbrel.
 
 La pantalla unificada permite publicar, pausar, reanudar y retirar publicaciones.
 TCP + UDP crea dos reglas independientes. Los servicios web se publican por

@@ -120,7 +120,7 @@ Los ajustes y certificados sí se incluyen.
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02@sha256:7a19cc5080b1ffa2f80e45eb74f37f943333a407b1a67a2813620ef2cc272350
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -137,7 +137,7 @@ docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02 albercoin-store-e-
 Después de la primera publicación, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02@sha256:<digest>
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02@sha256:7a19cc5080b1ffa2f80e45eb74f37f943333a407b1a67a2813620ef2cc272350
 ```
 
 La imagen base `python:3.12-slim-bookworm` y la imagen de Tor están fijadas por

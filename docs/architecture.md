@@ -33,7 +33,7 @@ de trabajo futuro, no diagnósticos completos implementados.
 
 | App | Puerto de la ficha Umbrel | Otros puertos | Accesos sensibles |
 | --- | --- | --- | --- |
-| e-lite | `2194` | Electrum `50011` TCP y `50012` TLS publicados; onion `50011`/`50012`; web interna `3000` | Datos de Bitcoin Core, índice, certificados TLS y datos Tor |
+| e-lite | `2194` | Electrum `55011` TCP y `55022` TLS publicados; onion `55011`/`55022`; web interna `3000` | Datos de Bitcoin Core, índice, certificados TLS y datos Tor |
 | Frigate | `2125` | Electrum `50005` publicado; web interna `80` | Credenciales RPC de Bitcoin y datos Tor |
 | Onion Rotator | `2180` | Web interna `8900` | Socket Docker, escritura en datos Tor, lectura de app-data |
 | Machine Doctor | `2190` | Web interna `2190` | `privileged`, montajes del host `/proc`, `/sys`, `/dev` |

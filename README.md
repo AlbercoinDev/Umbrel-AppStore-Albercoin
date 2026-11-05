@@ -6,7 +6,7 @@ Tienda de aplicaciones personalizada para [umbrelOS](https://umbrel.com).
 
 | App | Función | Documentación |
 | --- | --- | --- |
-| e-lite | Servidor Electrum autónomo con Bitcoin Core 32.1 incluido; puertos 50011 y 50012 | [Guía](albercoin-store-e-lite/README.md) |
+| e-lite | Servidor Electrum autónomo con Bitcoin Core 32.1 incluido; puertos 55011 y 55022 | [Guía](albercoin-store-e-lite/README.md) |
 | Frigate | Servidor Electrum para Bitcoin Silent Payments; requiere Bitcoin y Electrs | [Guía](albercoin-store-frigate/README.md) |
 | Onion Rotator | Consulta y rotación de direcciones onion de Umbrel | [Guía](albercoin-store-onion-rotator/README.md) |
 | Machine Doctor | Diagnóstico de CPU, sensores e informes | [Guía](albercoin-store-machine-doctor/README.md) |

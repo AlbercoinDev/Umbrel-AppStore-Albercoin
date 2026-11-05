@@ -45,8 +45,8 @@ class WebTests(unittest.TestCase):
         self.assertIn("text/html", content_type)
         self.assertIn("e-lite", body)
         self.assertIn("184,250", body)
-        self.assertIn("umbrel.local:50011", body)
-        self.assertIn("umbrel.local:50012", body)
+        self.assertIn("umbrel.local:55011", body)
+        self.assertIn("umbrel.local:55022", body)
         self.assertIn("Configuración", body)
         self.assertIn("Modo demostración", body)
 

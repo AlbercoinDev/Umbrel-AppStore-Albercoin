@@ -46,6 +46,7 @@ def main() -> int:
     paths = AppPaths.from_root(root, onion_file)
     paths.ensure()
     configure_logging(paths)
+    LOG.info("starting e-lite wrapper (data=%s, onion-file=%s)", paths.data, paths.onion_file)
 
     demo = os.environ.get("E_LITE_DEMO") == "1"
     domain = os.environ.get("DEVICE_DOMAIN_NAME", "umbrel.local").strip() or "umbrel.local"
@@ -65,6 +66,13 @@ def main() -> int:
     )
     app = WebApp(paths, runtime, supervisor, tls, domain=domain, hostname=hostname, demo=demo)
     httpd = make_server(app, 3000)
+
+    # Start the web UI first. Umbrel's LAN ingress only creates the public app
+    # route after app:3000 accepts connections, so a slow first-run download or
+    # a TLS problem must never keep the panel offline.
+    server_thread = threading.Thread(target=httpd.serve_forever, name="web", daemon=True)
+    server_thread.start()
+    LOG.info("e-lite Umbrel UI listening on 0.0.0.0:3000")
 
     shutdown = threading.Event()
 
@@ -88,10 +96,6 @@ def main() -> int:
     else:
         LOG.info("demo mode enabled; e-lite and Bitcoin Core will not start")
 
-    server_thread = threading.Thread(target=httpd.serve_forever, name="web", daemon=True)
-    server_thread.start()
-    LOG.info("e-lite Umbrel UI listening on 0.0.0.0:3000")
-
     while not shutdown.wait(1):
         pass
 
@@ -104,4 +108,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        LOG.exception("fatal startup error")
+        raise

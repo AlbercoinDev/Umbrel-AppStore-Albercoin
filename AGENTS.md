@@ -22,7 +22,7 @@ English.
 
 | App | What is easy to miss |
 | --- | --- |
-| e-lite | AMD64 only (upstream publishes an x86_64 binary). The GHCR image contains the Python controller; e-lite and Bitcoin Core are downloaded and SHA256-verified on first start. Compose publishes 50011 (TCP) and 50012 (TLS); Tor is Umbrel's sidecar, not e-lite's managed Tor. Do not change the ports only in the manifest: they are generated into `config.toml`. The image is pinned by digest in Compose. |
+| e-lite | AMD64 only (upstream publishes an x86_64 binary). The GHCR image contains the Python controller; e-lite and Bitcoin Core are downloaded and SHA256-verified on first start. Compose publishes 55011 (TCP) and 55022 (TLS); Tor is Umbrel's sidecar, not e-lite's managed Tor. Do not change the ports only in the manifest: they are generated into `config.toml`. The image is pinned by digest in Compose. |
 | Frigate | No Dockerfile. The Python web UI and the runtime shell script live inline in `docker-compose.yml`; `tests/test_frigate.py` extracts them from exact `- |` / `command: |` blocks. Keep the manifest revision, `FRIGATE_VERSION` and both arch SHA256 values aligned. Real use requires the `bitcoin` and `electrs` apps. |
 | Onion Rotator | Stdlib-only Python in `src/`. Its `Dockerfile` is unused by Compose, which runs `python:3.12-slim` and mounts `${APP_DATA_DIR}/src`. Compose needs the Docker socket and real Tor data; real rotation deletes `hs_ed25519_*` keys and restarts containers. |
 | Machine Doctor | FastAPI image pinned at `0.1.9`; no automated test suite. `src/modules/{disk,thermal,ram}` contain only future-scope READMEs, not implementations. Runs privileged with host `/proc`, `/sys`, `/dev`. |

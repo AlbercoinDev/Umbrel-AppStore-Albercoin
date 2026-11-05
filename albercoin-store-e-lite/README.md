@@ -4,7 +4,7 @@ Servidor Electrum 1.4 autónomo para Umbrel. Incluye su propio **Bitcoin Core 32
 y no depende de las apps **Bitcoin** ni **Electrs** de Umbrel.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.24-01`
+- Versión: `0.1.0-alpha.24-02`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -31,13 +31,19 @@ de esta app con su propio datadir y su propia sincronización.
 | Puerto | Uso |
 | --- | --- |
 | `2194` | Panel web de Umbrel (`app_proxy`) |
-| `50011` | Electrum TCP clearnet/LAN |
-| `50012` | Electrum TLS |
+| `55011` | Electrum TCP clearnet/LAN |
+| `55022` | Electrum TLS |
 | `3000` | UI interna del contenedor, no publicada |
 | `9184` | Estado interno de e-lite, solo loopback del contenedor |
 
-Los puertos `50011` y `50012` se publican en el host. El puerto TCP no cifra la
+Los puertos `55011` y `55022` se publican en el host. El puerto TCP no cifra la
 conexión y ninguno de los dos autentica clientes.
+
+Umbrel reserva listeners internos en el rango `50000+` para su ingress LAN. Los
+puertos `55011/55022` se eligieron porque estaban libres en el nodo y no
+coinciden con los puertos internos que estaban bloqueando el arranque anterior.
+El panel web se inicia antes que TLS, e-lite y Bitcoin Core para que Umbrel
+pueda crear la ruta del panel aunque la descarga o el certificado tarden.
 
 ## Primer inicio
 
@@ -57,8 +63,8 @@ sincronizar hasta que hayas elegido la red.
 
 Para una wallet en la red local:
 
-- TCP: `umbrel.local:50011`
-- TLS: `umbrel.local:50012` con SSL activado
+- TCP: `umbrel.local:55011`
+- TLS: `umbrel.local:55022` con SSL activado
 
 El certificado TLS es autofirmado y está firmado por una CA local. Puedes
 descargar `ca.crt` desde el panel e importarlo en la wallet si quieres validar el
@@ -67,8 +73,8 @@ confianza.
 
 Por Tor:
 
-- `dirección.onion:50011`
-- `dirección.onion:50012`
+- `dirección.onion:55011`
+- `dirección.onion:55022`
 
 El servicio onion se publica con el contenedor Tor de Umbrel. La dirección puede
 tardar unos segundos en aparecer.
@@ -114,7 +120,7 @@ Los ajustes y certificados sí se incluyen.
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01@sha256:fc2fb07cf28d37e221476d0976c0bee13c677aaf47fe609687e86acdc275dafc
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -125,13 +131,13 @@ público; Umbrel debe poder descargarlo sin credenciales.
 Para construir y probar en local:
 
 ```sh
-docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01 albercoin-store-e-lite
+docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02 albercoin-store-e-lite
 ```
 
 Después de la primera publicación, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01@sha256:<digest>
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02@sha256:<digest>
 ```
 
 La imagen base `python:3.12-slim-bookworm` y la imagen de Tor están fijadas por
@@ -174,9 +180,9 @@ Abre `http://localhost:3000`.
 Prueba de que la UI y e-lite arrancan de verdad:
 
 ```sh
-docker run --rm -p 3000:3000 -p 50011:50011 -p 50012:50012 \
+docker run --rm -p 3000:3000 -p 55011:55011 -p 55022:55022 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02
 ```
 
 La primera vez descarga los binarios y espera la selección de red.
@@ -190,7 +196,7 @@ La primera vez descarga los binarios y espera la selección de red.
   su propio índice y Core conserva su cadena podada. Reserva espacio suficiente.
 - **Alpha**. e-lite no tiene autenticación de clientes y su protocolo puede
   cambiar.
-- **TLS autofirmado**. Algunas wallets no aceptan la CA local. El puerto 50011
+- **TLS autofirmado**. Algunas wallets no aceptan la CA local. El puerto 55011
   sigue disponible.
 - **Dependencia de descarga inicial**. La app necesita acceso a GitHub y
   bitcoincore.org la primera vez. Después funciona con los binarios locales.

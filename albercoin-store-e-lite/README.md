@@ -114,7 +114,7 @@ Los ajustes y certificados sí se incluyen.
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01@sha256:fc2fb07cf28d37e221476d0976c0bee13c677aaf47fe609687e86acdc275dafc
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen

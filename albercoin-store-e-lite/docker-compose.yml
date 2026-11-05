@@ -5,9 +5,7 @@ services:
       APP_PORT: 3000
 
   app:
-    # Published by .github/workflows/e-lite-image.yml. Pin the registry digest
-    # for the release in this reference once the image is published.
-    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01
+    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01@sha256:fc2fb07cf28d37e221476d0976c0bee13c677aaf47fe609687e86acdc275dafc
     user: "1000:1000"
     hostname: e-lite
     init: true

@@ -17,6 +17,7 @@
 
 | App | Código principal | Despliegue actual |
 | --- | --- | --- |
+| e-lite | `albercoin-store-e-lite/src/elite/`; pruebas en `tests/` | Imagen propia de GHCR (amd64); descarga e-lite y Bitcoin Core verificados en el primer arranque |
 | Frigate | Python/HTML y shell dentro de `docker-compose.yml`; `exports.sh` y `torrc` | Imágenes base; descarga y verifica el binario de Frigate al preparar el runtime |
 | Onion Rotator | `src/`; pruebas en `tests/`; herramientas en `scripts/` | Python con `src/` montado desde `${APP_DATA_DIR}`; el Compose no construye su Dockerfile |
 | Machine Doctor | `src/main.py`, `src/modules/cpu/`, `src/static/` | Imagen propia de GHCR, construida desde su Dockerfile |
@@ -32,6 +33,7 @@ de trabajo futuro, no diagnósticos completos implementados.
 
 | App | Puerto de la ficha Umbrel | Otros puertos | Accesos sensibles |
 | --- | --- | --- | --- |
+| e-lite | `2194` | Electrum `50011` TCP y `50012` TLS publicados; onion `50011`/`50012`; web interna `3000` | Datos de Bitcoin Core, índice, certificados TLS y datos Tor |
 | Frigate | `2125` | Electrum `50005` publicado; web interna `80` | Credenciales RPC de Bitcoin y datos Tor |
 | Onion Rotator | `2180` | Web interna `8900` | Socket Docker, escritura en datos Tor, lectura de app-data |
 | Machine Doctor | `2190` | Web interna `2190` | `privileged`, montajes del host `/proc`, `/sys`, `/dev` |
@@ -47,6 +49,7 @@ ni compartas datos o copias con credenciales.
 
 `${APP_DATA_DIR}` lo proporciona Umbrel para cada instalación:
 
+- e-lite: `data/config/`, `data/e-lite/<red>/`, `data/bitcoin/`, `data/runtime/` y `data/logs/`; el manifiesto excluye índice, cadena, runtime y logs del backup.
 - Frigate: `data/frigate/`; el manifiesto excluye del backup índices y otros
   archivos regenerables. El servicio Tor utiliza `${TOR_DATA_DIR}`.
 - Onion Rotator: opera sobre datos Tor y apps del nodo; no tiene un volumen

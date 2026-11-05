@@ -1,0 +1,88 @@
+manifestVersion: 1.1
+id: albercoin-store-e-lite
+storage:
+  dataRoot: data
+category: bitcoin
+name: e-lite
+version: "0.1.0-alpha.24-01"
+tagline: Servidor Electrum autónomo con Bitcoin Core incluido
+description: >-
+  e-lite es un servidor Electrum 1.4 autónomo que incluye su propio Bitcoin Core
+  32.1 y no depende de las apps Bitcoin ni Electrs de Umbrel. Elige mainnet,
+  testnet4 o signet en el primer inicio y conecta tu wallet a 50011 (TCP) o
+  50012 (TLS), también por Tor.
+
+
+  Incluye un panel web con estado, progreso de sincronización, conexiones y una
+  pestaña de configuración donde cada parámetro puede fijarse manualmente o
+  dejarse en su valor predeterminado.
+
+
+  Aviso: e-lite está en fase alpha. La primera sincronización puede tardar días
+  y ocupar mucho disco. El TLS usa un certificado autofirmado. Los puertos
+  Electrum no tienen autenticación de clientes; úsalos solo en redes de confianza.
+releaseNotes: >-
+  Primera versión para Umbrel: e-lite 0.1.0-alpha.24 con Bitcoin Core 32.1,
+  selección de red en el primer inicio, panel de estado, conexiones Electrum y
+  configuración con valores predeterminados por parámetro.
+developer: Albercoin
+website: https://github.com/AlbercoinDev/e-lite
+dependencies: []
+repo: https://github.com/AlbercoinDev/e-lite
+support: https://github.com/AlbercoinDev/e-lite/issues
+port: 2194
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-e-lite/icon.svg
+gallery:
+  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-e-lite/gallery/1.jpg
+  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-e-lite/gallery/2.jpg
+  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-e-lite/gallery/3.jpg
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: Albercoin
+submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+widgets:
+  - id: "status"
+    type: "four-stats"
+    refresh: "10s"
+    endpoint: "app:3000/api/widget/status"
+    link: ""
+    example:
+      type: "four-stats"
+      link: ""
+      items:
+        - title: "Estado"
+          text: "Listo"
+          subtext: "signet"
+        - title: "Altura"
+          text: "184,250"
+          subtext: "bloques"
+        - title: "Lag"
+          text: "0"
+          subtext: "bloques"
+        - title: "Clientes"
+          text: "2"
+          subtext: "conectados"
+  - id: "sync"
+    type: "text-with-progress"
+    refresh: "10s"
+    endpoint: "app:3000/api/widget/sync"
+    link: ""
+    example:
+      type: "text-with-progress"
+      link: ""
+      title: "Sincronización"
+      text: "83%"
+      progressLabel: "Indexando"
+      progress: 0.83
+backupIgnore:
+  - data/runtime
+  - data/e-lite
+  - data/bitcoin/blocks
+  - data/bitcoin/chainstate
+  - data/bitcoin/indexes
+  - data/bitcoin/testnet4
+  - data/bitcoin/signet
+  - data/bitcoin/mempool.dat
+  - data/bitcoin/*.log
+  - data/logs

@@ -1,0 +1,68 @@
+name: Build e-lite image
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "albercoin-store-e-lite/**"
+      - ".github/workflows/e-lite-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: e-lite-image
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Unit tests
+        working-directory: ./albercoin-store-e-lite
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -v
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push amd64 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./albercoin-store-e-lite
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-01
+          labels: |
+            org.opencontainers.image.source=https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=e-lite
+            org.opencontainers.image.description=Autonomous Electrum server with bundled Bitcoin Core for Umbrel
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=e-lite
+          cache-to: type=gha,scope=e-lite,mode=max
+
+      - name: Record image digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "Digest: ${IMAGE_DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pin this digest in albercoin-store-e-lite/docker-compose.yml" >> "$GITHUB_STEP_SUMMARY"

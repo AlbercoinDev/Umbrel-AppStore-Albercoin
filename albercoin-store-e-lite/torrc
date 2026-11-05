@@ -1,0 +1,5 @@
+SocksPort 0.0.0.0:9050
+HiddenServiceDir /data/app-albercoin-store-e-lite-electrum
+HiddenServiceVersion 3
+HiddenServicePort 50011 app:50011
+HiddenServicePort 50012 app:50012

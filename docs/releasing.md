@@ -15,6 +15,20 @@ tienda hasta que se integran en la rama que consume Umbrel.
 
 ## Procesos existentes
 
+### e-lite
+
+El workflow `e-lite-image.yml` se activa al hacer push a `master` que toque la
+carpeta de la app o el propio workflow, y también manualmente con
+`workflow_dispatch`. Construye y publica una imagen **solo AMD64** en GHCR porque
+e-lite únicamente distribuye binarios `x86_64`. Es una excepción deliberada al
+requisito multiarquitectura de Umbrel y está documentada en el README de la app.
+
+La imagen incluye el controlador web; e-lite y Bitcoin Core se descargan y
+verifican en el primer arranque. La etiqueta es `0.1.0-alpha.24-01`; tras la
+primera publicación hay que fijar el digest en `docker-compose.yml`. Un cambio de
+versión de e-lite o de Core exige actualizar `src/elite/runtime.py` (versión, URL
+y SHA256), el manifiesto y la documentación.
+
 ### Frigate
 
 No tiene un workflow de imagen propia. Su Compose descarga una versión fija

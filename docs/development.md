@@ -13,6 +13,27 @@ datos de producción, identidades reales ni claves Tor como fixtures.
 - Los comandos siguientes parten de la carpeta de la app indicada.
 - Docker Buildx es necesario para las construcciones descritas en sus README.
 
+## e-lite
+
+La app usa solo la biblioteca estándar de Python. Desde
+`albercoin-store-e-lite/`:
+
+```sh
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+La imagen se puede construir en local sin publicar:
+
+```sh
+docker build -t e-lite:dev .
+docker run --rm -p 3000:3000 -e E_LITE_DEMO=1 -v "$PWD/data-demo:/data" e-lite:dev
+```
+
+El modo `E_LITE_DEMO=1` sirve datos de ejemplo y no descarga binarios ni arranca
+Bitcoin Core. Para una prueba real se necesita espacio libre suficiente y acceso
+a GitHub/bitcoincore.org la primera vez. Consulta su
+[guía](../albercoin-store-e-lite/README.md).
+
 ## Frigate
 
 La interfaz y el arranque están integrados en Compose. Sus pruebas offline usan

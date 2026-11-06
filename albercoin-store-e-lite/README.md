@@ -4,7 +4,7 @@ Servidor Electrum 1.4 autónomo para Umbrel. Incluye su propio **Bitcoin Core 32
 y no depende de las apps **Bitcoin** ni **Electrs** de Umbrel.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.25.2-01`
+- Versión: `0.1.0-alpha.25.2-02`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -128,7 +128,7 @@ Los ajustes y certificados sí se incluyen.
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01@sha256:49993b57495755df8ac63b33d0731dd39831ca6b36b4472f63f4c978b81762e3
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -139,13 +139,13 @@ público; Umbrel debe poder descargarlo sin credenciales.
 Para construir y probar en local:
 
 ```sh
-docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01 albercoin-store-e-lite
+docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02 albercoin-store-e-lite
 ```
 
 Después de la primera publicación, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01@sha256:49993b57495755df8ac63b33d0731dd39831ca6b36b4472f63f4c978b81762e3
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02@sha256:<digest>
 ```
 
 La imagen base `python:3.12-slim-bookworm` y la imagen de Tor están fijadas por
@@ -190,7 +190,7 @@ Prueba de que la UI y e-lite arrancan de verdad:
 ```sh
 docker run --rm -p 3000:3000 -p 55011:55011 -p 55022:55022 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02
 ```
 
 La primera vez descarga los binarios y espera la selección de red.

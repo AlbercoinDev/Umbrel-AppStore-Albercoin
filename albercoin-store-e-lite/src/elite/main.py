@@ -95,7 +95,7 @@ def main() -> int:
         supervisor.start()
 
         def tls_loop() -> None:
-            while not shutdown.wait(60):
+            while not shutdown.wait(15):
                 tls.ensure()
 
         threading.Thread(target=tls_loop, name="tls-refresher", daemon=True).start()

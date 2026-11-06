@@ -5,7 +5,7 @@ services:
       APP_PORT: 3000
 
   app:
-    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01
+    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01@sha256:4f7e71e2f2ae9e5a8498570db27f17be60c8871dde35e300db15e2d0c9f510f2
     user: "1000:1000"
     hostname: e-lite
     init: true

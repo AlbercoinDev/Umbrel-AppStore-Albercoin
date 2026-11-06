@@ -4,7 +4,7 @@ Servidor Electrum 1.4 autónomo para Umbrel. Incluye su propio **Bitcoin Core 32
 y no depende de las apps **Bitcoin** ni **Electrs** de Umbrel.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.24-02`
+- Versión: `0.1.0-alpha.25.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ y no depende de las apps **Bitcoin** ni **Electrs** de Umbrel.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.24`, descargado y verificado por SHA256.
+- e-lite `0.1.0-alpha.25.1`, descargado y verificado por SHA256.
 - Bitcoin Core `32.1` oficial, descargado y verificado por SHA256.
 - Panel web con estado, progreso, conexiones, registro y configuración.
 - Asistente de primer inicio para elegir `mainnet`, `testnet4` o `signet`.
@@ -120,7 +120,7 @@ Los ajustes y certificados sí se incluyen.
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02@sha256:7a19cc5080b1ffa2f80e45eb74f37f943333a407b1a67a2813620ef2cc272350
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -131,13 +131,13 @@ público; Umbrel debe poder descargarlo sin credenciales.
 Para construir y probar en local:
 
 ```sh
-docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02 albercoin-store-e-lite
+docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01 albercoin-store-e-lite
 ```
 
 Después de la primera publicación, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02@sha256:7a19cc5080b1ffa2f80e45eb74f37f943333a407b1a67a2813620ef2cc272350
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01@sha256:<digest>
 ```
 
 La imagen base `python:3.12-slim-bookworm` y la imagen de Tor están fijadas por
@@ -182,7 +182,7 @@ Prueba de que la UI y e-lite arrancan de verdad:
 ```sh
 docker run --rm -p 3000:3000 -p 55011:55011 -p 55022:55022 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.24-02
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01
 ```
 
 La primera vez descarga los binarios y espera la selección de red.

@@ -57,7 +57,7 @@ DEMO_STATUS: dict[str, Any] = {
 
 DEMO_ONION = "elite" + "a" * 51 + ".onion"
 DEMO_LOGS = [
-    "[e-lite] 0.1.0-alpha.24 · signet · BUILDING_INDEX",
+    "[e-lite] 0.1.0-alpha.25.1 · signet · BUILDING_INDEX",
     "[e-lite] Electrum TCP listening on 0.0.0.0:55011",
     "[e-lite] Electrum TLS listening on 0.0.0.0:55022",
     "[e-lite] tuning profile=ssd readers=8 commit=2000ms batch=256",

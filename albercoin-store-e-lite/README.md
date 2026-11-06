@@ -126,10 +126,13 @@ Esta versión **empieza con un diseño de datos nuevo y no migra** los índices,
 datadirs ni onions anteriores. Al actualizar:
 
 - aparece de nuevo el asistente de redes;
-- no se reutilizan los datos antiguos;
-- los directorios antiguos (`data/bitcoin`, `data/e-lite`, `data/config/tls`,
+- no se reutilizan índices, cadenas ni onions antiguos;
+- los directorios antiguos (`data/bitcoin`, `data/e-lite`,
   `data/config/e-lite.toml`) quedan en disco sin usarse;
-- puedes borrarlos manualmente si necesitas recuperar espacio.
+- la CA existente en `data/config/tls` puede reutilizarse para firmar los nuevos
+  certificados por red; los certificados de servidor antiguos no se usan;
+- puedes borrar los directorios antiguos manualmente si necesitas recuperar
+  espacio.
 
 ## Imagen
 

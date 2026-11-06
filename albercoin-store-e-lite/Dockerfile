@@ -16,7 +16,7 @@ COPY icon.svg /app/icon.svg
 
 USER 1000:1000
 
-EXPOSE 3000 55011 55022
+EXPOSE 3000 55011 55022 55111 55122 55211 55222
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/healthz', timeout=3).read()"

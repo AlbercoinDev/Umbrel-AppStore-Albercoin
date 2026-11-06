@@ -1,4 +1,4 @@
-"""Supervise the e-lite process and its managed Bitcoin Core child."""
+"""Supervise one e-lite process per enabled Bitcoin network."""
 
 from __future__ import annotations
 
@@ -19,23 +19,25 @@ CONSOLE_LOG_LIMIT = 8 * 1024 * 1024
 STOP_GRACE_SECONDS = 240
 
 
-class Supervisor:
+class NodeSupervisor:
     def __init__(
         self,
         paths: AppPaths,
+        network: str,
         settings_loader: Callable[[], Settings],
         tls: TLSManager,
         e_lite_binary: Path,
         bitcoin_binary: Path,
-        tor_socks: str,
+        tor_binary: Path,
         log: Callable[[str], None] | None = None,
     ) -> None:
         self.paths = paths
+        self.network = network
         self.settings_loader = settings_loader
         self.tls = tls
         self.e_lite_binary = e_lite_binary
         self.bitcoin_binary = bitcoin_binary
-        self.tor_socks = tor_socks
+        self.tor_binary = tor_binary
         self.log = log or (lambda _message: None)
 
         self._lock = threading.Lock()
@@ -56,11 +58,19 @@ class Supervisor:
             if self._thread is not None and self._thread.is_alive():
                 return
             self._stop.clear()
-            self._thread = threading.Thread(target=self._run_loop, name="e-lite-supervisor", daemon=True)
+            self._thread = threading.Thread(
+                target=self._run_loop,
+                name=f"e-lite-{self.network}",
+                daemon=True,
+            )
             self._thread.start()
 
     def request_restart(self) -> None:
         self._restart.set()
+
+    def is_started(self) -> bool:
+        with self._lock:
+            return self._thread is not None and self._thread.is_alive()
 
     def stop(self) -> None:
         self._stop.set()
@@ -74,6 +84,7 @@ class Supervisor:
         running = process is not None and process.poll() is None
         with self._lock:
             return {
+                "network": self.network,
                 "state": self._state,
                 "running": running,
                 "pid": process.pid if running and process else None,
@@ -84,18 +95,12 @@ class Supervisor:
                 "log_tail": list(self._ring)[-60:],
             }
 
-    def tail_log(self, network: str | None, limit: int = 80) -> list[str]:
-        if network:
-            path = self.paths.e_lite_log(network)
-            lines = read_tail(path, limit=limit)
-            if lines:
-                return lines
-        return list(self._ring)[-limit:]
+    def tail_log(self, limit: int = 80) -> list[str]:
+        lines = read_tail(self.paths.network_e_lite_log(self.network), limit=limit)
+        return lines or list(self._ring)[-limit:]
 
-    def core_log_tail(self, network: str | None, limit: int = 80) -> list[str]:
-        if not network:
-            return []
-        return read_tail(self.paths.core_log(network), limit=limit)
+    def core_log_tail(self, limit: int = 80) -> list[str]:
+        return read_tail(self.paths.network_core_log(self.network), limit=limit)
 
     # ------------------------------------------------------------------- thread
     def _run_loop(self) -> None:
@@ -103,17 +108,18 @@ class Supervisor:
         while not self._stop.is_set():
             try:
                 settings = self.settings_loader()
+                config = settings.network(self.network)
             except Exception as exc:  # noqa: BLE001
                 self._set_state("error", f"settings: {exc}")
                 self._stop.wait(3)
                 continue
 
-            if not settings.setup_complete or not settings.network:
-                self._set_state("setup")
+            if not settings.setup_complete or not config.enabled:
+                self._set_state("disabled")
                 self._stop.wait(1)
                 continue
 
-            if not self.e_lite_binary.is_file() or not self.bitcoin_binary.is_file():
+            if not self.e_lite_binary.is_file() or not self.bitcoin_binary.is_file() or not self.tor_binary.is_file():
                 self._set_state("preparing")
                 self._stop.wait(2)
                 continue
@@ -121,13 +127,13 @@ class Supervisor:
             try:
                 self.tls.ensure()
                 contents = build_config(
-                    settings,
+                    self.network,
+                    config,
                     self.paths,
-                    e_lite_binary=self.e_lite_binary,
                     bitcoin_binary=self.bitcoin_binary,
-                    tor_socks=self.tor_socks,
+                    tor_binary=self.tor_binary,
                 )
-                write_config(self.paths.config_file, contents)
+                write_config(self.paths.network_config_file(self.network), contents)
             except Exception as exc:  # noqa: BLE001
                 self._set_state("error", f"configuration: {exc}")
                 self._stop.wait(5)
@@ -144,16 +150,16 @@ class Supervisor:
                 continue
 
             self._set_state("running")
-            next_tls = time.monotonic() + 30
+            next_tls = time.monotonic() + 15
             while not self._stop.is_set() and not self._restart.is_set():
                 if process.poll() is not None:
                     break
                 if time.monotonic() >= next_tls:
                     self.tls.ensure()
-                    next_tls = time.monotonic() + 30
+                    next_tls = time.monotonic() + 15
                 self._stop.wait(1)
 
-            self._terminate(settings.network)
+            self._terminate()
             self._set_state("restarting")
             if self._stop.is_set():
                 break
@@ -181,8 +187,13 @@ class Supervisor:
         env = os.environ.copy()
         env["HOME"] = str(self.paths.data)
         env.setdefault("PYTHONUNBUFFERED", "1")
-        command = [str(self.e_lite_binary), "run", "--config", str(self.paths.config_file)]
-        self.log("starting: " + " ".join(command))
+        command = [
+            str(self.e_lite_binary),
+            "run",
+            "--config",
+            str(self.paths.network_config_file(self.network)),
+        ]
+        self.log(f"starting {self.network}: " + " ".join(command))
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -196,13 +207,19 @@ class Supervisor:
             self._process = process
             self._started_at = time.time()
             self._exit_code = None
-        threading.Thread(target=self._read_output, args=(process,), name="e-lite-output", daemon=True).start()
+        threading.Thread(
+            target=self._read_output,
+            args=(process,),
+            name=f"e-lite-{self.network}-output",
+            daemon=True,
+        ).start()
         return process
 
     def _read_output(self, process: subprocess.Popen[str]) -> None:
         if process.stdout is None:
             return
-        handle = self.paths.e_lite_console_log.open("a", encoding="utf-8", errors="replace")
+        path = self.paths.network_console_log(self.network)
+        handle = path.open("a", encoding="utf-8", errors="replace")
         try:
             for line in process.stdout:
                 text = line.rstrip("\n")
@@ -213,9 +230,9 @@ class Supervisor:
                     handle.flush()
                     if handle.tell() > CONSOLE_LOG_LIMIT:
                         handle.close()
-                        backup = self.paths.e_lite_console_log.with_suffix(".log.1")
-                        os.replace(self.paths.e_lite_console_log, backup)
-                        handle = self.paths.e_lite_console_log.open("a", encoding="utf-8", errors="replace")
+                        backup = path.with_name(path.name + ".1")
+                        os.replace(path, backup)
+                        handle = path.open("a", encoding="utf-8", errors="replace")
                 except OSError:
                     pass
         finally:
@@ -224,7 +241,7 @@ class Supervisor:
             except OSError:
                 pass
 
-    def _terminate(self, network: str | None) -> None:
+    def _terminate(self) -> None:
         process = self._process
         if process is not None and process.poll() is None:
             try:
@@ -234,7 +251,7 @@ class Supervisor:
             try:
                 process.wait(STOP_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
-                self.log("e-lite did not stop in time; killing it")
+                self.log(f"{self.network}: e-lite did not stop in time; killing it")
                 try:
                     process.kill()
                     process.wait(30)
@@ -248,19 +265,18 @@ class Supervisor:
         with self._lock:
             self._process = None
             self._started_at = None
-        self._cleanup_core(network)
+        self._cleanup_core()
 
-    def _cleanup_core(self, network: str | None) -> None:
-        if not network:
-            return
-        pid_file = self.paths.core_pid(network)
+    def _cleanup_core(self) -> None:
+        pid_file = self.paths.network_core_pid(self.network)
         try:
             pid = int(pid_file.read_text(encoding="utf-8").strip())
         except (OSError, ValueError):
             return
-        if pid <= 1 or not _looks_like_our_core(pid, self.paths.core_data):
+        datadir = self.paths.network_core_data(self.network)
+        if pid <= 1 or not _looks_like_our_core(pid, datadir):
             return
-        self.log(f"stopping leftover Bitcoin Core pid {pid}")
+        self.log(f"{self.network}: stopping leftover Bitcoin Core pid {pid}")
         try:
             os.kill(pid, signal.SIGTERM)
         except OSError:
@@ -279,6 +295,76 @@ class Supervisor:
         with self._lock:
             self._state = state
             self._last_error = error
+
+
+class SupervisorManager:
+    """Own one NodeSupervisor per network and apply settings changes."""
+
+    def __init__(
+        self,
+        paths: AppPaths,
+        settings_loader: Callable[[], Settings],
+        tls_managers: dict[str, TLSManager],
+        e_lite_binary: Path,
+        bitcoin_binary: Path,
+        tor_binary: Path,
+        log: Callable[[str], None] | None = None,
+    ) -> None:
+        self.paths = paths
+        self.settings_loader = settings_loader
+        self.log = log or (lambda _message: None)
+        self.nodes = {
+            network: NodeSupervisor(
+                paths,
+                network,
+                settings_loader,
+                tls_managers[network],
+                e_lite_binary,
+                bitcoin_binary,
+                tor_binary,
+                log=log,
+            )
+            for network in tls_managers
+        }
+
+    def start(self) -> None:
+        settings = self.settings_loader()
+        for network, node in self.nodes.items():
+            if settings.network(network).enabled:
+                node.start()
+
+    def stop(self) -> None:
+        for node in self.nodes.values():
+            node.stop()
+
+    def request_restart(self, network: str | None = None) -> None:
+        if network:
+            self.nodes[network].request_restart()
+        else:
+            for node in self.nodes.values():
+                node.request_restart()
+
+    def apply_settings(self, network: str | None = None) -> None:
+        settings = self.settings_loader()
+        names = [network] if network else list(self.nodes)
+        for name in names:
+            node = self.nodes[name]
+            if settings.network(name).enabled:
+                if node.is_started():
+                    node.request_restart()
+                else:
+                    node.start()
+            else:
+                node.stop()
+
+    def status(self) -> dict[str, dict[str, object]]:
+        return {network: node.status() for network, node in self.nodes.items()}
+
+    def tail_log(self, network: str, limit: int = 80) -> list[str]:
+        return self.nodes[network].tail_log(limit=limit)
+
+    def core_log_tail(self, network: str, limit: int = 80) -> list[str]:
+        return self.nodes[network].core_log_tail(limit=limit)
 
 
 def read_tail(path: Path, limit: int = 80, max_bytes: int = 128 * 1024) -> list[str]:

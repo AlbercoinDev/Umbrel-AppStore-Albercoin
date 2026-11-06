@@ -30,9 +30,10 @@ docker run --rm -p 3000:3000 -e E_LITE_DEMO=1 -v "$PWD/data-demo:/data" e-lite:d
 ```
 
 El modo `E_LITE_DEMO=1` sirve datos de ejemplo y no descarga binarios ni arranca
-Bitcoin Core. Para una prueba real se necesita espacio libre suficiente y acceso
-a GitHub/bitcoincore.org la primera vez. Consulta su
-[guía](../albercoin-store-e-lite/README.md).
+Bitcoin Core ni Tor. Para una prueba real se necesita espacio libre suficiente y
+acceso a GitHub, bitcoincore.org y el bundle de Tor la primera vez. La prueba
+multi-red debe activar testnet4 y signet; mainnet consume mucho más disco y
+tiempo. Consulta su [guía](../albercoin-store-e-lite/README.md).
 
 ## Frigate
 

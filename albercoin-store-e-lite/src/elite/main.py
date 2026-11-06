@@ -12,8 +12,8 @@ from pathlib import Path
 
 from .config_writer import AppPaths
 from .runtime import RuntimeManager
-from .settings import load_settings
-from .supervisor import Supervisor
+from .settings import NETWORKS, load_settings
+from .supervisor import SupervisorManager
 from .tls import TLSManager
 from .web import WebApp, make_server
 
@@ -37,45 +37,56 @@ def configure_logging(paths: AppPaths) -> None:
 
 def main() -> int:
     root = Path(os.environ.get("E_LITE_DATA_ROOT", "/data"))
-    onion_file = Path(
-        os.environ.get(
-            "E_LITE_ONION_FILE",
-            "/tor-data/app-albercoin-store-e-lite-electrum/hostname",
-        )
-    )
-    paths = AppPaths.from_root(root, onion_file)
+    paths = AppPaths.from_root(root)
     paths.ensure()
     configure_logging(paths)
-    LOG.info("starting e-lite wrapper (data=%s, onion-file=%s)", paths.data, paths.onion_file)
+    LOG.info("starting e-lite multi-network wrapper (data=%s)", paths.data)
 
     demo = os.environ.get("E_LITE_DEMO") == "1"
     domain = os.environ.get("DEVICE_DOMAIN_NAME", "umbrel.local").strip() or "umbrel.local"
     hostname = os.environ.get("HOSTNAME", "e-lite").strip() or "e-lite"
-    tor_socks = os.environ.get("E_LITE_TOR_SOCKS", "tor:9050").strip() or "tor:9050"
 
     runtime = RuntimeManager(paths.runtime, log=LOG.info)
-    tls = TLSManager(
-        paths,
-        domain=domain,
-        hostname=hostname,
-        log=LOG.info,
-        public_hostnames_loader=lambda: load_settings(paths.settings_file).public_hostnames,
-    )
-    supervisor = Supervisor(
+
+    def public_hostnames(network: str) -> list[str]:
+        try:
+            return list(load_settings(paths.settings_file).network(network).public_hostnames)
+        except Exception:
+            return []
+
+    tls_managers = {
+        network: TLSManager(
+            paths,
+            network,
+            domain=domain,
+            hostname=hostname,
+            public_hostnames_loader=lambda n=network: public_hostnames(n),
+            log=LOG.info,
+        )
+        for network in NETWORKS
+    }
+    supervisor = SupervisorManager(
         paths,
         settings_loader=lambda: load_settings(paths.settings_file),
-        tls=tls,
+        tls_managers=tls_managers,
         e_lite_binary=runtime.e_lite_binary,
         bitcoin_binary=runtime.bitcoin_binary,
-        tor_socks=tor_socks,
+        tor_binary=runtime.tor_binary,
         log=LOG.info,
     )
-    app = WebApp(paths, runtime, supervisor, tls, domain=domain, hostname=hostname, demo=demo)
+    app = WebApp(
+        paths,
+        runtime,
+        supervisor,
+        tls_managers,
+        domain=domain,
+        hostname=hostname,
+        demo=demo,
+    )
     httpd = make_server(app, 3000)
 
-    # Start the web UI first. Umbrel's LAN ingress only creates the public app
-    # route after app:3000 accepts connections, so a slow first-run download or
-    # a TLS problem must never keep the panel offline.
+    # Start the UI first so Umbrel's LAN ingress can create the public route
+    # even while Tor, Core or the first-run downloads are still in progress.
     server_thread = threading.Thread(target=httpd.serve_forever, name="web", daemon=True)
     server_thread.start()
     LOG.info("e-lite Umbrel UI listening on 0.0.0.0:3000")
@@ -91,16 +102,18 @@ def main() -> int:
 
     if not demo:
         runtime.start()
-        tls.ensure()
+        for manager in tls_managers.values():
+            manager.ensure()
         supervisor.start()
 
         def tls_loop() -> None:
             while not shutdown.wait(15):
-                tls.ensure()
+                for manager in tls_managers.values():
+                    manager.ensure()
 
         threading.Thread(target=tls_loop, name="tls-refresher", daemon=True).start()
     else:
-        LOG.info("demo mode enabled; e-lite and Bitcoin Core will not start")
+        LOG.info("demo mode enabled; e-lite, Bitcoin Core and Tor will not start")
 
     while not shutdown.wait(1):
         pass

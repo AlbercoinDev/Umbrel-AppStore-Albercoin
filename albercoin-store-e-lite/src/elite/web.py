@@ -1,4 +1,4 @@
-"""Small standard-library web UI for the e-lite Umbrel app."""
+"""Multi-network web panel for the e-lite Umbrel app."""
 
 from __future__ import annotations
 
@@ -13,23 +13,25 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from .config_writer import ELECTRUM_PORT, ELECTRUM_TLS_PORT, AppPaths
+from .config_writer import AppPaths, network_metrics_port, network_ports
 from .i18n import field_help, field_label, select_language, t
-from .runtime import BITCOIN_VERSION, E_LITE_VERSION, RuntimeManager
+from .runtime import BITCOIN_VERSION, E_LITE_VERSION, TOR_VERSION, RuntimeManager
 from .settings import (
     FIELDS,
     FIELDS_BY_KEY,
     NETWORKS,
+    NetworkConfig,
     Settings,
     default_label,
     format_value,
     load_settings,
     parse_form,
+    parse_networks_form,
     parse_setup_form,
     save_settings,
 )
-from .supervisor import Supervisor
-from .tls import TLSManager
+from .supervisor import SupervisorManager
+from .tls import TLSManager, read_onion
 
 DEMO_STATUS: dict[str, Any] = {
     "version": E_LITE_VERSION,
@@ -51,29 +53,27 @@ DEMO_STATUS: dict[str, Any] = {
     "tuning": {"profile": "ssd", "cache_mib": 1024, "blocks_per_sec": 418},
     "memory": {"available_mib": 9300},
     "core": {"connections": 9, "initial_block_download": False, "pruned": True, "pruneheight": 176000},
-    "listen": f"0.0.0.0:{ELECTRUM_PORT}",
-    "tls_listen": f"0.0.0.0:{ELECTRUM_TLS_PORT}",
 }
 
-DEMO_ONION = "elite" + "a" * 51 + ".onion"
+DEMO_ONIONS = {
+    "mainnet": "elitemainnet" + "a" * 43 + ".onion",
+    "testnet4": "elitetestnet4" + "a" * 43 + ".onion",
+    "signet": "elitesignet" + "a" * 43 + ".onion",
+}
 DEMO_LOGS = [
-    "[e-lite] 0.1.0-alpha.25.2 · signet · BUILDING_INDEX",
-    "[e-lite] Electrum TCP listening on 0.0.0.0:55011",
-    "[e-lite] Electrum TLS listening on 0.0.0.0:55022",
-    "[e-lite] tuning profile=ssd readers=8 commit=2000ms batch=256",
-    "[e-lite] height 184250/190430 · lag 6180 · 418 blocks/s",
-]
-DEMO_CORE_LOGS = [
-    "Bitcoin Core version v32.1.0",
-    "Signet block height 190430, 9 connections",
-    "Prune: manual, pruneheight 176000",
+    "[e-lite] BUILDING_INDEX",
+    "[e-lite] Electrum TCP/TLS listeners ready",
+    "[e-lite] managed Tor bootstrapped",
+    "[e-lite] height 184250/190430 · lag 6180",
 ]
 
 
 @dataclass
-class Snapshot:
-    setup_complete: bool
+class NetworkSnapshot:
     network: str
+    enabled: bool
+    ports: tuple[int, int]
+    metrics_port: int
     runtime: dict[str, Any]
     process: dict[str, Any]
     live: dict[str, Any] | None
@@ -81,13 +81,12 @@ class Snapshot:
     logs: list[str]
     core_logs: list[str]
     tls: dict[str, Any]
-    domain: str
     demo: bool = False
 
     @property
     def phase(self) -> str:
-        if not self.setup_complete:
-            return "setup"
+        if not self.enabled:
+            return "disabled"
         if self.demo:
             return "live"
         if self.runtime.get("phase") != "ready" and self.live is None:
@@ -104,11 +103,11 @@ class Snapshot:
 
     @property
     def state(self) -> str:
+        if not self.enabled:
+            return "DISABLED"
         if self.live is not None:
             return str(self.live.get("state", "UNKNOWN"))
-        if self.phase == "runtime_error":
-            return "ERROR"
-        if self.phase == "process_error":
+        if self.phase in ("runtime_error", "process_error"):
             return "ERROR"
         if self.phase == "starting":
             return "STARTING"
@@ -147,13 +146,34 @@ class Snapshot:
         return bool((self.live or {}).get("fully_synced", False))
 
 
+@dataclass
+class AppSnapshot:
+    settings: Settings
+    networks: dict[str, NetworkSnapshot]
+    runtime: dict[str, Any]
+    domain: str
+    demo: bool = False
+
+    @property
+    def setup_complete(self) -> bool:
+        return self.settings.setup_complete
+
+    @property
+    def active_count(self) -> int:
+        return sum(1 for network in self.networks.values() if network.enabled)
+
+    @property
+    def enabled_networks(self) -> list[NetworkSnapshot]:
+        return [network for network in self.networks.values() if network.enabled]
+
+
 class WebApp:
     def __init__(
         self,
         paths: AppPaths,
         runtime: RuntimeManager,
-        supervisor: Supervisor,
-        tls: TLSManager,
+        supervisor: SupervisorManager,
+        tls_managers: dict[str, TLSManager],
         domain: str,
         hostname: str,
         demo: bool = False,
@@ -161,7 +181,7 @@ class WebApp:
         self.paths = paths
         self.runtime = runtime
         self.supervisor = supervisor
-        self.tls = tls
+        self.tls_managers = tls_managers
         self.domain = domain
         self.hostname = hostname
         self.demo = demo
@@ -170,10 +190,10 @@ class WebApp:
     def settings(self) -> Settings:
         return load_settings(self.paths.settings_file)
 
-    def snapshot(self) -> Snapshot:
+    def snapshot(self) -> AppSnapshot:
         settings = self.settings()
-        live = DEMO_STATUS if self.demo else self._live_status()
-        network = settings.network or (live or {}).get("network", "")
+        if self.demo:
+            settings = default_settings_demo()
         runtime = self.runtime.status()
         if self.demo:
             runtime = {
@@ -185,25 +205,53 @@ class WebApp:
                 "error": "",
                 "e_lite_version": E_LITE_VERSION,
                 "bitcoin_version": BITCOIN_VERSION,
+                "tor_version": TOR_VERSION,
             }
-        return Snapshot(
-            setup_complete=True if self.demo else settings.setup_complete,
-            network=str(network or "signet"),
+        processes = self.supervisor.status()
+        network_snapshots: dict[str, NetworkSnapshot] = {}
+        for network in NETWORKS:
+            enabled = settings.network(network).enabled
+            live = DEMO_STATUS if self.demo and enabled else self._live(network)
+            if live is not None:
+                live = dict(live)
+                live["network"] = network
+            onion = DEMO_ONIONS[network] if self.demo and enabled else read_onion(self.paths.network_onion_file(network))
+            network_snapshots[network] = NetworkSnapshot(
+                network=network,
+                enabled=enabled,
+                ports=network_ports(network),
+                metrics_port=network_metrics_port(network),
+                runtime=runtime,
+                process=processes.get(network, {}),
+                live=live,
+                onion=onion,
+                logs=DEMO_LOGS if self.demo and enabled else self.supervisor.tail_log(network),
+                core_logs=[] if self.demo else self.supervisor.core_log_tail(network),
+                tls=self.tls_managers[network].status() if not self.demo else {
+                    "ca_available": False,
+                    "certificate_available": False,
+                    "error": "",
+                    "sans": [f"DNS:{DEMO_ONIONS[network]}", "DNS:umbrel.local", "DNS:e-lite"],
+                    "public_hostnames": [],
+                    "onion": DEMO_ONIONS[network],
+                },
+                demo=self.demo,
+            )
+        return AppSnapshot(
+            settings=settings,
+            networks=network_snapshots,
             runtime=runtime,
-            process=self.supervisor.status(),
-            live=live,
-            onion=DEMO_ONION if self.demo else self._onion(),
-            logs=DEMO_LOGS if self.demo else self.supervisor.tail_log(settings.network),
-            core_logs=DEMO_CORE_LOGS if self.demo else self.supervisor.core_log_tail(settings.network),
-            tls=self.tls.status(),
             domain=self.domain,
             demo=self.demo,
         )
 
-    def _live_status(self) -> dict[str, Any] | None:
+    def _live(self, network: str) -> dict[str, Any] | None:
         try:
             with urllib.request.urlopen(
-                urllib.request.Request("http://127.0.0.1:9184/status", headers={"User-Agent": "e-lite-web"}),
+                urllib.request.Request(
+                    f"http://127.0.0.1:{network_metrics_port(network)}/status",
+                    headers={"User-Agent": "e-lite-web"},
+                ),
                 timeout=2,
             ) as response:
                 payload = json.load(response)
@@ -211,45 +259,45 @@ class WebApp:
             return None
         return payload if isinstance(payload, dict) else None
 
-    def _onion(self) -> str:
-        try:
-            value = self.paths.onion_file.read_text(encoding="utf-8").strip().lower()
-        except OSError:
-            return ""
-        return value if value.endswith(".onion") else ""
-
     def api_status(self) -> dict[str, Any]:
         snapshot = self.snapshot()
+        networks: dict[str, Any] = {}
+        for network, data in snapshot.networks.items():
+            live = data.live or {}
+            networks[network] = {
+                "enabled": data.enabled,
+                "phase": data.phase,
+                "state": data.state,
+                "indexed_height": data.indexed,
+                "core_height": data.core_height,
+                "core_headers": data.headers,
+                "index_progress": round(data.index_progress, 2),
+                "core_progress": round(data.core_progress, 2),
+                "lag_blocks": int(live.get("lag_blocks", 0) or 0),
+                "clients": int(live.get("clients", 0) or 0),
+                "onion": data.onion,
+                "ports": {"plain": data.ports[0], "tls": data.ports[1]},
+                "process": data.process,
+                "tls": data.tls,
+            }
         return {
             "app": "e-lite",
-            "version": (snapshot.live or {}).get("version", E_LITE_VERSION),
+            "version": E_LITE_VERSION,
             "core_version": BITCOIN_VERSION,
-            "network": snapshot.network,
-            "phase": snapshot.phase,
-            "state": snapshot.state,
+            "tor_version": TOR_VERSION,
             "setup_complete": snapshot.setup_complete,
-            "ready": bool((snapshot.live or {}).get("ready", False)),
-            "fully_synced": snapshot.fully_synced,
-            "core_ibd": snapshot.core_ibd,
-            "indexed_height": snapshot.indexed,
-            "core_height": snapshot.core_height,
-            "core_headers": snapshot.headers,
-            "index_progress": round(snapshot.index_progress, 2),
-            "core_progress": round(snapshot.core_progress, 2),
-            "lag_blocks": int((snapshot.live or {}).get("lag_blocks", 0) or 0),
-            "clients": int((snapshot.live or {}).get("clients", 0) or 0),
-            "max_clients": int((snapshot.live or {}).get("max_clients", 0) or 0),
-            "onion": snapshot.onion,
-            "domain": snapshot.domain,
-            "listen": (snapshot.live or {}).get("listen", f"0.0.0.0:{ELECTRUM_PORT}"),
-            "tls_listen": (snapshot.live or {}).get("tls_listen", f"0.0.0.0:{ELECTRUM_TLS_PORT}"),
-            "db_bytes": int((snapshot.live or {}).get("db_bytes", 0) or 0),
-            "disk_free_bytes": int((snapshot.live or {}).get("disk_free_bytes", 0) or 0),
-            "uptime_seconds": int((snapshot.live or {}).get("uptime_seconds", 0) or 0),
+            "active_count": snapshot.active_count,
             "runtime": snapshot.runtime,
-            "process": snapshot.process,
-            "tls": snapshot.tls,
+            "domain": snapshot.domain,
+            "networks": networks,
         }
+
+
+def default_settings_demo() -> Settings:
+    settings = Settings(setup_complete=True)
+    settings.network("testnet4").enabled = True
+    settings.network("signet").enabled = True
+    return settings
 
 
 def make_server(app: WebApp, port: int = 3000) -> ThreadingHTTPServer:
@@ -264,7 +312,6 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "e-lite-umbrel"
     sys_version = ""
 
-    # ---------------------------------------------------------------- HTTP verbs
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlsplit(self.path)
         lang = self._language(parsed.query)
@@ -296,7 +343,8 @@ class Handler(BaseHTTPRequestHandler):
             if not snapshot.setup_complete:
                 self._send_html(setup_page(app, snapshot, lang, parsed.query))
             else:
-                self._send_html(status_page(app, snapshot, lang, parsed.query))
+                error = (parse_qs(parsed.query).get("error") or [""])[0]
+                self._send_html(status_page(app, snapshot, lang, parsed.query, error=error))
             return
         if parsed.path == "/setup":
             self._send_html(setup_page(app, snapshot, lang, parsed.query))
@@ -329,25 +377,56 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_html(setup_page(app, snapshot, lang, parsed.query, errors=errors, values=settings))
                 return
             save_settings(app.paths.settings_file, settings)
-            app.supervisor.request_restart()
+            app.supervisor.apply_settings()
             self._redirect("/")
             return
 
         if parsed.path == "/config":
+            network = (form.get("network") or [""])[0]
             previous = app.settings()
-            settings, errors = parse_form(form, previous)
+            settings, errors = parse_form(form, network, previous)
+            if errors:
+                snapshot = app.snapshot()
+                self._send_html(
+                    config_page(app, snapshot, lang, parsed.query, errors=errors, values=settings, selected=network)
+                )
+                return
+            save_settings(app.paths.settings_file, settings)
+            app.supervisor.apply_settings(network)
+            self._redirect(f"/config?saved=1&network={network}&lang={lang}")
+            return
+
+        if parsed.path == "/networks":
+            previous = app.settings()
+            settings, errors = parse_networks_form(form, previous)
             if errors:
                 snapshot = app.snapshot()
                 self._send_html(config_page(app, snapshot, lang, parsed.query, errors=errors, values=settings))
                 return
             save_settings(app.paths.settings_file, settings)
-            app.supervisor.request_restart()
-            self._redirect("/config?saved=1&lang=" + lang)
+            app.supervisor.apply_settings()
+            self._redirect(f"/config?lang={lang}")
             return
 
-        if parsed.path == "/restart":
-            app.supervisor.request_restart()
-            self._redirect("/?restart=1&lang=" + lang)
+        if parsed.path == "/networks/toggle":
+            network = (form.get("network") or [""])[0]
+            enabled = (form.get("enabled") or ["0"])[0] in ("1", "on", "true", "yes")
+            previous = app.settings()
+            toggle_form: dict[str, list[str]] = {}
+            for name in NETWORKS:
+                toggle_form[f"enabled_{name}"] = ["1"] if (name == network and enabled) else (
+                    ["1"] if (name != network and previous.network(name).enabled) else []
+                )
+            if form.get("mainnet_ack"):
+                toggle_form["mainnet_ack"] = form["mainnet_ack"]
+            settings, errors = parse_networks_form(toggle_form, previous)
+            if errors:
+                snapshot = app.snapshot()
+                self._send_html(status_page(app, snapshot, lang, parsed.query, error="; ".join(errors)))
+                return
+            save_settings(app.paths.settings_file, settings)
+            app.supervisor.apply_settings(network)
+            self._redirect("/")
             return
 
         if parsed.path == "/runtime/retry":
@@ -363,10 +442,7 @@ class Handler(BaseHTTPRequestHandler):
         query_lang = (params.get("lang") or [None])[0]
         cookie = self._cookie("elite_lang")
         lang = select_language(self.headers.get("Accept-Language"), query_lang, cookie)
-        if query_lang in ("es", "en"):
-            self._set_cookie = query_lang
-        else:
-            self._set_cookie = None
+        self._set_cookie = query_lang if query_lang in ("es", "en") else None
         return lang
 
     def _cookie(self, name: str) -> str | None:
@@ -440,43 +516,46 @@ class Handler(BaseHTTPRequestHandler):
 
     def _widget_status(self) -> dict[str, Any]:
         snapshot = self.app.snapshot()
-        state = state_label("es", snapshot.state)
+        enabled = snapshot.enabled_networks
+        clients = sum(int((n.live or {}).get("clients", 0) or 0) for n in enabled)
+        indexed = sum(n.indexed for n in enabled)
+        lag = sum(max(0, n.core_height - n.indexed) for n in enabled)
         return {
             "type": "four-stats",
             "refresh": "10s",
             "link": "",
             "items": [
-                {"title": "Estado", "text": state, "subtext": snapshot.network},
-                {"title": "Altura", "text": f"{snapshot.indexed:,}", "subtext": "bloques"},
-                {"title": "Lag", "text": f"{max(0, snapshot.core_height - snapshot.indexed):,}", "subtext": "bloques"},
-                {"title": "Clientes", "text": str((snapshot.live or {}).get("clients", 0)), "subtext": "conectados"},
+                {"title": "Redes", "text": str(len(enabled)), "subtext": "activas"},
+                {"title": "Clientes", "text": str(clients), "subtext": "conectados"},
+                {"title": "Altura", "text": f"{indexed:,}", "subtext": "bloques"},
+                {"title": "Lag", "text": f"{lag:,}", "subtext": "bloques"},
             ],
         }
 
     def _widget_sync(self) -> dict[str, Any]:
         snapshot = self.app.snapshot()
-        if snapshot.core_ibd:
-            progress = snapshot.core_progress
-        elif snapshot.fully_synced:
+        enabled = snapshot.enabled_networks
+        if not enabled:
+            return {
+                "type": "text-with-progress",
+                "refresh": "10s",
+                "link": "",
+                "title": "Sincronización",
+                "text": "Sin redes",
+                "progressLabel": "Inactiva",
+                "progress": 0,
+            }
+        network = enabled[0]
+        progress = network.core_progress if network.core_ibd else network.index_progress
+        if network.fully_synced:
             progress = 100.0
-        else:
-            progress = snapshot.index_progress
-        if snapshot.core_ibd:
-            text = f"Core {snapshot.core_progress:.0f}%"
-            label = "Bitcoin Core"
-        elif snapshot.phase == "live":
-            text = f"{progress:.0f}%"
-            label = "Indexando" if progress < 99.99 else "Listo"
-        else:
-            text = snapshot.state
-            label = "Estado"
         return {
             "type": "text-with-progress",
             "refresh": "10s",
             "link": "",
-            "title": "Sincronización",
-            "text": text,
-            "progressLabel": label,
+            "title": f"Sincronización · {network.network}",
+            "text": f"{progress:.0f}%",
+            "progressLabel": "Indexando" if progress < 99.99 else "Listo",
             "progress": round(max(0.0, min(100.0, progress)) / 100.0, 4),
         }
 
@@ -526,18 +605,21 @@ def state_label(lang: str, state: str) -> str:
         "DEGRADED_RAWTX": "state_degraded",
         "STARTING": "starting",
         "STOPPED": "stopped",
+        "DISABLED": "network_disabled",
         "ERROR": "error",
     }
     return t(lang, mapping.get(state, "state_unknown"))
 
 
-def status_class(snapshot: Snapshot) -> str:
-    if snapshot.phase in ("setup", "runtime"):
+def status_class(network: NetworkSnapshot) -> str:
+    if network.phase == "disabled":
+        return "muted"
+    if network.phase in ("setup", "runtime"):
         return "warn"
-    if snapshot.phase in ("runtime_error", "process_error"):
+    if network.phase in ("runtime_error", "process_error"):
         return "bad"
-    state = snapshot.state
-    if state == "READY" and snapshot.fully_synced:
+    state = network.state
+    if state == "READY" and network.fully_synced:
         return "good"
     if state in ("FATAL_INTEGRITY", "CORE_UNAVAILABLE", "DEGRADED_RAWTX"):
         return "bad"
@@ -585,11 +667,13 @@ nav a.active {{ color:#041b15; background:var(--accent); }}
 nav a.lang {{ margin-left:auto; border-color:var(--line); color:var(--text); }}
 .card {{ background:var(--card); border:1px solid var(--line); border-radius:20px; padding:22px; margin:16px 0; box-shadow:0 18px 50px rgba(0,0,0,.18); }}
 .card h2 {{ margin:0 0 14px; font-size:17px; letter-spacing:.01em; }}
+.card h3 {{ margin:0 0 8px; font-size:15px; }}
 .pill {{ display:inline-flex; align-items:center; gap:9px; padding:9px 14px; border-radius:999px; font-weight:700; font-size:14px; border:1px solid var(--line); }}
 .pill .dot {{ width:9px; height:9px; border-radius:50%; background:currentColor; box-shadow:0 0 16px currentColor; }}
 .pill.good {{ color:var(--good); background:rgba(0,205,152,.1); border-color:rgba(0,205,152,.3); }}
 .pill.warn {{ color:var(--warn); background:rgba(255,196,107,.1); border-color:rgba(255,196,107,.3); }}
 .pill.bad {{ color:var(--bad); background:rgba(255,125,125,.1); border-color:rgba(255,125,125,.3); }}
+.pill.muted {{ color:var(--muted); background:rgba(255,255,255,.05); border-color:var(--line); }}
 .grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }}
 .grid.three {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
 .stat {{ padding:16px; border:1px solid var(--line); border-radius:14px; background:rgba(0,0,0,.16); }}
@@ -603,7 +687,6 @@ nav a.lang {{ margin-left:auto; border-color:var(--line); color:var(--text); }}
 .row:last-child {{ border-bottom:0; }}
 .row .k {{ color:var(--muted); }}
 .row .v {{ text-align:right; overflow-wrap:anywhere; }}
-code, .mono {{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }}
 code {{ background:rgba(92,200,255,.1); border:1px solid rgba(92,200,255,.24); color:#b9ecff; padding:3px 7px; border-radius:7px; font-size:.9em; overflow-wrap:anywhere; }}
 .endpoint {{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }}
 .endpoint code {{ display:inline-block; max-width:100%; overflow-wrap:anywhere; word-break:break-all; }}
@@ -636,6 +719,13 @@ input:disabled, select:disabled, textarea:disabled {{ opacity:.55; }}
 .network span {{ color:var(--muted); font-size:13px; line-height:1.45; }}
 .inline {{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }}
 .badge {{ display:inline-block; padding:4px 8px; border-radius:999px; background:rgba(92,200,255,.1); border:1px solid rgba(92,200,255,.25); color:#b9ecff; font-size:12px; font-weight:700; }}
+.network-head {{ display:flex; gap:14px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; }}
+.network-head h2 {{ margin:0; font-size:22px; }}
+.ports {{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }}
+.port {{ font-size:12px; color:var(--muted); }}
+.tabbar {{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }}
+.tabbar a {{ padding:8px 12px; border-radius:10px; border:1px solid var(--line); color:var(--muted); text-decoration:none; font-size:13px; font-weight:650; }}
+.tabbar a.active {{ color:#041b15; background:var(--accent); border-color:var(--accent); }}
 .footer {{ color:var(--muted); font-size:12.5px; margin-top:26px; display:flex; flex-wrap:wrap; gap:14px; }}
 .footer a {{ color:var(--muted); }}
 @media (max-width: 780px) {{
@@ -683,54 +773,154 @@ function fallbackCopy(value, done) {{
 </html>"""
 
 
-
-def _runtime_card(snapshot: Snapshot, lang: str) -> str:
+def _runtime_card(snapshot: AppSnapshot, lang: str) -> str:
     runtime = snapshot.runtime
     phase = str(runtime.get("phase", "pending"))
-    downloaded = int(runtime.get("downloaded", 0) or 0)
-    total = int(runtime.get("total", 0) or 0)
-    percent = (downloaded / total * 100.0) if total else 0.0
-    kind = str(runtime.get("kind", ""))
-    message = str(runtime.get("message", ""))
     if phase == "ready":
         return ""
     if phase == "error":
         return f"""<div class="card error"><h2>{h(t(lang, "runtime_error"))}</h2>
 <p>{h(runtime.get("error", ""))}</p>
 <form method="post" action="/runtime/retry"><button type="submit">{h(t(lang, "retry"))}</button></form></div>"""
-    label = h(message)
-    if kind:
-        label += f' <span class="badge">{h(kind)}</span>'
+    downloaded = int(runtime.get("downloaded", 0) or 0)
+    total = int(runtime.get("total", 0) or 0)
+    percent = (downloaded / total * 100.0) if total else 0.0
+    label = h(runtime.get("message", ""))
+    if runtime.get("kind"):
+        label += f' <span class="badge">{h(runtime["kind"])}</span>'
     bar = f'<div class="progress"><span style="width:{percent:.1f}%"></span></div>' if total else '<div class="progress indeterminate"><span></span></div>'
-    size = f"<p class=\"help\">{fmt_bytes(downloaded)} / {fmt_bytes(total)}</p>" if total else ""
+    size = f'<p class="help">{fmt_bytes(downloaded)} / {fmt_bytes(total)}</p>' if total else ""
     return f'<div class="card"><h2>{h(t(lang, "runtime_preparing"))}</h2><p>{label}</p>{bar}{size}</div>'
+
+
+def _toggle_form(app: WebApp, network: NetworkSnapshot, lang: str) -> str:
+    enabled = "0" if network.enabled else "1"
+    label = t(lang, "deactivate") if network.enabled else t(lang, "activate")
+    css = "danger" if network.enabled else ""
+    ack = ""
+    if not network.enabled and network.network == "mainnet":
+        ack = f'<label class="checkline"><input type="checkbox" name="mainnet_ack" value="1"> {h(t(lang, "setup_mainnet_ack"))}</label>'
+    return f"""
+<form method="post" action="/networks/toggle" class="inline" onsubmit="return confirm({json.dumps(t(lang, "toggle_network_confirm"))})">
+  <input type="hidden" name="network" value="{network.network}">
+  <input type="hidden" name="enabled" value="{enabled}">
+  {ack}
+  <button type="submit" class="{css}">{h(label)}</button>
+</form>"""
+
+
+def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str) -> str:
+    plain, tls_port = network.ports
+    net_name = t(lang, f"network_{network.network}")
+    ports = f'<div class="ports"><span class="port">TCP <code>{plain}</code></span><span class="port">TLS <code>{tls_port}</code></span></div>'
+    if network.phase == "disabled":
+        body = f"""
+<div class="network-head">
+  <div><h2>{h(net_name)}</h2>{ports}<p class="help">{h(t(lang, "network_inactive_help"))}</p></div>
+  {_toggle_form(app, network, lang)}
+</div>
+<div class="inline"><span class="pill muted"><span class="dot"></span>{h(t(lang, "network_disabled"))}</span>
+<a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>"""
+        return f'<div class="card">{body}</div>'
+
+    status = status_class(network)
+    state_text = state_label(lang, network.state) if network.phase == "live" else (
+        t(lang, "starting") if network.phase == "starting" else t(lang, "not_ready")
+    )
+    if network.phase == "runtime":
+        state_text = t(lang, "not_ready")
+    live = network.live or {}
+    tuning = live.get("tuning", {}) if isinstance(live.get("tuning"), dict) else {}
+    memory = live.get("memory", {}) if isinstance(live.get("memory"), dict) else {}
+    overall = network.core_progress if network.core_ibd else network.index_progress
+    if network.fully_synced:
+        overall = 100.0
+    message = t(lang, "waiting_core_sync") if network.core_ibd else (
+        t(lang, "fully_synced") if network.fully_synced else t(lang, "index_sync")
+    )
+    clearnet_tcp = f"{domain}:{plain}"
+    clearnet_tls = f"{domain}:{tls_port}"
+    onion_tcp = f"{network.onion}:{plain}" if network.onion else ""
+    onion_tls = f"{network.onion}:{tls_port}" if network.onion else ""
+    error = ""
+    if network.phase in ("runtime_error", "process_error"):
+        detail = network.runtime.get("error") or network.process.get("last_error") or ""
+        error = f'<div class="card error"><p>{h(detail)}</p></div>'
+    if network.tls.get("error"):
+        error += f'<div class="card error"><p>{h(network.tls["error"])}</p></div>'
+    log_text = "\n".join(network.logs) if network.logs else t(lang, "no_logs")
+    core_log_text = "\n".join(network.core_logs) if network.core_logs else t(lang, "no_logs")
+    onion_html = (
+        f'<div class="endpoint"><code>{h(onion_tcp)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(onion_tcp)}">{h(t(lang, "copy"))}</button></div>'
+        f'<div class="endpoint"><code>{h(onion_tls)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(onion_tls)}">{h(t(lang, "copy"))}</button></div>'
+        if onion_tcp else f'<p class="help">{h(t(lang, "onion_generating"))}</p>'
+    )
+    return f"""
+<div class="card">
+  {error}
+  <div class="network-head">
+    <div><h2>{h(net_name)}</h2>{ports}</div>
+    <div class="inline">
+      <span class="pill {status}"><span class="dot"></span>{h(state_text)}</span>
+      {_toggle_form(app, network, lang)}
+    </div>
+  </div>
+  <div class="inline" style="justify-content:space-between;margin-top:12px"><span>{h(message)}</span><strong>{overall:.1f}%</strong></div>
+  <div class="progress"><span style="width:{overall:.1f}%"></span></div>
+  <div class="grid" style="margin-top:12px">
+    <div><div class="help">{h(t(lang, "core_sync"))} · {network.core_progress:.1f}%</div><div class="progress"><span style="width:{network.core_progress:.1f}%"></span></div><div class="help">{network.core_height:,} / {network.headers:,}</div></div>
+    <div><div class="help">{h(t(lang, "index_sync"))} · {network.index_progress:.1f}%</div><div class="progress"><span style="width:{network.index_progress:.1f}%"></span></div><div class="help">{network.indexed:,} / {network.headers:,}</div></div>
+  </div>
+  <div class="grid" style="margin-top:12px">
+    <div class="stat"><div class="k">{h(t(lang, "clearnet"))}</div>
+      <div class="endpoint"><code>{h(clearnet_tcp)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(clearnet_tcp)}">{h(t(lang, "copy"))}</button></div>
+      <div class="endpoint"><code>{h(clearnet_tls)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(clearnet_tls)}">{h(t(lang, "copy"))}</button></div>
+      <p class="help">{h(t(lang, "clearnet_help"))}</p>
+    </div>
+    <div class="stat"><div class="k">{h(t(lang, "tor"))}</div>{onion_html}<p class="help">{h(t(lang, "tor_help"))}</p></div>
+  </div>
+  <div class="grid three" style="margin-top:12px">
+    <div class="stat"><div class="k">{h(t(lang, "height"))}</div><div class="v">{network.indexed:,}</div></div>
+    <div class="stat"><div class="k">{h(t(lang, "lag"))}</div><div class="v">{max(0, network.core_height - network.indexed):,}</div></div>
+    <div class="stat"><div class="k">{h(t(lang, "clients"))}</div><div class="v">{int(live.get("clients", 0) or 0)} / {int(live.get("max_clients", 0) or 0)}</div></div>
+  </div>
+  <div class="card" style="background:rgba(0,0,0,.12)">
+    <div class="row"><span class="k">{h(t(lang, "uptime"))}</span><span class="v">{h(fmt_duration(int(live.get("uptime_seconds", 0) or 0)))}</span></div>
+    <div class="row"><span class="k">{h(t(lang, "disk_free"))}</span><span class="v">{h(fmt_bytes(int(live.get("disk_free_bytes", 0) or 0)))}</span></div>
+    <div class="row"><span class="k">{h(t(lang, "db_size"))}</span><span class="v">{h(fmt_bytes(int(live.get("db_bytes", 0) or 0)))}</span></div>
+    <div class="row"><span class="k">{h(t(lang, "memory"))}</span><span class="v">{int(memory.get("available_mib", 0) or 0):,} MiB</span></div>
+    <div class="row"><span class="k">{h(t(lang, "profile"))}</span><span class="v">{h(str(tuning.get("profile", "—")))}</span></div>
+    <div class="row"><span class="k">{h(t(lang, "tls_sans"))}</span><span class="v">{h(", ".join(network.tls.get("sans", [])) or "—")}</span></div>
+  </div>
+  <div class="inline" style="margin-top:12px"><a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>
+  <details><summary>{h(t(lang, "logs"))}</summary><pre>{h(log_text)}</pre><details><summary>{h(t(lang, "show_core_log"))}</summary><pre>{h(core_log_text)}</pre></details></details>
+</div>"""
 
 
 def setup_page(
     app: WebApp,
-    snapshot: Snapshot,
+    snapshot: AppSnapshot,
     lang: str,
     query: str,
     errors: list[str] | None = None,
     values: Settings | None = None,
 ) -> str:
     errors = errors or []
-    selected = (values.network if values else None) or snapshot.network or "signet"
-    runtime = snapshot.runtime
-    ready = str(runtime.get("phase")) == "ready" or snapshot.demo
+    selected = values or snapshot.settings
+    if not any(selected.network(network).enabled for network in NETWORKS):
+        selected = Settings(setup_complete=False)
+        selected.network("signet").enabled = True
     error_html = ""
     if errors:
         error_html = '<div class="card error"><ul>' + "".join(f"<li>{h(_error_text(lang, e))}</li>" for e in errors) + "</ul></div>"
-
     cards = []
     for network in NETWORKS:
         cards.append(
-            f"""<label class="network"><input type="radio" name="network" value="{network}" {"checked" if selected == network else ""}>
+            f"""<label class="network"><input type="checkbox" name="enabled_{network}" value="1" {"checked" if selected.network(network).enabled else ""}>
 <strong>{h(t(lang, f"setup_{network}_title"))}</strong><span>{h(t(lang, f"setup_{network}_help"))}</span></label>"""
         )
-
-    ack = f'<label class="checkline" id="mainnet-ack"><input type="checkbox" name="mainnet_ack" value="1"> {h(t(lang, "setup_mainnet_ack"))}</label>'
-
+    runtime = snapshot.runtime
+    ready = str(runtime.get("phase")) == "ready" or snapshot.demo
     content = f"""
 <div class="card">
   <h2>{h(t(lang, "setup_title"))}</h2>
@@ -740,229 +930,96 @@ def setup_page(
 {error_html}
 {_runtime_card(snapshot, lang)}
 <form method="post" action="/setup?lang={lang}" class="card" onsubmit="return confirmSetup(this)">
-  <h2>{h(t(lang, "network"))}</h2>
+  <h2>{h(t(lang, "networks"))}</h2>
   <div class="network-grid">{''.join(cards)}</div>
-  <div style="margin-top:16px">{ack}</div>
-  <div style="margin-top:18px" class="inline">
-    <button type="submit" {"disabled" if not ready else ""}>{h(t(lang, "save_setup"))}</button>
+  <label class="checkline" id="mainnet-ack"><input type="checkbox" name="mainnet_ack" value="1"> {h(t(lang, "setup_mainnet_ack"))}</label>
+  <div class="inline" style="margin-top:18px">
+    <button type="submit">{h(t(lang, "save_setup"))}</button>
     <span class="help">{("" if ready else h(t(lang, "setup_runtime_wait")))}</span>
   </div>
 </form>
-<div class="card warning">
-  <p><strong>{h(t(lang, "alpha_warning"))}</strong></p>
-  <p>{h(t(lang, "security_warning"))}</p>
-</div>
+<div class="card warning"><p><strong>{h(t(lang, "alpha_warning"))}</strong></p><p>{h(t(lang, "security_warning"))}</p></div>
 <script>
+function updateAck() {{
+  const form = document.querySelector('form[action^="/setup"]');
+  if (!form) return;
+  const mainnet = form.querySelector('input[name="enabled_mainnet"]');
+  const row = document.getElementById('mainnet-ack');
+  if (row) row.style.display = mainnet && mainnet.checked ? 'flex' : 'none';
+}}
+document.querySelectorAll('input[name="enabled_mainnet"]').forEach(function(input) {{ input.addEventListener('change', updateAck); }});
+updateAck();
 function confirmSetup(form) {{
-  const net = form.querySelector('input[name="network"]:checked');
-  if (!net) {{ alert({json.dumps(t(lang, "setup_network_required"))}); return false; }}
-  if (net.value === 'mainnet') {{
+  const checked = form.querySelectorAll('input[name^="enabled_"]:checked');
+  if (!checked.length) {{ alert({json.dumps(t(lang, "setup_network_required"))}); return false; }}
+  if (form.querySelector('input[name="enabled_mainnet"]').checked) {{
     const ack = form.querySelector('input[name="mainnet_ack"]');
     if (!ack || !ack.checked) {{ alert({json.dumps(t(lang, "setup_mainnet_required"))}); return false; }}
     return confirm({json.dumps(t(lang, "setup_mainnet_help"))});
   }}
   return true;
 }}
-function updateAck() {{
-  const form = document.querySelector('form[action^="/setup"]');
-  if (!form) return;
-  const net = form.querySelector('input[name="network"]:checked');
-  const row = document.getElementById('mainnet-ack');
-  if (row) row.style.display = net && net.value === 'mainnet' ? 'flex' : 'none';
-}}
-document.querySelectorAll('input[name="network"]').forEach(function(input) {{
-  input.addEventListener('change', updateAck);
-}});
-updateAck();
 </script>
 """
-    return page(t(lang, "setup"), content, lang, active="setup", refresh=8 if not ready else 0)
+    return page(t(lang, "setup"), content, lang, active="status", refresh=8 if not ready else 0)
 
 
 def _error_text(lang: str, error: str) -> str:
-    if error.startswith("network:"):
-        return t(lang, "error_network")
     if error.startswith("mainnet_ack:"):
         return t(lang, "setup_mainnet_required")
+    if error.startswith("networks:"):
+        return t(lang, "setup_network_required")
     return error
 
 
-def status_page(app: WebApp, snapshot: Snapshot, lang: str, query: str) -> str:
-    status = status_class(snapshot)
-    state_text = state_label(lang, snapshot.state) if snapshot.phase not in ("setup", "runtime") else t(lang, "not_ready")
-    if snapshot.phase == "runtime":
-        state_text = t(lang, "not_ready")
-    if snapshot.phase == "starting":
-        state_text = t(lang, "starting")
-    if snapshot.demo:
-        state_text = f'{state_text} · {t(lang, "demo_mode")}'
-
+def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error: str = "") -> str:
     notice = ""
+    if error:
+        notice = f'<div class="card error"><p>{h(error)}</p></div>'
     if "saved=1" in (query or ""):
-        notice = f'<div class="card warning"><p>{h(t(lang, "saved"))}</p></div>'
-    elif "restart=1" in (query or ""):
-        notice = f'<div class="card warning"><p>{h(t(lang, "restart_requested"))}</p></div>'
-    if snapshot.network == "mainnet":
-        notice += f'<div class="card warning"><p>{h(t(lang, "mainnet_warning"))}</p></div>'
-    if snapshot.phase in ("runtime_error", "process_error"):
-        error = snapshot.runtime.get("error") or snapshot.process.get("last_error") or ""
-        notice += f'<div class="card error"><p>{h(error)}</p></div>'
-    if snapshot.tls.get("error"):
-        notice += f'<div class="card error"><p>{h(t(lang, "tls_self_signed"))}: {h(snapshot.tls.get("error"))}</p></div>'
-
-    sync = _sync_card(snapshot, lang)
-    connections = _connections_card(snapshot, lang)
-    details = _details_card(snapshot, lang)
-    logs = _logs_card(snapshot, lang)
+        notice += f'<div class="card warning"><p>{h(t(lang, "saved"))}</p></div>'
     runtime = _runtime_card(snapshot, lang)
-    aria = "indeterminate" if snapshot.phase in ("starting", "runtime") else ""
-
+    enabled = snapshot.enabled_networks
+    if enabled:
+        clients = sum(int((n.live or {}).get("clients", 0) or 0) for n in enabled)
+        best_disk = min(int((n.live or {}).get("disk_free_bytes", 0) or 0) for n in enabled)
+        summary = f"""
+<div class="grid three">
+  <div class="stat"><div class="k">{h(t(lang, "active_networks"))}</div><div class="v">{snapshot.active_count} / 3</div></div>
+  <div class="stat"><div class="k">{h(t(lang, "clients"))}</div><div class="v">{clients}</div></div>
+  <div class="stat"><div class="k">{h(t(lang, "disk_free"))}</div><div class="v">{h(fmt_bytes(best_disk))}</div></div>
+</div>"""
+    else:
+        summary = f'<div class="card warning"><p>{h(t(lang, "no_networks"))}</p></div>'
+    cards = "".join(_network_card(app, snapshot.networks[network], lang, snapshot.domain) for network in NETWORKS)
     content = f"""
 {notice}
-<div class="card">
-  <div class="inline" style="justify-content:space-between">
-    <span class="pill {status}"><span class="dot"></span>{h(state_text)}</span>
-    <span class="badge">{h(t(lang, "network_" + snapshot.network) if snapshot.network in NETWORKS else snapshot.network)}</span>
-  </div>
-  <div class="grid three" style="margin-top:16px">
-    <div class="stat"><div class="k">{h(t(lang, "height"))}</div><div class="v">{snapshot.indexed:,}</div></div>
-    <div class="stat"><div class="k">{h(t(lang, "core_height"))}</div><div class="v">{snapshot.core_height:,}</div></div>
-    <div class="stat"><div class="k">{h(t(lang, "lag"))}</div><div class="v">{max(0, snapshot.core_height - snapshot.indexed):,} <small>{h(t(lang, "blocks"))}</small></div></div>
-  </div>
-</div>
+<div class="card"><div class="inline" style="justify-content:space-between">
+  <h2 style="margin:0">{h(t(lang, "networks"))}</h2>
+  <span class="badge">{h(t(lang, "version_label", version=E_LITE_VERSION, core=BITCOIN_VERSION))}</span>
+</div>{summary}</div>
 {runtime}
-{sync}
-{connections}
-{details}
-{logs}
-<div class="card warning">
-  <p><strong>{h(t(lang, "alpha_warning"))}</strong></p>
-  <p>{h(t(lang, "security_warning"))}</p>
-</div>
+{cards}
+<div class="card warning"><p><strong>{h(t(lang, "alpha_warning"))}</strong></p><p>{h(t(lang, "security_warning"))}</p></div>
 """
     return page(t(lang, "status_page"), content, lang, active="status", refresh=10)
 
 
-def _sync_card(snapshot: Snapshot, lang: str) -> str:
-    if snapshot.phase in ("runtime", "starting", "stopped", "runtime_error", "process_error"):
-        return f'<div class="card"><h2>{h(t(lang, "sync"))}</h2><div class="progress indeterminate"><span></span></div><p class="help">{h(t(lang, "connecting"))}</p></div>'
-    core_bar = f'<div class="progress"><span style="width:{snapshot.core_progress:.1f}%"></span></div>'
-    index_bar = f'<div class="progress"><span style="width:{snapshot.index_progress:.1f}%"></span></div>'
-    if snapshot.core_ibd:
-        message = t(lang, "waiting_core_sync")
-        overall = snapshot.core_progress
-    elif snapshot.fully_synced:
-        message = t(lang, "fully_synced")
-        overall = 100.0
-    else:
-        message = t(lang, "index_sync")
-        overall = snapshot.index_progress
-    if str(snapshot.live.get("version") if snapshot.live else "") and snapshot.live and snapshot.live.get("tuning"):
-        profile = snapshot.live.get("tuning", {}).get("profile", "auto")
-    else:
-        profile = "auto"
-    return f"""
-<div class="card">
-  <h2>{h(t(lang, "sync"))}</h2>
-  <div class="inline" style="justify-content:space-between"><span>{h(message)}</span><strong>{overall:.1f}%</strong></div>
-  <div class="progress"><span style="width:{overall:.1f}%"></span></div>
-  <div class="grid" style="margin-top:16px">
-    <div><div class="k help">{h(t(lang, "core_sync"))} · {snapshot.core_progress:.1f}%</div>{core_bar}<div class="help">{snapshot.core_height:,} / {snapshot.headers:,}</div></div>
-    <div><div class="k help">{h(t(lang, "index_sync"))} · {snapshot.index_progress:.1f}%</div>{index_bar}<div class="help">{snapshot.indexed:,} / {snapshot.headers:,} · {h(str(profile))}</div></div>
-  </div>
-</div>"""
-
-
-def _connections_card(snapshot: Snapshot, lang: str) -> str:
-    domain = snapshot.domain or "umbrel.local"
-    tcp = f"{domain}:{ELECTRUM_PORT}"
-    tls = f"{domain}:{ELECTRUM_TLS_PORT}"
-    onion_tcp = f"{snapshot.onion}:{ELECTRUM_PORT}" if snapshot.onion else ""
-    onion_tls = f"{snapshot.onion}:{ELECTRUM_TLS_PORT}" if snapshot.onion else ""
-    ca_button = (
-        f'<a class="button secondary" href="/tls/ca.crt">{h(t(lang, "download_ca"))}</a>'
-        if snapshot.tls.get("ca_available")
-        else ""
-    )
-    if onion_tcp:
-        onion_html = (
-            f'<div class="endpoint" style="margin-top:10px"><code>{h(onion_tcp)}</code>'
-            f'<button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(onion_tcp)}">'
-            f'{h(t(lang, "copy"))}</button></div>'
-            f'<div class="endpoint" style="margin-top:8px"><code>{h(onion_tls)}</code>'
-            f'<button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(onion_tls)}">'
-            f'{h(t(lang, "copy"))}</button></div>'
-        )
-    else:
-        onion_html = f'<p class="help">{h(t(lang, "onion_generating"))}</p>'
-    return f"""
-<div class="card">
-  <h2>{h(t(lang, "connections"))}</h2>
-  <div class="grid">
-    <div class="stat">
-      <div class="k">{h(t(lang, "clearnet"))}</div>
-      <div class="endpoint" style="margin-top:10px"><code>{h(tcp)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(tcp)}">{h(t(lang, "copy"))}</button></div>
-      <div class="endpoint" style="margin-top:8px"><code>{h(tls)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(tls)}">{h(t(lang, "copy"))}</button></div>
-      <p class="help">{h(t(lang, "clearnet_help"))}</p>
-      <p class="help">{h(t(lang, "tls_help"))}</p>
-      <div class="inline">{ca_button}</div>
-    </div>
-    <div class="stat">
-      <div class="k">{h(t(lang, "tor"))}</div>
-      {onion_html}
-      <p class="help">{h(t(lang, "tor_help"))}</p>
-    </div>
-  </div>
-</div>"""
-
-
-
-def _details_card(snapshot: Snapshot, lang: str) -> str:
-    live = snapshot.live or {}
-    tuning = live.get("tuning", {}) if isinstance(live.get("tuning"), dict) else {}
-    memory = live.get("memory", {}) if isinstance(live.get("memory"), dict) else {}
-    clients = f"{int(live.get('clients', 0) or 0)} / {int(live.get('max_clients', 0) or 0)}"
-    rows = [
-        (t(lang, "state"), state_label(lang, snapshot.state)),
-        (t(lang, "network"), snapshot.network or "—"),
-        (t(lang, "version"), str(live.get("version", E_LITE_VERSION))),
-        (t(lang, "core_version"), BITCOIN_VERSION),
-        (t(lang, "clients"), clients if snapshot.phase == "live" else "—"),
-        (t(lang, "uptime"), fmt_duration(int(live.get("uptime_seconds", 0) or 0)) if snapshot.phase == "live" else "—"),
-        (t(lang, "disk_free"), fmt_bytes(int(live.get("disk_free_bytes", 0) or 0)) if snapshot.phase == "live" else "—"),
-        (t(lang, "db_size"), fmt_bytes(int(live.get("db_bytes", 0) or 0)) if snapshot.phase == "live" else "—"),
-        (t(lang, "memory"), f"{int(memory.get('available_mib', 0) or 0):,} MiB" if snapshot.phase == "live" else "—"),
-        (t(lang, "profile"), str(tuning.get("profile", "—")) if snapshot.phase == "live" else "—"),
-        (t(lang, "tls_sans"), ", ".join(snapshot.tls.get("sans", [])) or "—"),
-        (t(lang, "electrum_ports"), f"{ELECTRUM_PORT} TCP · {ELECTRUM_TLS_PORT} TLS"),
-        (t(lang, "core_datadir"), "/data/bitcoin"),
-    ]
-    body = "".join(f'<div class="row"><span class="k">{h(k)}</span><span class="v">{h(v)}</span></div>' for k, v in rows)
-    return f'<div class="card"><h2>{h(t(lang, "details"))}</h2>{body}</div>'
-
-
-def _logs_card(snapshot: Snapshot, lang: str) -> str:
-    e_lite = "\n".join(snapshot.logs) if snapshot.logs else t(lang, "no_logs")
-    core = "\n".join(snapshot.core_logs) if snapshot.core_logs else t(lang, "no_logs")
-    return f"""
-<div class="card">
-  <h2>{h(t(lang, "logs"))}</h2>
-  <p class="help">{h(t(lang, "latest_logs"))}</p>
-  <pre>{h(e_lite)}</pre>
-  <details><summary>{h(t(lang, "show_core_log"))}</summary><pre style="margin-top:12px">{h(core)}</pre></details>
-</div>"""
-
-
 def config_page(
     app: WebApp,
-    snapshot: Snapshot,
+    snapshot: AppSnapshot,
     lang: str,
     query: str,
     errors: list[str] | None = None,
     values: Settings | None = None,
+    selected: str | None = None,
 ) -> str:
     settings = values or app.settings()
     errors = errors or []
+    params = parse_qs(query)
+    selected = selected or (params.get("network") or [""])[0]
+    if selected not in NETWORKS:
+        selected = next((n for n in NETWORKS if settings.network(n).enabled), "signet")
     error_html = ""
     if errors:
         error_html = '<div class="card error"><ul>' + "".join(f"<li>{h(_error_text(lang, e))}</li>" for e in errors) + "</ul></div>"
@@ -970,40 +1027,50 @@ def config_page(
     if "saved=1" in (query or ""):
         notice = f'<div class="card warning"><p>{h(t(lang, "saved"))}</p></div>'
 
+    tabs = "".join(
+        f'<a class="{"active" if n == selected else ""}" href="/config?network={n}&lang={lang}">{h(t(lang, f"network_{n}"))}</a>'
+        for n in NETWORKS
+    )
+    network_rows = "".join(
+        f'<label class="checkline"><input type="checkbox" name="enabled_{n}" value="1" {"checked" if settings.network(n).enabled else ""}> {h(t(lang, f"network_{n}"))}</label>'
+        for n in NETWORKS
+    )
+    config = settings.network(selected)
     groups: dict[str, list[str]] = {}
     for field_def in FIELDS:
         group = "advanced" if field_def.advanced else field_def.group
         groups.setdefault(group, []).append(field_def.key)
-
-    network_select = "".join(
-        f'<option value="{net}" {"selected" if (settings.network or snapshot.network or "signet") == net else ""}>{h(t(lang, "network_" + net))}</option>'
-        for net in NETWORKS
-    )
     sections = []
     for group in ("performance", "server", "pruning", "core"):
         if group not in groups:
             continue
-        rows = "".join(_field_row(lang, settings, key) for key in groups[group])
+        rows = "".join(_field_row(lang, config, key) for key in groups[group])
         sections.append(f'<div class="card"><h2>{h(t(lang, "group_" + group))}</h2>{rows}</div>')
-
-    advanced_rows = "".join(
-        _field_row(lang, settings, key) for key in groups.get("advanced", [])
-    )
+    advanced_rows = "".join(_field_row(lang, config, key) for key in groups.get("advanced", []))
     advanced = f'<div class="card"><details><summary>{h(t(lang, "group_advanced"))}</summary>{advanced_rows}</details></div>' if advanced_rows else ""
 
     content = f"""
 {notice}
 {error_html}
-<form method="post" action="/config?lang={lang}" onsubmit="return confirmSave(this)" data-network="{h(settings.network or snapshot.network or 'signet')}">
-  <div class="card">
-    <h2>{h(t(lang, "network"))}</h2>
-    <p class="help">{h(t(lang, "network_change_notice"))}</p>
-    <select name="network" id="network-select">{network_select}</select>
-  </div>
+<div class="card">
+  <h2>{h(t(lang, "network_management"))}</h2>
+  <p class="help">{h(t(lang, "network_management_help"))}</p>
+  <form method="post" action="/networks?lang={lang}" onsubmit="return confirmNetworks(this)">
+    {network_rows}
+    <label class="checkline"><input type="checkbox" name="mainnet_ack" value="1"> {h(t(lang, "setup_mainnet_ack"))}</label>
+    <div class="inline"><button type="submit">{h(t(lang, "save_networks"))}</button></div>
+  </form>
+</div>
+<div class="card">
+  <div class="tabbar">{tabs}</div>
+  <p class="help">{h(t(lang, "config_help"))}</p>
+</div>
+<form method="post" action="/config?lang={lang}" onsubmit="return confirmSave(this)" data-network="{h(selected)}">
+  <input type="hidden" name="network" value="{h(selected)}">
   <div class="card">
     <h2>{h(t(lang, "tls_public_title"))}</h2>
     <p class="help">{h(t(lang, "tls_public_help"))}</p>
-    <textarea name="public_hostnames" rows="3" placeholder="{h(t(lang, "tls_public_placeholder"))}">{h(chr(10).join(settings.public_hostnames))}</textarea>
+    <textarea name="public_hostnames" rows="3" placeholder="{h(t(lang, "tls_public_placeholder"))}">{h(chr(10).join(config.public_hostnames))}</textarea>
   </div>
   {''.join(sections)}
   {advanced}
@@ -1018,8 +1085,7 @@ def config_page(
 <script>
 function toggleDefault(box) {{
   const target = document.getElementById('value-' + box.dataset.key);
-  if (!target) return;
-  target.disabled = box.checked;
+  if (target) target.disabled = box.checked;
 }}
 function resetDefaults(form) {{
   form.querySelectorAll('input[type=checkbox][data-key]').forEach(function(box) {{
@@ -1028,21 +1094,25 @@ function resetDefaults(form) {{
   }});
 }}
 function confirmSave(form) {{
-  const net = form.querySelector('#network-select');
-  if (net && net.value !== form.dataset.network) {{
-    return confirm({json.dumps(t(lang, "network_change_notice"))});
-  }}
   return confirm({json.dumps(t(lang, "restart_notice"))});
+}}
+function confirmNetworks(form) {{
+  const mainnet = form.querySelector('input[name="enabled_mainnet"]');
+  if (mainnet && mainnet.checked) {{
+    const ack = form.querySelector('input[name="mainnet_ack"]');
+    if (!ack || !ack.checked) {{ alert({json.dumps(t(lang, "setup_mainnet_required"))}); return false; }}
+  }}
+  return true;
 }}
 </script>
 """
     return page(t(lang, "settings_page"), content, lang, active="config")
 
 
-def _field_row(lang: str, settings: Settings, key: str) -> str:
+def _field_row(lang: str, config: NetworkConfig, key: str) -> str:
     field_def = FIELDS_BY_KEY[key]
-    is_default = settings.is_default(key)
-    value = settings.value(key)
+    is_default = config.is_default(key)
+    value = config.value(key)
     disabled = " disabled" if is_default else ""
     control_id = "value-" + key
     if field_def.kind == "bool":
@@ -1066,10 +1136,7 @@ def _field_row(lang: str, settings: Settings, key: str) -> str:
     default_hint = f'<code>{h(default_text)}</code>' if default_text else ""
     return f"""
 <div class="field">
-  <div class="label">
-    <label for="default-{key}">{h(field_label(lang, key))}</label>
-    <code>{h(key)}</code>
-  </div>
+  <div class="label"><label for="default-{key}">{h(field_label(lang, key))}</label><code>{h(key)}</code></div>
   <div>
     <label class="checkline"><input id="default-{key}" type="checkbox" name="default__{key}" value="1" data-key="{h(key)}" {"checked" if is_default else ""} onchange="toggleDefault(this)"> {h(t(lang, "use_default"))} {default_hint}</label>
     {control}

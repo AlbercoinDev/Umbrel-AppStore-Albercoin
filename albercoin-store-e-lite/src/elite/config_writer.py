@@ -1,4 +1,4 @@
-"""Generate the e-lite TOML configuration and runtime paths."""
+"""Generate e-lite TOML configuration and per-network runtime paths."""
 
 from __future__ import annotations
 
@@ -6,11 +6,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .settings import FIELDS_BY_KEY, NETWORKS, Settings
+from .settings import FIELDS_BY_KEY, NETWORKS, NetworkConfig
 
-ELECTRUM_PORT = 55011
-ELECTRUM_TLS_PORT = 55022
-METRICS_PORT = 9184
+NETWORK_PORTS: dict[str, tuple[int, int]] = {
+    "mainnet": (55011, 55022),
+    "testnet4": (55111, 55122),
+    "signet": (55211, 55222),
+}
+NETWORK_METRICS: dict[str, int] = {
+    "mainnet": 9184,
+    "testnet4": 9185,
+    "signet": 9186,
+}
+NETWORK_TOR_SOCKS: dict[str, int] = {
+    "mainnet": 9050,
+    "testnet4": 19050,
+    "signet": 19051,
+}
 
 
 @dataclass(frozen=True)
@@ -18,68 +30,92 @@ class AppPaths:
     data: Path
     config: Path
     settings_file: Path
-    config_file: Path
-    tls_dir: Path
-    certificates: Path
-    certificate_key: Path
-    certificate_chain: Path
-    ca_certificate: Path
-    ca_key: Path
-    onion_file: Path
-    e_lite_data: Path
-    core_data: Path
     runtime: Path
     logs: Path
     controller_log: Path
-    e_lite_console_log: Path
+    ca_certificate: Path
+    ca_key: Path
 
     @classmethod
-    def from_root(cls, root: Path, onion_file: Path) -> "AppPaths":
+    def from_root(cls, root: Path) -> "AppPaths":
         config = root / "config"
-        tls_dir = config / "tls"
+        tls = config / "tls"
         return cls(
             data=root,
             config=config,
             settings_file=config / "settings.json",
-            config_file=config / "e-lite.toml",
-            tls_dir=tls_dir,
-            certificates=tls_dir / "server.crt",
-            certificate_key=tls_dir / "server.key",
-            certificate_chain=tls_dir / "fullchain.pem",
-            ca_certificate=tls_dir / "ca.crt",
-            ca_key=tls_dir / "ca.key",
-            onion_file=onion_file,
-            e_lite_data=root / "e-lite",
-            core_data=root / "bitcoin",
             runtime=root / "runtime",
             logs=root / "logs",
             controller_log=root / "logs" / "controller.log",
-            e_lite_console_log=root / "logs" / "e-lite-console.log",
+            ca_certificate=tls / "ca.crt",
+            ca_key=tls / "ca.key",
         )
 
     def ensure(self) -> None:
-        for directory in (
-            self.data,
-            self.config,
-            self.tls_dir,
-            self.e_lite_data,
-            self.core_data,
-            self.runtime,
-            self.logs,
-        ):
+        for directory in (self.data, self.config, self.ca_certificate.parent, self.runtime, self.logs):
             directory.mkdir(parents=True, exist_ok=True)
+        for network in NETWORKS:
+            self.network_e_lite_data(network).mkdir(parents=True, exist_ok=True)
+            self.network_core_data(network).mkdir(parents=True, exist_ok=True)
+            self.network_tls_dir(network).mkdir(parents=True, exist_ok=True)
+            self.network_tor_dir(network).mkdir(parents=True, exist_ok=True)
 
-    def network_data(self, network: str) -> Path:
-        return self.e_lite_data / network
+    # ------------------------------------------------------------- per network
+    def network_root(self, network: str) -> Path:
+        return self.data / "networks" / network
 
-    def e_lite_log(self, network: str) -> Path:
-        return self.network_data(network) / "e-lite.log"
+    def network_e_lite_data(self, network: str) -> Path:
+        return self.network_root(network) / "e-lite"
 
-    def core_log(self, network: str) -> Path:
-        return self.network_data(network) / "bitcoind.log"
+    def network_core_data(self, network: str) -> Path:
+        return self.network_root(network) / "core"
 
-    def core_pid(self, network: str) -> Path:
-        return self.network_data(network) / "core-child.pid"
+    def network_config_dir(self, network: str) -> Path:
+        return self.config / "networks" / network
+
+    def network_config_file(self, network: str) -> Path:
+        return self.network_config_dir(network) / "e-lite.toml"
+
+    def network_tls_dir(self, network: str) -> Path:
+        return self.network_config_dir(network) / "tls"
+
+    def network_certificates(self, network: str) -> Path:
+        return self.network_tls_dir(network) / "server.crt"
+
+    def network_certificate_key(self, network: str) -> Path:
+        return self.network_tls_dir(network) / "server.key"
+
+    def network_certificate_chain(self, network: str) -> Path:
+        return self.network_tls_dir(network) / "fullchain.pem"
+
+    def network_sans_marker(self, network: str) -> Path:
+        return self.network_tls_dir(network) / "sans.txt"
+
+    def network_tor_dir(self, network: str) -> Path:
+        return self.network_config_dir(network) / "tor"
+
+    def network_onion_file(self, network: str) -> Path:
+        return self.network_tor_dir(network) / "onion" / "hostname"
+
+    def network_e_lite_log(self, network: str) -> Path:
+        return self.network_e_lite_data(network) / "e-lite.log"
+
+    def network_core_log(self, network: str) -> Path:
+        return self.network_e_lite_data(network) / "bitcoind.log"
+
+    def network_core_pid(self, network: str) -> Path:
+        return self.network_e_lite_data(network) / "core-child.pid"
+
+    def network_console_log(self, network: str) -> Path:
+        return self.logs / f"e-lite-{network}-console.log"
+
+
+def network_ports(network: str) -> tuple[int, int]:
+    return NETWORK_PORTS[network]
+
+
+def network_metrics_port(network: str) -> int:
+    return NETWORK_METRICS[network]
 
 
 def toml_string(value: str) -> str:
@@ -113,22 +149,23 @@ def _section(lines: list[str], name: str, values: list[tuple[str, Any]]) -> None
 
 
 def build_config(
-    settings: Settings,
+    network: str,
+    config: NetworkConfig,
     paths: AppPaths,
     *,
-    e_lite_binary: Path,
     bitcoin_binary: Path,
-    tor_socks: str,
+    tor_binary: Path,
 ) -> str:
-    if settings.network not in NETWORKS:
-        raise ValueError("settings have no valid network")
-    network = settings.network
+    if network not in NETWORKS:
+        raise ValueError("unknown network")
+    plain_port, tls_port = network_ports(network)
+    metrics_port = network_metrics_port(network)
 
     def value(key: str) -> Any:
-        return settings.overrides.get(key, FIELDS_BY_KEY[key].default)
+        return config.overrides.get(key, FIELDS_BY_KEY[key].default)
 
     def present(key: str) -> bool:
-        return key in settings.overrides
+        return key in config.overrides
 
     lines: list[str] = [
         "# Generated by the e-lite Umbrel app. Manual edits are overwritten.",
@@ -141,14 +178,14 @@ def build_config(
         "network",
         [
             ("name", network),
-            ("data_dir", str(paths.network_data(network))),
+            ("data_dir", str(paths.network_e_lite_data(network))),
         ],
     )
 
     core_values: list[tuple[str, Any]] = [
         ("manage", "managed"),
         ("bitcoind", str(bitcoin_binary)),
-        ("core_datadir", str(paths.core_data)),
+        ("core_datadir", str(paths.network_core_data(network))),
     ]
     for key in ("core.timeout_seconds", "core.prune_mib", "core.restart"):
         if present(key):
@@ -174,10 +211,10 @@ def build_config(
     _section(lines, "index", [(key.split(".", 1)[1], value(key)) for key in index_keys if present(key)])
 
     server_values: list[tuple[str, Any]] = [
-        ("listen", f"0.0.0.0:{ELECTRUM_PORT}"),
-        ("tls_listen", f"0.0.0.0:{ELECTRUM_TLS_PORT}"),
-        ("tls_cert", str(paths.certificate_chain)),
-        ("tls_key", str(paths.certificate_key)),
+        ("listen", f"0.0.0.0:{plain_port}"),
+        ("tls_listen", f"0.0.0.0:{tls_port}"),
+        ("tls_cert", str(paths.network_certificate_chain(network))),
+        ("tls_key", str(paths.network_certificate_key(network))),
     ]
     if present("server.max_clients"):
         server_values.append(("max_clients", value("server.max_clients")))
@@ -188,11 +225,11 @@ def build_config(
         "metrics",
         [
             ("enabled", True),
-            ("listen", f"127.0.0.1:{METRICS_PORT}"),
+            ("listen", f"127.0.0.1:{metrics_port}"),
         ],
     )
 
-    rawtx_values: list[tuple[str, Any]] = [("tor_socks", tor_socks)]
+    rawtx_values: list[tuple[str, Any]] = []
     for key in (
         "rawtx.enabled",
         "rawtx.cache_mib",
@@ -221,14 +258,28 @@ def build_config(
     ]
     _section(lines, "pruning", [(key.split(".", 1)[1], value(key)) for key in pruning_keys if present(key)])
 
-    logging_values: list[tuple[str, Any]] = [("file", str(paths.e_lite_log(network)))]
+    logging_values: list[tuple[str, Any]] = [("file", str(paths.network_e_lite_log(network)))]
     if present("logging.max_mib"):
         logging_values.append(("max_mib", value("logging.max_mib")))
     _section(lines, "logging", logging_values)
 
-    # Tor is provided by the Umbrel Tor sidecar. e-lite must not start its own
-    # Tor because it refuses to publish non-loopback Electrum listeners.
-    _section(lines, "tor", [("mode", "off")])
+    # e-lite manages its own Tor per network. The wildcard listener is mapped
+    # to loopback by e-lite and the onion ports mirror the Electrum listeners.
+    _section(
+        lines,
+        "tor",
+        [
+            ("mode", "managed"),
+            ("binary", str(tor_binary)),
+            ("data_dir", str(paths.network_tor_dir(network))),
+            ("plain", True),
+            ("tls", True),
+            ("tls_auto_cert", False),
+            ("onion_port", 0),
+            ("onion_tls_port", 0),
+            ("socks_port", NETWORK_TOR_SOCKS[network]),
+        ],
+    )
 
     _section(lines, "safety", [("allow_mainnet", network == "mainnet")])
 

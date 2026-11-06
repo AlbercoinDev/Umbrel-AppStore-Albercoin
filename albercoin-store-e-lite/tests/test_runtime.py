@@ -104,7 +104,7 @@ class RuntimeTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
-    def test_ready_requires_both_binaries(self) -> None:
+    def test_ready_requires_all_binaries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manager = RuntimeManager(Path(directory))
             self.assertFalse(manager.ready())
@@ -116,6 +116,10 @@ class RuntimeTests(unittest.TestCase):
             (manager.bitcoin_dir / "bin").mkdir()
             manager.bitcoin_binary.write_text("#!/bin/sh\n")
             manager.bitcoin_binary.chmod(0o755)
+            self.assertFalse(manager.ready())
+            manager.tor_dir.mkdir(parents=True)
+            manager.tor_binary.write_text("#!/bin/sh\n")
+            manager.tor_binary.chmod(0o755)
             self.assertTrue(manager.ready())
 
 

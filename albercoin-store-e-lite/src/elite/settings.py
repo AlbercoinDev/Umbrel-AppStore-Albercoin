@@ -1,8 +1,9 @@
-"""User settings for the e-lite Umbrel app.
+"""Per-network settings for the e-lite Umbrel app.
 
-Only values explicitly overridden by the user are stored.  A field that is not
-present in ``overrides`` is omitted from the generated e-lite TOML file, so
-e-lite (and not this wrapper) owns the default value.
+A settings document stores one independent configuration for each supported
+Bitcoin network.  Only values explicitly overridden by the user are stored; a
+field that is absent from ``overrides`` is omitted from the generated e-lite
+TOML file, so e-lite owns its default value.
 """
 
 from __future__ import annotations
@@ -12,9 +13,10 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 NETWORKS = ("mainnet", "testnet4", "signet")
+SCHEMA_VERSION = 2
 
 GROUPS = ("performance", "server", "pruning", "core", "advanced")
 
@@ -80,6 +82,10 @@ _IPV6_PORT = re.compile(r"^\[[0-9A-Fa-f:]+\]:[0-9]{1,5}$")
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$")
 
 
+class SettingsError(ValueError):
+    """Raised when a settings document or submitted form is invalid."""
+
+
 def normalize_public_hostnames(values: Any) -> list[str]:
     if isinstance(values, str):
         items = re.split(r"[,\s]+", values)
@@ -99,31 +105,50 @@ def normalize_public_hostnames(values: Any) -> list[str]:
     return result
 
 
-class SettingsError(ValueError):
-    """Raised when a settings document or submitted form is invalid."""
-
-
 @dataclass
-class Settings:
-    network: str | None = None
+class NetworkConfig:
+    enabled: bool = False
     overrides: dict[str, Any] = field(default_factory=dict)
-    setup_complete: bool = False
     public_hostnames: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "network": self.network,
-            "setup_complete": self.setup_complete,
-            "public_hostnames": list(self.public_hostnames),
+            "enabled": self.enabled,
             "overrides": dict(sorted(self.overrides.items())),
+            "public_hostnames": list(self.public_hostnames),
         }
 
     def value(self, key: str) -> Any:
-        field_def = FIELDS_BY_KEY[key]
-        return self.overrides.get(key, field_def.default)
+        return self.overrides.get(key, FIELDS_BY_KEY[key].default)
 
     def is_default(self, key: str) -> bool:
         return key not in self.overrides
+
+
+@dataclass
+class Settings:
+    networks: dict[str, NetworkConfig] = field(
+        default_factory=lambda: {name: NetworkConfig() for name in NETWORKS}
+    )
+    setup_complete: bool = False
+
+    @property
+    def enabled_networks(self) -> list[str]:
+        return [name for name in NETWORKS if self.networks[name].enabled]
+
+    @property
+    def any_enabled(self) -> bool:
+        return bool(self.enabled_networks)
+
+    def network(self, name: str) -> NetworkConfig:
+        return self.networks[name]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SCHEMA_VERSION,
+            "setup_complete": self.setup_complete,
+            "networks": {name: self.networks[name].as_dict() for name in NETWORKS},
+        }
 
 
 def default_settings() -> Settings:
@@ -145,34 +170,37 @@ def load_settings(path: Path) -> Settings:
     if not isinstance(data, dict):
         raise SettingsError("settings file must contain an object")
 
-    network = data.get("network")
-    if network is not None and network not in NETWORKS:
-        network = None
-    setup_complete = bool(data.get("setup_complete")) and network in NETWORKS
-    overrides_raw = data.get("overrides", {})
-    if not isinstance(overrides_raw, dict):
-        raise SettingsError("overrides must be an object")
+    # Old single-network documents are intentionally not migrated: the new
+    # multi-network layout starts from a clean setup.
+    if data.get("schema") != SCHEMA_VERSION or not isinstance(data.get("networks"), dict):
+        return default_settings()
 
-    overrides: dict[str, Any] = {}
-    for key, value in overrides_raw.items():
-        field_def = FIELDS_BY_KEY.get(key)
-        if field_def is None:
-            continue
+    networks: dict[str, NetworkConfig] = {}
+    for name in NETWORKS:
+        raw_network = data["networks"].get(name, {})
+        if not isinstance(raw_network, dict):
+            raw_network = {}
+        overrides: dict[str, Any] = {}
+        raw_overrides = raw_network.get("overrides", {})
+        if isinstance(raw_overrides, dict):
+            for key, value in raw_overrides.items():
+                field_def = FIELDS_BY_KEY.get(key)
+                if field_def is None:
+                    continue
+                try:
+                    overrides[key] = _coerce(field_def, value)
+                except SettingsError:
+                    continue
         try:
-            overrides[key] = _coerce(field_def, value)
+            public_hostnames = normalize_public_hostnames(raw_network.get("public_hostnames", []))
         except SettingsError:
-            # A stale or hand-edited invalid value must not brick the app.
-            continue
-    try:
-        public_hostnames = normalize_public_hostnames(data.get("public_hostnames", []))
-    except SettingsError:
-        public_hostnames = []
-    return Settings(
-        network=network,
-        overrides=overrides,
-        setup_complete=setup_complete,
-        public_hostnames=public_hostnames,
-    )
+            public_hostnames = []
+        networks[name] = NetworkConfig(
+            enabled=bool(raw_network.get("enabled", False)),
+            overrides=overrides,
+            public_hostnames=public_hostnames,
+        )
+    return Settings(networks=networks, setup_complete=bool(data.get("setup_complete", False)))
 
 
 def save_settings(path: Path, settings: Settings) -> None:
@@ -235,11 +263,9 @@ def _check_range(field_def: Field, number: float) -> Any:
     return int(number) if field_def.kind == "int" else float(number)
 
 
-def validate_settings(settings: Settings) -> list[str]:
+def validate_network(network: str, config: NetworkConfig) -> list[str]:
     errors: list[str] = []
-    if settings.network not in NETWORKS:
-        errors.append("network: must be mainnet, testnet4 or signet")
-    for key, value in settings.overrides.items():
+    for key, value in config.overrides.items():
         field_def = FIELDS_BY_KEY.get(key)
         if field_def is None:
             errors.append(f"{key}: unknown setting")
@@ -260,33 +286,39 @@ def validate_settings(settings: Settings) -> list[str]:
                 if any(ch in text for ch in "\r\n\0"):
                     errors.append(f"{key}: arguments cannot contain newlines or NUL")
 
-    prune = settings.overrides.get("core.prune_mib")
+    prune = config.overrides.get("core.prune_mib")
     if prune is not None and 1 < int(prune) < 550:
         errors.append("core.prune_mib: use 0 (full), 1 (manual) or >= 550 (automatic)")
-    if prune is not None and int(prune) >= 550 and not bool(settings.overrides.get("pruning.allow_auto_prune", False)):
+    if prune is not None and int(prune) >= 550 and not bool(config.overrides.get("pruning.allow_auto_prune", False)):
         errors.append("pruning.allow_auto_prune: must be enabled when core.prune_mib >= 550")
 
-    min_free = settings.overrides.get("pruning.min_free_gib")
-    critical = settings.overrides.get("pruning.critical_free_gib")
+    min_free = config.overrides.get("pruning.min_free_gib")
+    critical = config.overrides.get("pruning.critical_free_gib")
     if min_free is not None and critical is not None and int(critical) > int(min_free):
         errors.append("pruning.critical_free_gib: cannot be greater than pruning.min_free_gib")
 
     return errors
 
 
-def parse_form(form: dict[str, list[str]], previous: Settings | None = None) -> tuple[Settings, list[str]]:
-    """Parse the settings form.
+def validate_settings(settings: Settings) -> list[str]:
+    errors: list[str] = []
+    for name in NETWORKS:
+        if name not in settings.networks:
+            errors.append(f"{name}: missing network settings")
+            continue
+        for error in validate_network(name, settings.networks[name]):
+            errors.append(f"{name}: {error}")
+    return errors
 
-    ``form`` is the output of ``urllib.parse.parse_qs``.  Each field has a
-    ``default__<key>`` checkbox and a ``value__<key>`` control.
-    """
+
+def parse_form(form: dict[str, list[str]], network: str, previous: Settings | None = None) -> tuple[Settings, list[str]]:
+    """Parse the settings form for one network."""
 
     previous = previous or default_settings()
-    errors: list[str] = []
-    network = _first(form, "network") or previous.network
     if network not in NETWORKS:
-        errors.append("network: select mainnet, testnet4 or signet")
+        return previous, ["network: select mainnet, testnet4 or signet"]
 
+    errors: list[str] = []
     overrides: dict[str, Any] = {}
     for field_def in FIELDS:
         checkbox = f"default__{field_def.key}"
@@ -294,8 +326,6 @@ def parse_form(form: dict[str, list[str]], previous: Settings | None = None) -> 
             continue
         raw = _first(form, f"value__{field_def.key}")
         if raw is None:
-            # A missing control means "use the default"; this is friendlier for
-            # partially submitted or older forms.
             continue
         try:
             overrides[field_def.key] = _coerce(field_def, raw)
@@ -305,35 +335,57 @@ def parse_form(form: dict[str, list[str]], previous: Settings | None = None) -> 
     try:
         public_hostnames = normalize_public_hostnames(_first(form, "public_hostnames") or "")
     except SettingsError as exc:
-        public_hostnames = list(previous.public_hostnames)
+        public_hostnames = list(previous.network(network).public_hostnames)
         errors.append(str(exc))
 
-    settings = Settings(
-        network=network,
+    networks = {name: NetworkConfig(
+        enabled=previous.network(name).enabled,
+        overrides=dict(previous.network(name).overrides),
+        public_hostnames=list(previous.network(name).public_hostnames),
+    ) for name in NETWORKS}
+    networks[network] = NetworkConfig(
+        enabled=previous.network(network).enabled,
         overrides=overrides,
-        setup_complete=True,
         public_hostnames=public_hostnames,
     )
-    errors.extend(validate_settings(settings))
-    # Preserve the order and remove duplicates.
+    settings = Settings(networks=networks, setup_complete=True)
+    errors.extend(validate_network(network, networks[network]))
     return settings, list(dict.fromkeys(errors))
 
 
-def parse_setup_form(form: dict[str, list[str]], previous: Settings | None = None) -> tuple[Settings, list[str]]:
+def parse_networks_form(
+    form: dict[str, list[str]],
+    previous: Settings | None = None,
+    *,
+    require_one: bool = False,
+) -> tuple[Settings, list[str]]:
+    """Parse the enable/disable checkboxes for every network."""
+
     previous = previous or default_settings()
-    network = _first(form, "network")
     errors: list[str] = []
-    if network not in NETWORKS:
-        errors.append("network: select mainnet, testnet4 or signet")
-    if network == "mainnet" and _first(form, "mainnet_ack") not in ("1", "on", "true", "yes"):
-        errors.append("mainnet_ack: confirm that you understand the mainnet sync")
-    settings = Settings(
-        network=network,
-        overrides=dict(previous.overrides),
-        setup_complete=not errors,
-        public_hostnames=list(previous.public_hostnames),
-    )
-    return settings, errors
+    networks: dict[str, NetworkConfig] = {}
+    for name in NETWORKS:
+        old = previous.network(name)
+        enabled = _first(form, f"enabled_{name}") in ("1", "on", "true", "yes")
+        if (
+            name == "mainnet"
+            and enabled
+            and not old.enabled
+            and _first(form, "mainnet_ack") not in ("1", "on", "true", "yes")
+        ):
+            errors.append("mainnet_ack: confirm that you understand the mainnet sync")
+        networks[name] = NetworkConfig(
+            enabled=enabled,
+            overrides=dict(old.overrides),
+            public_hostnames=list(old.public_hostnames),
+        )
+    if require_one and not any(config.enabled for config in networks.values()):
+        errors.append("networks: enable at least one network")
+    return Settings(networks=networks, setup_complete=not errors if require_one else True), errors
+
+
+def parse_setup_form(form: dict[str, list[str]], previous: Settings | None = None) -> tuple[Settings, list[str]]:
+    return parse_networks_form(form, previous, require_one=True)
 
 
 def _first(form: dict[str, list[str]], key: str) -> str | None:
@@ -357,7 +409,3 @@ def default_label(field_def: Field) -> str:
     if field_def.kind == "list":
         return ""
     return str(field_def.default)
-
-
-def overrides_for_network(settings: Settings) -> Iterable[tuple[str, Any]]:
-    return settings.overrides.items()

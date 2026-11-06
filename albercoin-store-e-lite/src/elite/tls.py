@@ -1,10 +1,4 @@
-"""Local TLS certificates for the Electrum TLS listener.
-
-The app creates a private CA and a server certificate signed by it.  The CA
-certificate can be downloaded from the web UI so advanced users can add it to a
-wallet trust store.  The leaf certificate is regenerated when the SAN list
-changes, for example when the Tor onion address appears.
-"""
+"""Per-network TLS certificates for the Electrum TLS listeners."""
 
 from __future__ import annotations
 
@@ -20,6 +14,7 @@ from typing import Callable
 from .config_writer import AppPaths
 
 _ONION = re.compile(r"^[a-z2-7]{56}\.onion$")
+_CA_LOCK = threading.Lock()
 
 
 def read_onion(path: Path) -> str:
@@ -30,7 +25,12 @@ def read_onion(path: Path) -> str:
     return value if _ONION.match(value) else ""
 
 
-def build_sans(domain: str, hostname: str, onion: str, public_hostnames: list[str] | tuple[str, ...] = ()) -> list[str]:
+def build_sans(
+    domain: str,
+    hostname: str,
+    onion: str,
+    public_hostnames: list[str] | tuple[str, ...] = (),
+) -> list[str]:
     dns = {"localhost", "umbrel.local"}
     if domain:
         dns.add(domain)
@@ -50,47 +50,55 @@ class TLSManager:
     def __init__(
         self,
         paths: AppPaths,
+        network: str,
         domain: str,
         hostname: str,
-        log: Callable[[str], None] | None = None,
         public_hostnames_loader: Callable[[], list[str]] | None = None,
+        log: Callable[[str], None] | None = None,
     ) -> None:
         self.paths = paths
+        self.network = network
         self.domain = domain
         self.hostname = hostname
-        self.log = log or (lambda _message: None)
         self.public_hostnames_loader = public_hostnames_loader or (lambda: [])
+        self.log = log or (lambda _message: None)
         self._lock = threading.Lock()
         self._last_error = ""
 
     def status(self) -> dict[str, object]:
-        marker = self.paths.tls_dir / "sans.txt"
+        marker = self.paths.network_sans_marker(self.network)
         try:
             sans = marker.read_text(encoding="utf-8").splitlines() if marker.is_file() else []
         except OSError:
             sans = []
+        onion = read_onion(self.paths.network_onion_file(self.network))
+        try:
+            public_hostnames = list(self.public_hostnames_loader())
+        except Exception:
+            public_hostnames = []
         return {
             "ca_available": self.paths.ca_certificate.is_file(),
-            "certificate_available": self.paths.certificate_chain.is_file(),
+            "certificate_available": self.paths.network_certificate_chain(self.network).is_file(),
             "error": self._last_error,
             "sans": sans,
-            "public_hostnames": list(self.public_hostnames_loader()),
+            "public_hostnames": public_hostnames,
+            "onion": onion,
         }
 
     def ensure(self) -> bool:
-        """Create or refresh the certificate.  Returns True when files exist."""
+        """Create or refresh this network's certificate."""
 
         with self._lock:
             try:
-                self.paths.tls_dir.mkdir(parents=True, exist_ok=True)
-                onion = read_onion(self.paths.onion_file)
+                self.paths.network_tls_dir(self.network).mkdir(parents=True, exist_ok=True)
+                onion = read_onion(self.paths.network_onion_file(self.network))
                 public_hostnames = self.public_hostnames_loader()
                 sans = build_sans(self.domain, self.hostname, onion, public_hostnames)
-                marker = self.paths.tls_dir / "sans.txt"
+                marker = self.paths.network_sans_marker(self.network)
                 current = marker.read_text(encoding="utf-8").splitlines() if marker.is_file() else []
                 if (
-                    self.paths.certificate_chain.is_file()
-                    and self.paths.certificate_key.is_file()
+                    self.paths.network_certificate_chain(self.network).is_file()
+                    and self.paths.network_certificate_key(self.network).is_file()
                     and self.paths.ca_certificate.is_file()
                     and current == sans
                 ):
@@ -100,11 +108,11 @@ class TLSManager:
                 self._generate(sans)
                 marker.write_text("\n".join(sans) + "\n", encoding="utf-8")
                 self._last_error = ""
-                self.log("TLS certificate generated/updated")
+                self.log(f"TLS certificate generated/updated for {self.network}")
                 return True
             except Exception as exc:  # noqa: BLE001 - reported in the UI
                 self._last_error = str(exc)
-                self.log(f"TLS error: {exc}")
+                self.log(f"TLS error for {self.network}: {exc}")
                 return False
 
     def _openssl(self, args: list[str], cwd: Path) -> None:
@@ -123,41 +131,55 @@ class TLSManager:
             detail = (result.stderr or result.stdout or "").strip()
             raise RuntimeError(f"openssl failed: {detail[:300]}")
 
+    def _ensure_ca(self, work: Path) -> tuple[Path, Path]:
+        ca_key = work / "ca.key"
+        ca_crt = work / "ca.crt"
+        with _CA_LOCK:
+            if self.paths.ca_key.is_file() and self.paths.ca_certificate.is_file():
+                shutil.copy2(self.paths.ca_key, ca_key)
+                shutil.copy2(self.paths.ca_certificate, ca_crt)
+                return ca_key, ca_crt
+            self._openssl(
+                [
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:3072",
+                    "-nodes",
+                    "-sha256",
+                    "-days",
+                    "3650",
+                    "-keyout",
+                    str(ca_key),
+                    "-out",
+                    str(ca_crt),
+                    "-subj",
+                    "/CN=e-lite Local CA/O=Albercoin",
+                ],
+                work,
+            )
+            self.paths.ca_key.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ca_key, self.paths.ca_key.with_name(self.paths.ca_key.name + ".new"))
+            shutil.copy2(ca_crt, self.paths.ca_certificate.with_name(self.paths.ca_certificate.name + ".new"))
+            os.chmod(self.paths.ca_key.with_name(self.paths.ca_key.name + ".new"), 0o600)
+            os.chmod(self.paths.ca_certificate.with_name(self.paths.ca_certificate.name + ".new"), 0o644)
+            os.replace(self.paths.ca_key.with_name(self.paths.ca_key.name + ".new"), self.paths.ca_key)
+            os.replace(
+                self.paths.ca_certificate.with_name(self.paths.ca_certificate.name + ".new"),
+                self.paths.ca_certificate,
+            )
+            return ca_key, ca_crt
+
     def _generate(self, sans: list[str]) -> None:
-        with tempfile.TemporaryDirectory(dir=self.paths.tls_dir) as temp:
+        tls_dir = self.paths.network_tls_dir(self.network)
+        with tempfile.TemporaryDirectory(dir=tls_dir) as temp:
             work = Path(temp)
-            ca_key = work / "ca.key"
-            ca_crt = work / "ca.crt"
+            ca_key, ca_crt = self._ensure_ca(work)
             server_key = work / "server.key"
             csr = work / "server.csr"
             server_crt = work / "server.crt"
             ext = work / "server.ext"
             fullchain = work / "fullchain.pem"
-
-            # Keep the CA stable across leaf regenerations.
-            if self.paths.ca_key.is_file() and self.paths.ca_certificate.is_file():
-                shutil.copy2(self.paths.ca_key, ca_key)
-                shutil.copy2(self.paths.ca_certificate, ca_crt)
-            else:
-                self._openssl(
-                    [
-                        "req",
-                        "-x509",
-                        "-newkey",
-                        "rsa:3072",
-                        "-nodes",
-                        "-sha256",
-                        "-days",
-                        "3650",
-                        "-keyout",
-                        str(ca_key),
-                        "-out",
-                        str(ca_crt),
-                        "-subj",
-                        "/CN=e-lite Local CA/O=Albercoin",
-                    ],
-                    work,
-                )
 
             self._openssl(
                 [
@@ -212,8 +234,6 @@ class TLSManager:
                 os.chmod(temporary, mode)
                 os.replace(temporary, destination)
 
-            install(ca_crt, self.paths.ca_certificate, 0o644)
-            install(ca_key, self.paths.ca_key, 0o600)
-            install(server_crt, self.paths.certificates, 0o644)
-            install(server_key, self.paths.certificate_key, 0o600)
-            install(fullchain, self.paths.certificate_chain, 0o644)
+            install(server_crt, self.paths.network_certificates(self.network), 0o644)
+            install(server_key, self.paths.network_certificate_key(self.network), 0o600)
+            install(fullchain, self.paths.network_certificate_chain(self.network), 0o644)

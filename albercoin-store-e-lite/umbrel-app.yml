@@ -4,28 +4,29 @@ storage:
   dataRoot: data
 category: bitcoin
 name: e-lite
-version: "0.1.0-alpha.25.2-02"
+version: "0.1.0-alpha.25.2-03"
 tagline: Servidor Electrum autónomo con Bitcoin Core incluido
 description: >-
   e-lite es un servidor Electrum 1.4 autónomo que incluye su propio Bitcoin Core
-  32.1 y no depende de las apps Bitcoin ni Electrs de Umbrel. Elige mainnet,
-  testnet4 o signet en el primer inicio y conecta tu wallet a 55011 (TCP) o
-  55022 (TLS), también por Tor.
+  32.1 y puede ejecutar mainnet, testnet4 y signet a la vez. No depende de las
+  apps Bitcoin ni Electrs de Umbrel. Cada red tiene sus propios puertos, Core,
+  índice, certificado TLS y dirección onion.
 
 
-  Incluye un panel web con estado, progreso de sincronización, conexiones y una
-  pestaña de configuración donde cada parámetro puede fijarse manualmente o
-  dejarse en su valor predeterminado.
+  Mainnet usa 55011/55022, testnet4 55111/55122 y signet 55211/55222. El panel
+  permite activar o desactivar cada red, ver su estado y configurar sus
+  parámetros de forma independiente.
 
 
   Aviso: e-lite está en fase alpha. La primera sincronización puede tardar días
   y ocupar mucho disco. El TLS usa un certificado autofirmado. Los puertos
   Electrum no tienen autenticación de clientes; úsalos solo en redes de confianza.
 releaseNotes: >-
-  Versión 0.1.0-alpha.25.2-02: actualiza e-lite a 0.1.0-alpha.25.2, corrige el
-  target onion del contenedor Tor y añade dominios públicos opcionales al
-  certificado TLS. Mantiene Bitcoin Core 32.1, los puertos 55011 (TCP) y 55022
-  (TLS), y el arranque anticipado del panel web.
+  Versión 0.1.0-alpha.25.2-03: añade soporte simultáneo para mainnet, testnet4 y
+  signet, con activación independiente, configuración por red, puertos
+  55011/55022, 55111/55122 y 55211/55222, y Tor gestionado por e-lite en cada
+  red. Esta versión empieza con un diseño de datos nuevo: no migra índices ni
+  onions de versiones anteriores.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/e-lite
 dependencies: []
@@ -52,18 +53,18 @@ widgets:
       type: "four-stats"
       link: ""
       items:
-        - title: "Estado"
-          text: "Listo"
-          subtext: "signet"
+        - title: "Redes"
+          text: "2"
+          subtext: "activas"
+        - title: "Clientes"
+          text: "2"
+          subtext: "conectados"
         - title: "Altura"
           text: "184,250"
           subtext: "bloques"
         - title: "Lag"
           text: "0"
           subtext: "bloques"
-        - title: "Clientes"
-          text: "2"
-          subtext: "conectados"
   - id: "sync"
     type: "text-with-progress"
     refresh: "10s"
@@ -78,12 +79,10 @@ widgets:
       progress: 0.83
 backupIgnore:
   - data/runtime
-  - data/e-lite
-  - data/bitcoin/blocks
-  - data/bitcoin/chainstate
-  - data/bitcoin/indexes
-  - data/bitcoin/testnet4
-  - data/bitcoin/signet
-  - data/bitcoin/mempool.dat
-  - data/bitcoin/*.log
+  - data/networks
   - data/logs
+  - data/bitcoin
+  - data/e-lite
+  - data/config/e-lite.toml
+  - data/config/networks/*/tor/data
+  - data/config/networks/*/tor/tor.log

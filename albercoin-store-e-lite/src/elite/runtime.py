@@ -26,6 +26,13 @@ BITCOIN_VERSION = "32.1"
 BITCOIN_SHA256 = "61545c17c3120fb7412f896d248b11993af04ec8817aad3649c55b2afb044963"
 BITCOIN_URL = f"https://bitcoincore.org/bin/bitcoin-core-{BITCOIN_VERSION}/bitcoin-{BITCOIN_VERSION}-x86_64-linux-gnu.tar.gz"
 
+TOR_VERSION = "16.0"
+TOR_SHA256 = "cc950ebe9acb80188325c3a2cd8817def7dd7237d6fdcd861bb87b234a0cb2fd"
+TOR_URL = (
+    "https://dist.torproject.org/torbrowser/"
+    f"{TOR_VERSION}/tor-expert-bundle-linux-x86_64-{TOR_VERSION}.tar.gz"
+)
+
 DOWNLOAD_CHUNK = 1024 * 1024
 MIN_FREE_BYTES = 300 * 1024 * 1024
 
@@ -121,6 +128,14 @@ class RuntimeManager:
     def bitcoin_binary(self) -> Path:
         return self.bitcoin_dir / "bin" / "bitcoind"
 
+    @property
+    def tor_dir(self) -> Path:
+        return self.runtime_dir / f"tor-{TOR_VERSION}"
+
+    @property
+    def tor_binary(self) -> Path:
+        return self.tor_dir / "tor"
+
     def status(self) -> dict[str, object]:
         with self._lock:
             return {
@@ -132,10 +147,16 @@ class RuntimeManager:
                 "error": self._error,
                 "e_lite_version": E_LITE_VERSION,
                 "bitcoin_version": BITCOIN_VERSION,
+                "tor_version": TOR_VERSION,
             }
 
     def ready(self) -> bool:
-        return self.e_lite_binary.is_file() and os.access(self.e_lite_binary, os.X_OK) and self.bitcoin_binary.is_file()
+        return (
+            self.e_lite_binary.is_file()
+            and os.access(self.e_lite_binary, os.X_OK)
+            and self.bitcoin_binary.is_file()
+            and self.tor_binary.is_file()
+        )
 
     # ------------------------------------------------------------------ actions
     def start(self) -> None:
@@ -197,6 +218,7 @@ class RuntimeManager:
                 )
             self._install_e_lite()
             self._install_bitcoin()
+            self._install_tor()
             self._verify_binaries()
             self._cleanup_old()
             self._set(state="ready", message="Componentes listos", error="", kind="")
@@ -255,16 +277,45 @@ class RuntimeManager:
                 shutil.rmtree(target_dir)
             shutil.copytree(extracted, target_dir)
 
+    def _install_tor(self) -> None:
+        target_dir = self.tor_dir
+        if (target_dir / "tor").is_file() and os.access(target_dir / "tor", os.X_OK):
+            return
+        self._set(state="downloading", message="Descargando Tor", kind="tor", downloaded=0, total=0)
+        with tempfile.TemporaryDirectory(dir=self.runtime_dir) as temp:
+            archive = Path(temp) / "tor.tar.gz"
+            _download(
+                TOR_URL,
+                archive,
+                TOR_SHA256,
+                lambda done, total: self._set(downloaded=done, total=total, state="downloading", message="Descargando Tor"),
+            )
+            self._set(state="installing", message="Instalando Tor")
+            extract_dir = Path(temp) / "extract"
+            safe_extract(archive, extract_dir)
+            extracted = extract_dir / "tor"
+            if not (extracted / "tor").is_file():
+                raise RuntimeError_("el archivo de Tor no contiene el binario esperado")
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            shutil.copytree(extracted, target_dir)
+            os.chmod(target_dir / "tor", 0o755)
+
     def _verify_binaries(self) -> None:
         verify_home = self.runtime_dir / "verify-home"
         verify_home.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env["HOME"] = str(verify_home)
-        checks = (
-            ([str(self.e_lite_binary), "--version"], E_LITE_VERSION),
-            ([str(self.bitcoin_binary), "-version"], f"v{BITCOIN_VERSION}"),
+        tor_env = env.copy()
+        tor_env["LD_LIBRARY_PATH"] = str(self.tor_dir) + (
+            ":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else ""
         )
-        for command, expected in checks:
+        checks = (
+            ([str(self.e_lite_binary), "--version"], E_LITE_VERSION, env),
+            ([str(self.bitcoin_binary), "-version"], f"v{BITCOIN_VERSION}", env),
+            ([str(self.tor_binary), "--version"], "Tor version", tor_env),
+        )
+        for command, expected, command_env in checks:
             try:
                 output = subprocess.run(
                     command,
@@ -272,7 +323,7 @@ class RuntimeManager:
                     text=True,
                     timeout=30,
                     check=False,
-                    env=env,
+                    env=command_env,
                 )
             except OSError as exc:
                 raise RuntimeError_(f"no se pudo ejecutar {command[0]}: {exc}") from exc
@@ -282,11 +333,15 @@ class RuntimeManager:
         shutil.rmtree(verify_home, ignore_errors=True)
 
     def _cleanup_old(self) -> None:
-        keep = {f"e-lite-{E_LITE_VERSION}", f"bitcoin-{BITCOIN_VERSION}"}
+        keep = {f"e-lite-{E_LITE_VERSION}", f"bitcoin-{BITCOIN_VERSION}", f"tor-{TOR_VERSION}"}
         if not self.runtime_dir.is_dir():
             return
         for child in self.runtime_dir.iterdir():
             if child.name in keep or child.name.endswith(".part"):
                 continue
-            if child.is_dir() and (child.name.startswith("e-lite-") or child.name.startswith("bitcoin-")):
+            if child.is_dir() and (
+                child.name.startswith("e-lite-")
+                or child.name.startswith("bitcoin-")
+                or child.name.startswith("tor-")
+            ):
                 shutil.rmtree(child, ignore_errors=True)

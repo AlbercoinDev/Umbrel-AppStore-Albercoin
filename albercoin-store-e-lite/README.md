@@ -1,173 +1,155 @@
 # e-lite para Umbrel
 
-Servidor Electrum 1.4 autónomo para Umbrel. Incluye su propio **Bitcoin Core 32.1**
-y no depende de las apps **Bitcoin** ni **Electrs** de Umbrel.
+Servidor Electrum 1.4 autónomo con Bitcoin Core incluido. Puede ejecutar
+**mainnet, testnet4 y signet a la vez**, con activación y configuración
+independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.25.2-02`
+- Versión: `0.1.0-alpha.25.2-03`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
 > **Aviso:** e-lite está en fase alpha. No está pensado para custodiar fondos sin
-> verificar su funcionamiento. La primera sincronización de mainnet puede tardar
-> días y ocupar mucho disco. Los puertos Electrum no tienen autenticación de
-> clientes.
+> verificar su funcionamiento. Ejecutar varias redes multiplica el consumo de
+> disco, CPU y memoria. Los puertos Electrum no tienen autenticación de clientes.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.25.2`, descargado y verificado por SHA256.
-- Bitcoin Core `32.1` oficial, descargado y verificado por SHA256.
-- Panel web con estado, progreso, conexiones, registro y configuración.
-- Asistente de primer inicio para elegir `mainnet`, `testnet4` o `signet`.
-- Configuración por parámetro con opción de usar el valor predeterminado de e-lite.
-- Servicio onion mediante el contenedor Tor de Umbrel.
-- Certificado TLS local generado automáticamente.
-
-No usa la app Bitcoin de Umbrel ni la app Electrs. Bitcoin Core se ejecuta dentro
-de esta app con su propio datadir y su propia sincronización.
+- e-lite `0.1.0-alpha.25.2`, verificado por SHA256.
+- Bitcoin Core `32.1` oficial, verificado por SHA256.
+- Tor `16.0` (bundle oficial) verificado por SHA256.
+- Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
+- Panel web multi-red con activación/desactivación y configuración por red.
+- Asistente de primer inicio para elegir las redes activas.
 
 ## Puertos
+
+| Red | Plain | TLS | Métricas internas |
+| --- | --- | --- | --- |
+| mainnet | `55011` | `55022` | `9184` |
+| testnet4 | `55111` | `55122` | `9185` |
+| signet | `55211` | `55222` | `9186` |
+
+Además:
 
 | Puerto | Uso |
 | --- | --- |
 | `2194` | Panel web de Umbrel (`app_proxy`) |
-| `55011` | Electrum TCP clearnet/LAN |
-| `55022` | Electrum TLS |
-| `3000` | UI interna del contenedor, no publicada |
-| `9184` | Estado interno de e-lite, solo loopback del contenedor |
+| `3000` | Web interna del contenedor, no publicada |
 
-Los puertos `55011` y `55022` se publican en el host. El puerto TCP no cifra la
-conexión y ninguno de los dos autentica clientes.
-
-Umbrel reserva listeners internos en el rango `50000+` para su ingress LAN. Los
-puertos `55011/55022` se eligieron porque estaban libres en el nodo y no
-coinciden con los puertos internos que estaban bloqueando el arranque anterior.
-El panel web se inicia antes que TLS, e-lite y Bitcoin Core para que Umbrel
-pueda crear la ruta del panel aunque la descarga o el certificado tarden.
+Los seis puertos Electrum se publican en el host. TCP no cifra la conexión y
+ninguno de los dos autentica clientes.
 
 ## Primer inicio
 
 1. Instala la app desde la tienda.
-2. Abre el panel. La app descarga e-lite y Bitcoin Core (unos 100 MB) con
-   verificación SHA256.
-3. Elige la red:
-   - **mainnet**: cadena real. Requiere confirmación explícita y mucha paciencia.
+2. Abre el panel. La app descarga e-lite, Bitcoin Core y Tor.
+3. Marca las redes que quieres activar:
+   - **mainnet**: cadena real, requiere confirmación explícita.
    - **testnet4**: red de pruebas.
-   - **signet**: red de pruebas estable, recomendada para validar la instalación.
+   - **signet**: red de pruebas estable, activada por defecto.
 4. Pulsa **Iniciar e-lite**.
 
-La descarga se hace una sola vez y queda en `data/runtime`. La app no empieza a
-sincronizar hasta que hayas elegido la red.
+Cada red activa arranca su propio Bitcoin Core, su e-lite y su Tor. Las redes
+desactivadas conservan sus datos y pueden activarse después desde el panel.
 
-## Conexiones
+## Panel de estado
 
-Para una wallet en la red local:
+Cada red tiene una tarjeta con:
 
-- TCP: `umbrel.local:55011`
-- TLS: `umbrel.local:55022` con SSL activado
+- estado y progreso de Core y del índice;
+- altura, lag, clientes y espacio libre;
+- conexiones clearnet, TLS y onion;
+- botón **Activar / Desactivar**;
+- configuración y logs propios.
 
-El certificado TLS es autofirmado y está firmado por una CA local. Puedes
-descargar `ca.crt` desde el panel e importarlo en la wallet si quieres validar el
-certificado. Si la wallet no acepta la CA, usa el puerto TCP dentro de tu red de
-confianza.
-
-Por Tor:
-
-- `dirección.onion:55011`
-- `dirección.onion:55022`
-
-El servicio onion se publica con el contenedor Tor de Umbrel. La dirección puede
-tardar unos segundos en aparecer. El target del servicio oculto usa el hostname
-del contenedor (`e-lite`), no el alias de servicio, porque Tor necesita
-resolverlo desde su propio contenedor.
-
-Para TLS con un dominio público, añade el hostname en **Configuración → TLS para
-dominio público**. El certificado incluirá también ese nombre en el SAN. Si el
-dominio público termina el TLS en otro proxy, el certificado que verá el wallet
-es el del proxy, no el de e-lite.
+Al desactivar una red se detienen su Core, su e-lite y su Tor. El puerto de host
+sigue mapeado por Docker, pero no hay servicio escuchando: el wallet recibe
+conexión rechazada.
 
 ## Configuración
 
-La pestaña **Configuración** permite fijar manualmente los parámetros de e-lite.
-Cada campo tiene una casilla **Usar valor predeterminado**:
+Cada red tiene su propia configuración, con los mismos parámetros y la casilla
+**Usar valor predeterminado** por campo. La gestión de redes permite activar o
+desactivar mainnet, testnet4 y signet.
 
-- marcada: el parámetro no se escribe en el TOML y e-lite usa su propio valor;
-- desmarcada: se escribe el valor manual.
+Cada red tiene además un campo de **hostnames públicos TLS**. Los nombres
+añadidos se incluyen en el SAN de su certificado. Ejemplo:
 
-Grupos disponibles:
+```text
+elite.umbrel.nodobitcoin.org
+```
 
-- **Rendimiento**: perfil, adaptive, caché, memoria, lectores, commit, batch y reorg.
-- **Servidor y red**: clientes, rawtx, P2P, Esplora y clearnet.
-- **Poda y disco**: poda de Core, mínimos de espacio, lag y reparación.
-- **Bitcoin Core y registro**: timeout, argumentos extra, reinicio y rotación.
-- **Avanzado**: opciones que conviene cambiar solo si sabes lo que haces.
-- **TLS para dominio público**: hostnames adicionales para el SAN del certificado.
+El certificado de cada red incluye también su propia dirección onion, el dominio
+del dispositivo y `umbrel.local`.
 
-Al guardar se regenera `/data/config/e-lite.toml` y se reinicia e-lite. Bitcoin
-Core también se reinicia, pero la cadena y el índice se conservan.
+## Tor
 
-Cambiar de red conserva los datos de cada red. Cada red tiene su propio índice en
-`data/e-lite/<red>` y su propia cadena dentro de `data/bitcoin`.
+Tor lo gestiona e-lite dentro del mismo contenedor, una instancia por red:
+
+- el onion de una red solo existe mientras esa red está activa;
+- los puertos onion son los mismos que los del listener:
+  - mainnet `55011/55022`
+  - testnet4 `55111/55122`
+  - signet `55211/55222`;
+- las claves onion viven en `data/config/networks/<red>/tor` y se incluyen en el
+  backup;
+- si Tor falla, el resto de la red sigue funcionando sin onion y el panel muestra
+  el error.
+
+No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 
 ## Datos persistentes
 
-| Ruta | Contenido |
-| --- | --- |
-| `data/config/` | Ajustes, TOML generado y certificados |
-| `data/config/tls/` | CA local, certificado y clave |
-| `data/e-lite/<red>/` | Índice RocksDB y logs de e-lite |
-| `data/bitcoin/` | Datadir de Bitcoin Core |
-| `data/runtime/` | Binarios verificados de e-lite y Core |
-| `data/logs/` | Log del controlador y consola de e-lite |
+```text
+data/
+  config/
+    settings.json
+    tls/ca.crt, ca.key              # CA local compartida
+    networks/<red>/
+      e-lite.toml
+      tls/                          # certificado y clave de la red
+      tor/                          # claves onion y estado de Tor
+  networks/<red>/
+    e-lite/                         # índice, logs y pid de Core
+    core/                           # datadir de Bitcoin Core
+  runtime/                          # e-lite, Core y Tor verificados
+  logs/                             # logs del controlador y consolas
+```
 
-El manifiesto excluye del backup el índice, la cadena, el runtime y los logs.
-Los ajustes y certificados sí se incluyen.
+El manifiesto excluye del backup índices, cadenas, runtime y logs. Conserva
+ajustes, certificados y claves onion.
+
+### Actualización desde versiones de una sola red
+
+Esta versión **empieza con un diseño de datos nuevo y no migra** los índices,
+datadirs ni onions anteriores. Al actualizar:
+
+- aparece de nuevo el asistente de redes;
+- no se reutilizan los datos antiguos;
+- los directorios antiguos (`data/bitcoin`, `data/e-lite`, `data/config/tls`,
+  `data/config/e-lite.toml`) quedan en disco sin usarse;
+- puedes borrarlos manualmente si necesitas recuperar espacio.
 
 ## Imagen
 
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02@sha256:4ef032e185165ade4103e4cd3156bb7268a8b33d16f5b3c94b1222c089ab1aad
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-03
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
 para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente con
-`workflow_dispatch`. La primera vez, comprueba que el paquete de GHCR queda como
-público; Umbrel debe poder descargarlo sin credenciales.
+`workflow_dispatch`. El paquete de GHCR debe ser público.
 
-Para construir y probar en local:
-
-```sh
-docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02 albercoin-store-e-lite
-```
-
-Después de la primera publicación, fija el digest en `docker-compose.yml`:
+Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02@sha256:4ef032e185165ade4103e4cd3156bb7268a8b33d16f5b3c94b1222c089ab1aad
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-03@sha256:<digest>
 ```
 
-La imagen base `python:3.12-slim-bookworm` y la imagen de Tor están fijadas por
-digest.
-
-## Build de e-lite y Core
-
-La imagen no contiene los binarios: el controlador los descarga en el primer
-arranque desde:
-
-- `https://github.com/AlbercoinDev/e-lite/releases`
-- `https://bitcoincore.org/bin/bitcoin-core-32.1/`
-
-Ambas descargas verifican el SHA256 fijado en `src/elite/runtime.py`. Los
-binarios se instalan en `data/runtime` y se validan ejecutando `--version` antes
-de arrancar.
-
-Si cambias la versión de e-lite o de Bitcoin Core, actualiza:
-
-1. `src/elite/runtime.py`: versión, URL y SHA256.
-2. `umbrel-app.yml`: versión y release notes.
-3. `README.md` y `docs/`.
+La imagen base `python:3.12-slim-bookworm` está fijada por digest.
 
 ## Pruebas
 
@@ -176,45 +158,46 @@ cd albercoin-store-e-lite
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-Prueba local del panel en modo demostración:
+Panel en modo demostración:
 
 ```sh
 docker build -t e-lite:dev albercoin-store-e-lite
 docker run --rm -p 3000:3000 -e E_LITE_DEMO=1 -v "$PWD/data-demo:/data" e-lite:dev
 ```
 
-Abre `http://localhost:3000`.
-
-Prueba de que la UI y e-lite arrancan de verdad:
+Prueba real con testnet4 y signet:
 
 ```sh
-docker run --rm -p 3000:3000 -p 55011:55011 -p 55022:55022 \
+docker run --rm -p 3000:3000 \
+  -p 55011:55011 -p 55022:55022 \
+  -p 55111:55111 -p 55122:55122 \
+  -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-02
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-03
 ```
 
-La primera vez descarga los binarios y espera la selección de red.
+La primera vez descarga los tres componentes y pide elegir redes.
 
 ## Limitaciones
 
-- **Solo amd64**. e-lite solo publica el binario `x86_64`. En Raspberry Pi
-  (arm64) la app muestra un error claro y no arranca. Para soportar arm64 habría
-  que compilar e-lite desde fuente.
-- **Mainnet duplica datos**. Aunque Bitcoin Core use poda manual, e-lite mantiene
-  su propio índice y Core conserva su cadena podada. Reserva espacio suficiente.
-- **Alpha**. e-lite no tiene autenticación de clientes y su protocolo puede
-  cambiar.
-- **TLS autofirmado**. Algunas wallets no aceptan la CA local. El puerto 55011
-  sigue disponible.
-- **Dependencia de descarga inicial**. La app necesita acceso a GitHub y
-  bitcoincore.org la primera vez. Después funciona con los binarios locales.
+- **Solo amd64**. e-lite solo publica el binario `x86_64`; arm64 no está
+  soportado.
+- **Consumo**. Tres redes activas implican tres Bitcoin Core, tres índices, tres
+  e-lite y tres Tor. Mainnet puede necesitar mucho disco y días de sincronización.
+- **Alpha**. e-lite no autentica clientes y su protocolo puede cambiar.
+- **TLS autofirmado**. Algunas wallets no aceptan la CA local; el TCP sigue
+  disponible.
+- **Puertos desactivados**. Docker mantiene el mapeo, pero sin servicio detrás.
+- **TLS público**. Si un proxy externo termina el TLS, el certificado que ve el
+  wallet es el del proxy, no el de e-lite.
 
 ## Actualizaciones
 
-1. Actualiza la versión de e-lite/Core en `runtime.py` y el SHA256.
+1. Actualiza la versión de e-lite, Core o Tor en `src/elite/runtime.py` con
+   versión, URL y SHA256.
 2. Sube la versión de `umbrel-app.yml`.
-3. Publica la imagen (push a master o workflow manual).
-4. Fija el nuevo digest en `docker-compose.yml`.
-5. Instala/actualiza desde Umbrel.
+3. Publica la imagen y fija el digest en Compose.
+4. Instala/actualiza desde Umbrel.
 
-Los ajustes, certificados, la cadena y el índice se conservan.
+Los ajustes, los índices, las cadenas y las claves onion se conservan entre
+actualizaciones de la misma versión multi-red.

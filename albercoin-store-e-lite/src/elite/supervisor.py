@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -125,6 +126,11 @@ class NodeSupervisor:
                 continue
 
             try:
+                template = self.e_lite_binary.parent / "public-servers.toml"
+                destination = self.paths.network_public_servers(self.network)
+                if template.is_file() and not destination.is_file():
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(template, destination)
                 self.tls.ensure()
                 contents = build_config(
                     self.network,

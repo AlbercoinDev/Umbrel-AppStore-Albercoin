@@ -15,8 +15,8 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-E_LITE_VERSION = "0.1.0-alpha.25.2"
-E_LITE_SHA256 = "1c246ce141a02300c1ba6b33512e7b72083f5e965cfe9fb35578e90b319f8c2a"
+E_LITE_VERSION = "0.1.0-alpha.29"
+E_LITE_SHA256 = "581e49c13f490f44aacb60af17cf8c24c3365ff89a4acb99a9e8e01c1b36c53c"
 E_LITE_URL = (
     "https://github.com/AlbercoinDev/e-lite/releases/download/"
     f"v{E_LITE_VERSION}/e-lite_x86_64-unknown-linux-gnu.tar.gz"
@@ -119,6 +119,10 @@ class RuntimeManager:
     @property
     def e_lite_binary(self) -> Path:
         return self.e_lite_dir / "e-lite"
+
+    @property
+    def public_servers_template(self) -> Path:
+        return self.e_lite_dir / "public-servers.toml"
 
     @property
     def bitcoin_dir(self) -> Path:
@@ -230,28 +234,39 @@ class RuntimeManager:
 
     def _install_e_lite(self) -> None:
         target_dir = self.e_lite_dir
-        if (target_dir / "e-lite").is_file() and os.access(target_dir / "e-lite", os.X_OK):
+        binary_ready = (target_dir / "e-lite").is_file() and os.access(target_dir / "e-lite", os.X_OK)
+        template_ready = (target_dir / "public-servers.toml").is_file()
+        if binary_ready and template_ready:
             return
-        self._set(state="downloading", message="Descargando e-lite", kind="e-lite", downloaded=0, total=0)
-        with tempfile.TemporaryDirectory(dir=self.runtime_dir) as temp:
-            archive = Path(temp) / "e-lite.tar.gz"
-            _download(
-                E_LITE_URL,
-                archive,
-                E_LITE_SHA256,
-                lambda done, total: self._set(downloaded=done, total=total, state="downloading", message="Descargando e-lite"),
-            )
-            self._set(state="installing", message="Instalando e-lite")
-            extract_dir = Path(temp) / "extract"
-            safe_extract(archive, extract_dir)
-            binary = extract_dir / "e-lite"
-            if not binary.is_file():
-                raise RuntimeError_("el archivo de e-lite no contiene el binario esperado")
-            target_dir.mkdir(parents=True, exist_ok=True)
-            temporary = target_dir / "e-lite.new"
-            shutil.copy2(binary, temporary)
-            os.chmod(temporary, 0o755)
-            temporary.replace(target_dir / "e-lite")
+        if not binary_ready:
+            self._set(state="downloading", message="Descargando e-lite", kind="e-lite", downloaded=0, total=0)
+            with tempfile.TemporaryDirectory(dir=self.runtime_dir) as temp:
+                archive = Path(temp) / "e-lite.tar.gz"
+                _download(
+                    E_LITE_URL,
+                    archive,
+                    E_LITE_SHA256,
+                    lambda done, total: self._set(downloaded=done, total=total, state="downloading", message="Descargando e-lite"),
+                )
+                self._set(state="installing", message="Instalando e-lite")
+                extract_dir = Path(temp) / "extract"
+                safe_extract(archive, extract_dir)
+                binary = extract_dir / "e-lite"
+                if not binary.is_file():
+                    raise RuntimeError_("el archivo de e-lite no contiene el binario esperado")
+                target_dir.mkdir(parents=True, exist_ok=True)
+                temporary = target_dir / "e-lite.new"
+                shutil.copy2(binary, temporary)
+                os.chmod(temporary, 0o755)
+                temporary.replace(target_dir / "e-lite")
+                template = extract_dir / "public-servers.toml"
+                if template.is_file():
+                    shutil.copy2(template, target_dir / "public-servers.toml")
+                example = extract_dir / "config.example.toml"
+                if example.is_file():
+                    shutil.copy2(example, target_dir / "config.example.toml")
+        elif not template_ready:
+            raise RuntimeError_("el runtime de e-lite no contiene public-servers.toml; reinstala la app")
 
     def _install_bitcoin(self) -> None:
         target_dir = self.bitcoin_dir

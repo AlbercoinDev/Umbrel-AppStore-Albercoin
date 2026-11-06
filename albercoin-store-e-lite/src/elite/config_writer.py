@@ -94,6 +94,9 @@ class AppPaths:
     def network_tor_dir(self, network: str) -> Path:
         return self.network_config_dir(network) / "tor"
 
+    def network_public_servers(self, network: str) -> Path:
+        return self.network_config_dir(network) / "public-servers.toml"
+
     def network_onion_file(self, network: str) -> Path:
         return self.network_tor_dir(network) / "onion" / "hostname"
 
@@ -186,6 +189,7 @@ def build_config(
         ("manage", "managed"),
         ("bitcoind", str(bitcoin_binary)),
         ("core_datadir", str(paths.network_core_data(network))),
+        ("require_loopback_rpc", True),
     ]
     for key in ("core.timeout_seconds", "core.prune_mib", "core.restart"):
         if present(key):
@@ -218,6 +222,9 @@ def build_config(
     ]
     if present("server.max_clients"):
         server_values.append(("max_clients", value("server.max_clients")))
+    for key in ("server.rate_limit", "server.rate_burst"):
+        if present(key):
+            server_values.append((key.split(".", 1)[1], value(key)))
     _section(lines, "server", server_values)
 
     _section(
@@ -257,6 +264,15 @@ def build_config(
         "pruning.repair_max_gap_blocks",
     ]
     _section(lines, "pruning", [(key.split(".", 1)[1], value(key)) for key in pruning_keys if present(key)])
+
+    _section(
+        lines,
+        "public_servers",
+        [
+            ("file", str(paths.network_public_servers(network))),
+            ("generate", True),
+        ],
+    )
 
     logging_values: list[tuple[str, Any]] = [("file", str(paths.network_e_lite_log(network)))]
     if present("logging.max_mib"):

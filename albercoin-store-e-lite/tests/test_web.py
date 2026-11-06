@@ -55,6 +55,8 @@ class WebTests(unittest.TestCase):
         self.assertIn("Usar valor predeterminado", body)
         self.assertIn("index.cache_mib", body)
         self.assertIn('name="public_hostnames"', body)
+        self.assertIn('name="value__server.rate_limit"', body)
+        self.assertIn('name="value__server.rate_burst"', body)
         self.assertIn('name="enabled_mainnet"', body)
 
     def test_api_status(self) -> None:

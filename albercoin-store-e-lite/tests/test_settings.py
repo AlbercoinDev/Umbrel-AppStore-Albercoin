@@ -104,6 +104,20 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(loaded.network("testnet4").public_hostnames, ["elite.example.org"])
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+    def test_optional_rate_limit(self) -> None:
+        settings, errors = parse_form({}, "signet")
+        self.assertEqual(errors, [])
+        self.assertNotIn("server.rate_limit", settings.network("signet").overrides)
+        settings, errors = parse_form({"value__server.rate_limit": ["100"], "value__server.rate_burst": ["600"]}, "signet")
+        self.assertEqual(errors, [])
+        self.assertEqual(settings.network("signet").overrides["server.rate_limit"], 100)
+        self.assertIsInstance(settings.network("signet").overrides["server.rate_limit"], int)
+        self.assertEqual(settings.network("signet").overrides["server.rate_burst"], 600)
+        self.assertIsInstance(settings.network("signet").overrides["server.rate_burst"], int)
+        settings, errors = parse_form({"value__server.rate_limit": ["0"]}, "signet")
+        self.assertEqual(errors, [])
+        self.assertEqual(settings.network("signet").overrides["server.rate_limit"], 0)
+
     def test_public_hostnames(self) -> None:
         form = {"public_hostnames": ["elite.example.org, otro.example.net\nelite.example.org"]}
         settings, errors = parse_form(form, "signet")

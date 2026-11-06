@@ -51,6 +51,8 @@ FIELDS: tuple[Field, ...] = (
     Field("index.batch_blocks", "int", 256, "performance", minimum=0, maximum=4096),
     Field("index.reorg_window", "int", 288, "performance", minimum=1, maximum=100000),
     Field("server.max_clients", "int", 32, "server", minimum=1, maximum=1024),
+    Field("server.rate_limit", "optional_int", None, "server", minimum=0, maximum=10000),
+    Field("server.rate_burst", "optional_int", None, "server", minimum=1, maximum=1000000),
     Field("rawtx.enabled", "bool", True, "server"),
     Field("rawtx.cache_mib", "int", 2048, "server", minimum=0, maximum=262144),
     Field("rawtx.decoys", "int", 3, "server", minimum=0, maximum=32),
@@ -223,6 +225,16 @@ def _coerce(field_def: Field, value: Any) -> Any:
         if isinstance(value, str) and value.lower() in ("true", "false"):
             return value.lower() == "true"
         raise SettingsError(f"{field_def.key} must be a boolean")
+    if kind == "optional_int":
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        if isinstance(value, bool):
+            raise SettingsError(f"{field_def.key} must be an integer")
+        try:
+            number = int(value)
+        except (TypeError, ValueError) as exc:
+            raise SettingsError(f"{field_def.key} must be an integer") from exc
+        return _check_range(field_def, number)
     if kind == "int":
         if isinstance(value, bool):
             raise SettingsError(f"{field_def.key} must be an integer")
@@ -260,7 +272,7 @@ def _check_range(field_def: Field, number: float) -> Any:
         raise SettingsError(f"{field_def.key} must be at least {field_def.minimum:g}")
     if field_def.maximum is not None and number > field_def.maximum:
         raise SettingsError(f"{field_def.key} must be at most {field_def.maximum:g}")
-    return int(number) if field_def.kind == "int" else float(number)
+    return int(number) if field_def.kind in ("int", "optional_int") else float(number)
 
 
 def validate_network(network: str, config: NetworkConfig) -> list[str]:
@@ -328,9 +340,12 @@ def parse_form(form: dict[str, list[str]], network: str, previous: Settings | No
         if raw is None:
             continue
         try:
-            overrides[field_def.key] = _coerce(field_def, raw)
+            coerced = _coerce(field_def, raw)
         except SettingsError as exc:
             errors.append(str(exc))
+            continue
+        if coerced is not None:
+            overrides[field_def.key] = coerced
 
     try:
         public_hostnames = normalize_public_hostnames(_first(form, "public_hostnames") or "")
@@ -400,6 +415,8 @@ def format_value(field_def: Field, value: Any) -> str:
         return "true" if bool(value) else "false"
     if field_def.kind == "list":
         return "\n".join(str(item) for item in value)
+    if value is None:
+        return ""
     return str(value)
 
 
@@ -408,4 +425,6 @@ def default_label(field_def: Field) -> str:
         return "true" if field_def.default else "false"
     if field_def.kind == "list":
         return ""
+    if field_def.kind == "optional_int":
+        return "auto"
     return str(field_def.default)

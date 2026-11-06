@@ -49,7 +49,7 @@ ni compartas datos o copias con credenciales.
 
 `${APP_DATA_DIR}` lo proporciona Umbrel para cada instalación:
 
-- e-lite: `data/config/networks/<red>/`, `data/networks/<red>/{e-lite,core}/`, `data/runtime/` y `data/logs/`; el manifiesto excluye índices, cadenas, runtime y logs del backup, y conserva ajustes, certificados y claves onion.
+- e-lite: `data/config/networks/<red>/` (incluye `e-lite.toml` y `public-servers.toml`), `data/networks/<red>/{e-lite,core}/`, `data/runtime/` y `data/logs/`; el manifiesto excluye índices, cadenas, runtime y logs del backup, y conserva ajustes, certificados y claves onion.
 - Frigate: `data/frigate/`; el manifiesto excluye del backup índices y otros
   archivos regenerables. El servicio Tor utiliza `${TOR_DATA_DIR}`.
 - Onion Rotator: opera sobre datos Tor y apps del nodo; no tiene un volumen

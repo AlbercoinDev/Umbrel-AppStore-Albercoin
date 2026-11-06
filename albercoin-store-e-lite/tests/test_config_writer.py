@@ -49,6 +49,8 @@ class ConfigWriterTests(unittest.TestCase):
                 self.assertEqual(data["server"]["listen"], f"0.0.0.0:{plain}")
                 self.assertEqual(data["server"]["tls_listen"], f"0.0.0.0:{tls}")
                 self.assertEqual(data["core"]["core_datadir"], str(paths.network_core_data(network)))
+                self.assertTrue(data["core"]["require_loopback_rpc"])
+                self.assertEqual(data["public_servers"]["file"], str(paths.network_public_servers(network)))
                 self.assertEqual(data["metrics"]["listen"], f"127.0.0.1:{metrics}")
                 self.assertEqual(data["tor"]["mode"], "managed")
                 self.assertEqual(data["tor"]["data_dir"], str(paths.network_tor_dir(network)))
@@ -84,6 +86,8 @@ class ConfigWriterTests(unittest.TestCase):
                     "index.profile": "nvme",
                     "index.cache_mib": 4096,
                     "server.max_clients": 64,
+                    "server.rate_limit": 100,
+                    "server.rate_burst": 600,
                     "core.prune_mib": 0,
                     "core.extra_args": ["-dbcache=256", "-maxmempool=128"],
                     "logging.max_mib": 32,
@@ -93,6 +97,10 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertEqual(data["index"]["profile"], "nvme")
             self.assertEqual(data["index"]["cache_mib"], 4096)
             self.assertEqual(data["server"]["max_clients"], 64)
+            self.assertEqual(data["server"]["rate_limit"], 100)
+            self.assertIsInstance(data["server"]["rate_limit"], int)
+            self.assertEqual(data["server"]["rate_burst"], 600)
+            self.assertIsInstance(data["server"]["rate_burst"], int)
             self.assertEqual(data["core"]["prune_mib"], 0)
             self.assertEqual(data["core"]["extra_args"], ["-dbcache=256", "-maxmempool=128"])
             self.assertEqual(data["logging"]["max_mib"], 32)

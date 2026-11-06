@@ -5,12 +5,16 @@ services:
       APP_PORT: 3000
 
   app:
-    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-03@sha256:ff8240755a5bd7d91e387c7148d683b105d9b8679d4696f1aab19184ab111fa3
+    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29-01
     user: "1000:1000"
     hostname: e-lite
     init: true
     restart: on-failure
     stop_grace_period: 5m
+    sysctls:
+      # Keep ephemeral source ports below the Electrum listeners so an
+      # outgoing Core/Tor connection cannot collide with a TLS bind.
+      net.ipv4.ip_local_port_range: "32768 54000"
     environment:
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"

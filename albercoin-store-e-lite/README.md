@@ -1,11 +1,11 @@
 # e-lite para Umbrel
 
-Servidor Electrum 1.4 autónomo con Bitcoin Core incluido. Puede ejecutar
+Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 **mainnet, testnet4 y signet a la vez**, con activación y configuración
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.25.2-03`
+- Versión: `0.1.0-alpha.29-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,10 +15,13 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.25.2`, verificado por SHA256.
+- e-lite `0.1.0-alpha.29`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
+- `public-servers.toml` por red para proveedores Esplora, sembrado desde el
+  template oficial de e-lite. Si el archivo existe, no se sobrescribe.
+- Rate limiting configurable por red (límite por segundo y ráfaga).
 - Panel web multi-red con activación/desactivación y configuración por red.
 - Asistente de primer inicio para elegir las redes activas.
 
@@ -73,6 +76,10 @@ Cada red tiene su propia configuración, con los mismos parámetros y la casilla
 **Usar valor predeterminado** por campo. La gestión de redes permite activar o
 desactivar mainnet, testnet4 y signet.
 
+En **Servidor y red** están `server.rate_limit` y `server.rate_burst`. Su valor
+predeterminado es `auto`: 50 peticiones/s y burst 300 cuando hay un listener
+no-loopback. `rate_limit = 0` desactiva el límite.
+
 Cada red tiene además un campo de **hostnames públicos TLS**. Los nombres
 añadidos se incluyen en el SAN de su certificado. Ejemplo:
 
@@ -108,6 +115,7 @@ data/
     tls/ca.crt, ca.key              # CA local compartida
     networks/<red>/
       e-lite.toml
+      public-servers.toml           # proveedores Esplora de la red
       tls/                          # certificado y clave de la red
       tor/                          # claves onion y estado de Tor
   networks/<red>/
@@ -139,7 +147,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-03@sha256:ff8240755a5bd7d91e387c7148d683b105d9b8679d4696f1aab19184ab111fa3
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29-01
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -149,7 +157,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-03@sha256:ff8240755a5bd7d91e387c7148d683b105d9b8679d4696f1aab19184ab111fa3
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29-01@sha256:<digest>
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.
@@ -176,7 +184,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-03
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29-01
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.
@@ -188,6 +196,9 @@ La primera vez descarga los tres componentes y pide elegir redes.
 - **Consumo**. Tres redes activas implican tres Bitcoin Core, tres índices, tres
   e-lite y tres Tor. Mainnet puede necesitar mucho disco y días de sincronización.
 - **Alpha**. e-lite no autentica clientes y su protocolo puede cambiar.
+- **Rate limiting**. e-lite aplica por defecto 50 req/s y burst 300 cuando hay
+  listeners no-loopback; `server.rate_limit` y `server.rate_burst` se pueden
+  cambiar por red o desactivar con `rate_limit = 0`.
 - **TLS autofirmado**. Algunas wallets no aceptan la CA local; el TCP sigue
   disponible.
 - **Puertos desactivados**. Docker mantiene el mapeo, pero sin servicio detrás.

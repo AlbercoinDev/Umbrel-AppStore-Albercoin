@@ -4,7 +4,7 @@ Servidor Electrum 1.4 autónomo para Umbrel. Incluye su propio **Bitcoin Core 32
 y no depende de las apps **Bitcoin** ni **Electrs** de Umbrel.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.25.1-01`
+- Versión: `0.1.0-alpha.25.2-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ y no depende de las apps **Bitcoin** ni **Electrs** de Umbrel.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.25.1`, descargado y verificado por SHA256.
+- e-lite `0.1.0-alpha.25.2`, descargado y verificado por SHA256.
 - Bitcoin Core `32.1` oficial, descargado y verificado por SHA256.
 - Panel web con estado, progreso, conexiones, registro y configuración.
 - Asistente de primer inicio para elegir `mainnet`, `testnet4` o `signet`.
@@ -77,7 +77,14 @@ Por Tor:
 - `dirección.onion:55022`
 
 El servicio onion se publica con el contenedor Tor de Umbrel. La dirección puede
-tardar unos segundos en aparecer.
+tardar unos segundos en aparecer. El target del servicio oculto usa el hostname
+del contenedor (`e-lite`), no el alias de servicio, porque Tor necesita
+resolverlo desde su propio contenedor.
+
+Para TLS con un dominio público, añade el hostname en **Configuración → TLS para
+dominio público**. El certificado incluirá también ese nombre en el SAN. Si el
+dominio público termina el TLS en otro proxy, el certificado que verá el wallet
+es el del proxy, no el de e-lite.
 
 ## Configuración
 
@@ -94,6 +101,7 @@ Grupos disponibles:
 - **Poda y disco**: poda de Core, mínimos de espacio, lag y reparación.
 - **Bitcoin Core y registro**: timeout, argumentos extra, reinicio y rotación.
 - **Avanzado**: opciones que conviene cambiar solo si sabes lo que haces.
+- **TLS para dominio público**: hostnames adicionales para el SAN del certificado.
 
 Al guardar se regenera `/data/config/e-lite.toml` y se reinicia e-lite. Bitcoin
 Core también se reinicia, pero la cadena y el índice se conservan.
@@ -120,7 +128,7 @@ Los ajustes y certificados sí se incluyen.
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01@sha256:4f7e71e2f2ae9e5a8498570db27f17be60c8871dde35e300db15e2d0c9f510f2
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -131,13 +139,13 @@ público; Umbrel debe poder descargarlo sin credenciales.
 Para construir y probar en local:
 
 ```sh
-docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01 albercoin-store-e-lite
+docker build -t ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01 albercoin-store-e-lite
 ```
 
 Después de la primera publicación, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01@sha256:4f7e71e2f2ae9e5a8498570db27f17be60c8871dde35e300db15e2d0c9f510f2
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01@sha256:<digest>
 ```
 
 La imagen base `python:3.12-slim-bookworm` y la imagen de Tor están fijadas por
@@ -182,7 +190,7 @@ Prueba de que la UI y e-lite arrancan de verdad:
 ```sh
 docker run --rm -p 3000:3000 -p 55011:55011 -p 55022:55022 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.1-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.25.2-01
 ```
 
 La primera vez descarga los binarios y espera la selección de red.

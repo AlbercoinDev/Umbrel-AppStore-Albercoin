@@ -11,11 +11,12 @@ from elite.tls import TLSManager, build_sans, read_onion
 
 class TLSTests(unittest.TestCase):
     def test_build_sans(self) -> None:
-        sans = build_sans("umbrel.local", "e-lite", "abc.onion")
+        sans = build_sans("umbrel.local", "e-lite", "abc.onion", ["elite.example.org"])
         self.assertIn("DNS:umbrel.local", sans)
         self.assertIn("DNS:e-lite", sans)
         self.assertIn("DNS:localhost", sans)
         self.assertIn("DNS:abc.onion", sans)
+        self.assertIn("DNS:elite.example.org", sans)
         self.assertIn("IP:127.0.0.1", sans)
 
     def test_read_onion(self) -> None:
@@ -34,7 +35,12 @@ class TLSTests(unittest.TestCase):
 
             paths = AppPaths.from_root(root, root / "tor" / "hostname")
             paths.ensure()
-            manager = TLSManager(paths, "umbrel.local", "e-lite")
+            manager = TLSManager(
+                paths,
+                "umbrel.local",
+                "e-lite",
+                public_hostnames_loader=lambda: ["elite.example.org"],
+            )
             self.assertTrue(manager.ensure())
             self.assertTrue(paths.ca_certificate.is_file())
             self.assertTrue(paths.certificate_chain.is_file())
@@ -47,6 +53,7 @@ class TLSTests(unittest.TestCase):
             ).stdout
             self.assertIn("DNS:umbrel.local", output)
             self.assertIn("DNS:e-lite", output)
+            self.assertIn("DNS:elite.example.org", output)
 
     @unittest.skipUnless(shutil.which("openssl"), "openssl is required")
     def test_certificate_refreshes_when_onion_appears(self) -> None:

@@ -57,7 +57,7 @@ DEMO_STATUS: dict[str, Any] = {
 
 DEMO_ONION = "elite" + "a" * 51 + ".onion"
 DEMO_LOGS = [
-    "[e-lite] 0.1.0-alpha.25.1 · signet · BUILDING_INDEX",
+    "[e-lite] 0.1.0-alpha.25.2 · signet · BUILDING_INDEX",
     "[e-lite] Electrum TCP listening on 0.0.0.0:55011",
     "[e-lite] Electrum TLS listening on 0.0.0.0:55022",
     "[e-lite] tuning profile=ssd readers=8 commit=2000ms batch=256",
@@ -807,6 +807,8 @@ def status_page(app: WebApp, snapshot: Snapshot, lang: str, query: str) -> str:
     if snapshot.phase in ("runtime_error", "process_error"):
         error = snapshot.runtime.get("error") or snapshot.process.get("last_error") or ""
         notice += f'<div class="card error"><p>{h(error)}</p></div>'
+    if snapshot.tls.get("error"):
+        notice += f'<div class="card error"><p>{h(t(lang, "tls_self_signed"))}: {h(snapshot.tls.get("error"))}</p></div>'
 
     sync = _sync_card(snapshot, lang)
     connections = _connections_card(snapshot, lang)
@@ -931,6 +933,7 @@ def _details_card(snapshot: Snapshot, lang: str) -> str:
         (t(lang, "db_size"), fmt_bytes(int(live.get("db_bytes", 0) or 0)) if snapshot.phase == "live" else "—"),
         (t(lang, "memory"), f"{int(memory.get('available_mib', 0) or 0):,} MiB" if snapshot.phase == "live" else "—"),
         (t(lang, "profile"), str(tuning.get("profile", "—")) if snapshot.phase == "live" else "—"),
+        (t(lang, "tls_sans"), ", ".join(snapshot.tls.get("sans", [])) or "—"),
         (t(lang, "electrum_ports"), f"{ELECTRUM_PORT} TCP · {ELECTRUM_TLS_PORT} TLS"),
         (t(lang, "core_datadir"), "/data/bitcoin"),
     ]
@@ -996,6 +999,11 @@ def config_page(
     <h2>{h(t(lang, "network"))}</h2>
     <p class="help">{h(t(lang, "network_change_notice"))}</p>
     <select name="network" id="network-select">{network_select}</select>
+  </div>
+  <div class="card">
+    <h2>{h(t(lang, "tls_public_title"))}</h2>
+    <p class="help">{h(t(lang, "tls_public_help"))}</p>
+    <textarea name="public_hostnames" rows="3" placeholder="{h(t(lang, "tls_public_placeholder"))}">{h(chr(10).join(settings.public_hostnames))}</textarea>
   </div>
   {''.join(sections)}
   {advanced}

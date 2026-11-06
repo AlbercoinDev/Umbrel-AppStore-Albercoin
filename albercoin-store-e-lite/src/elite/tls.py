@@ -30,7 +30,7 @@ def read_onion(path: Path) -> str:
     return value if _ONION.match(value) else ""
 
 
-def build_sans(domain: str, hostname: str, onion: str) -> list[str]:
+def build_sans(domain: str, hostname: str, onion: str, public_hostnames: list[str] | tuple[str, ...] = ()) -> list[str]:
     dns = {"localhost", "umbrel.local"}
     if domain:
         dns.add(domain)
@@ -38,25 +38,43 @@ def build_sans(domain: str, hostname: str, onion: str) -> list[str]:
         dns.add(hostname)
     if onion:
         dns.add(onion)
+    for host in public_hostnames:
+        if host:
+            dns.add(host.strip().lower().rstrip("."))
     entries = [f"DNS:{item}" for item in sorted(dns)]
     entries.extend(["IP:127.0.0.1", "IP:::1"])
     return entries
 
 
 class TLSManager:
-    def __init__(self, paths: AppPaths, domain: str, hostname: str, log: Callable[[str], None] | None = None) -> None:
+    def __init__(
+        self,
+        paths: AppPaths,
+        domain: str,
+        hostname: str,
+        log: Callable[[str], None] | None = None,
+        public_hostnames_loader: Callable[[], list[str]] | None = None,
+    ) -> None:
         self.paths = paths
         self.domain = domain
         self.hostname = hostname
         self.log = log or (lambda _message: None)
+        self.public_hostnames_loader = public_hostnames_loader or (lambda: [])
         self._lock = threading.Lock()
         self._last_error = ""
 
     def status(self) -> dict[str, object]:
+        marker = self.paths.tls_dir / "sans.txt"
+        try:
+            sans = marker.read_text(encoding="utf-8").splitlines() if marker.is_file() else []
+        except OSError:
+            sans = []
         return {
             "ca_available": self.paths.ca_certificate.is_file(),
             "certificate_available": self.paths.certificate_chain.is_file(),
             "error": self._last_error,
+            "sans": sans,
+            "public_hostnames": list(self.public_hostnames_loader()),
         }
 
     def ensure(self) -> bool:
@@ -66,7 +84,8 @@ class TLSManager:
             try:
                 self.paths.tls_dir.mkdir(parents=True, exist_ok=True)
                 onion = read_onion(self.paths.onion_file)
-                sans = build_sans(self.domain, self.hostname, onion)
+                public_hostnames = self.public_hostnames_loader()
+                sans = build_sans(self.domain, self.hostname, onion, public_hostnames)
                 marker = self.paths.tls_dir / "sans.txt"
                 current = marker.read_text(encoding="utf-8").splitlines() if marker.is_file() else []
                 if (

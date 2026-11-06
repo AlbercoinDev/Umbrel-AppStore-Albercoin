@@ -1,5 +1,7 @@
+# The target must resolve inside the Tor container. `e-lite` is the app
+# container hostname configured in docker-compose.yml.
 SocksPort 0.0.0.0:9050
 HiddenServiceDir /data/app-albercoin-store-e-lite-electrum
 HiddenServiceVersion 3
-HiddenServicePort 55011 app:55011
-HiddenServicePort 55022 app:55022
+HiddenServicePort 55011 e-lite:55011
+HiddenServicePort 55022 e-lite:55022

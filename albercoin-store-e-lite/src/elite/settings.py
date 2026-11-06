@@ -77,6 +77,26 @@ FIELDS_BY_KEY = {f.key: f for f in FIELDS}
 
 _IPV4_PORT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]{1,252}:[0-9]{1,5}$")
 _IPV6_PORT = re.compile(r"^\[[0-9A-Fa-f:]+\]:[0-9]{1,5}$")
+_HOSTNAME = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$")
+
+
+def normalize_public_hostnames(values: Any) -> list[str]:
+    if isinstance(values, str):
+        items = re.split(r"[,\s]+", values)
+    elif isinstance(values, (list, tuple)):
+        items = [str(item) for item in values]
+    else:
+        raise SettingsError("public_hostnames must be a list")
+    result: list[str] = []
+    for item in items:
+        host = item.strip().lower().rstrip(".")
+        if not host:
+            continue
+        if not _HOSTNAME.match(host):
+            raise SettingsError(f"public_hostnames: invalid hostname {item!r}")
+        if host not in result:
+            result.append(host)
+    return result
 
 
 class SettingsError(ValueError):
@@ -88,11 +108,13 @@ class Settings:
     network: str | None = None
     overrides: dict[str, Any] = field(default_factory=dict)
     setup_complete: bool = False
+    public_hostnames: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "network": self.network,
             "setup_complete": self.setup_complete,
+            "public_hostnames": list(self.public_hostnames),
             "overrides": dict(sorted(self.overrides.items())),
         }
 
@@ -141,7 +163,16 @@ def load_settings(path: Path) -> Settings:
         except SettingsError:
             # A stale or hand-edited invalid value must not brick the app.
             continue
-    return Settings(network=network, overrides=overrides, setup_complete=setup_complete)
+    try:
+        public_hostnames = normalize_public_hostnames(data.get("public_hostnames", []))
+    except SettingsError:
+        public_hostnames = []
+    return Settings(
+        network=network,
+        overrides=overrides,
+        setup_complete=setup_complete,
+        public_hostnames=public_hostnames,
+    )
 
 
 def save_settings(path: Path, settings: Settings) -> None:
@@ -271,7 +302,18 @@ def parse_form(form: dict[str, list[str]], previous: Settings | None = None) -> 
         except SettingsError as exc:
             errors.append(str(exc))
 
-    settings = Settings(network=network, overrides=overrides, setup_complete=True)
+    try:
+        public_hostnames = normalize_public_hostnames(_first(form, "public_hostnames") or "")
+    except SettingsError as exc:
+        public_hostnames = list(previous.public_hostnames)
+        errors.append(str(exc))
+
+    settings = Settings(
+        network=network,
+        overrides=overrides,
+        setup_complete=True,
+        public_hostnames=public_hostnames,
+    )
     errors.extend(validate_settings(settings))
     # Preserve the order and remove duplicates.
     return settings, list(dict.fromkeys(errors))
@@ -285,7 +327,12 @@ def parse_setup_form(form: dict[str, list[str]], previous: Settings | None = Non
         errors.append("network: select mainnet, testnet4 or signet")
     if network == "mainnet" and _first(form, "mainnet_ack") not in ("1", "on", "true", "yes"):
         errors.append("mainnet_ack: confirm that you understand the mainnet sync")
-    settings = Settings(network=network, overrides=dict(previous.overrides), setup_complete=not errors)
+    settings = Settings(
+        network=network,
+        overrides=dict(previous.overrides),
+        setup_complete=not errors,
+        public_hostnames=list(previous.public_hostnames),
+    )
     return settings, errors
 
 

@@ -84,13 +84,33 @@ class SettingsTests(unittest.TestCase):
     def test_save_and_load(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
-            settings = Settings(network="testnet4", overrides={"index.profile": "nvme"}, setup_complete=True)
+            settings = Settings(
+                network="testnet4",
+                overrides={"index.profile": "nvme"},
+                setup_complete=True,
+                public_hostnames=["elite.example.org"],
+            )
             save_settings(path, settings)
             loaded = load_settings(path)
             self.assertEqual(loaded.network, "testnet4")
             self.assertEqual(loaded.overrides, {"index.profile": "nvme"})
             self.assertTrue(loaded.setup_complete)
+            self.assertEqual(loaded.public_hostnames, ["elite.example.org"])
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_public_hostnames(self) -> None:
+        form = {
+            "network": ["signet"],
+            "public_hostnames": ["elite.example.org, otro.example.net\nelite.example.org"],
+        }
+        settings, errors = parse_form(form)
+        self.assertEqual(errors, [])
+        self.assertEqual(settings.public_hostnames, ["elite.example.org", "otro.example.net"])
+
+    def test_invalid_public_hostname(self) -> None:
+        form = {"network": ["signet"], "public_hostnames": ["not a hostname"]}
+        _, errors = parse_form(form)
+        self.assertTrue(any("public_hostnames" in error for error in errors))
 
     def test_load_rejects_unknown_and_invalid_without_bricking(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -54,7 +54,13 @@ def main() -> int:
     tor_socks = os.environ.get("E_LITE_TOR_SOCKS", "tor:9050").strip() or "tor:9050"
 
     runtime = RuntimeManager(paths.runtime, log=LOG.info)
-    tls = TLSManager(paths, domain=domain, hostname=hostname, log=LOG.info)
+    tls = TLSManager(
+        paths,
+        domain=domain,
+        hostname=hostname,
+        log=LOG.info,
+        public_hostnames_loader=lambda: load_settings(paths.settings_file).public_hostnames,
+    )
     supervisor = Supervisor(
         paths,
         settings_loader=lambda: load_settings(paths.settings_file),

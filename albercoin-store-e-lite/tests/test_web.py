@@ -56,6 +56,7 @@ class WebTests(unittest.TestCase):
         self.assertIn('name="value__index.profile"', body)
         self.assertIn("Usar valor predeterminado", body)
         self.assertIn("index.cache_mib", body)
+        self.assertIn('name="public_hostnames"', body)
 
     def test_api_status(self) -> None:
         _, content_type, body = self.get("/api/status")
@@ -104,6 +105,7 @@ class WebTests(unittest.TestCase):
             "/config",
             {
                 "network": "signet",
+                "public_hostnames": "elite.example.org",
                 "value__index.profile": "nvme",
                 "value__server.max_clients": "64",
             },
@@ -111,6 +113,7 @@ class WebTests(unittest.TestCase):
         settings = load_settings(self.paths.settings_file)
         self.assertEqual(settings.overrides["index.profile"], "nvme")
         self.assertEqual(settings.overrides["server.max_clients"], 64)
+        self.assertEqual(settings.public_hostnames, ["elite.example.org"])
         self.assertTrue(settings.setup_complete)
 
 

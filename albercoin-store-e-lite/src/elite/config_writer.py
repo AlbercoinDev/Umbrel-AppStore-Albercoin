@@ -215,6 +215,8 @@ def build_config(
     _section(lines, "index", [(key.split(".", 1)[1], value(key)) for key in index_keys if present(key)])
 
     server_values: list[tuple[str, Any]] = [
+        ("tls", True),
+        ("tls_auto_cert", False),
         ("listen", f"0.0.0.0:{plain_port}"),
         ("tls_listen", f"0.0.0.0:{tls_port}"),
         ("tls_cert", str(paths.network_certificate_chain(network))),
@@ -290,7 +292,6 @@ def build_config(
             ("data_dir", str(paths.network_tor_dir(network))),
             ("plain", True),
             ("tls", True),
-            ("tls_auto_cert", False),
             ("onion_port", 0),
             ("onion_tls_port", 0),
             ("socks_port", NETWORK_TOR_SOCKS[network]),

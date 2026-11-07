@@ -393,7 +393,7 @@ FIELD_HELP: dict[str, tuple[str, str]] = {
     "pruning.max_bulk_lag_blocks": ("Límite de crecimiento adicional del lag tras la pausa de Core.", "Additional lag growth allowed after the Core pause."),
     "pruning.pause_core_during_bulk": ("Pausa la red de Core durante una carga larga.", "Pauses Core networking during a long catch-up."),
     "pruning.core_resume_ahead_blocks": ("Reanuda Core antes del tip para que reconecte peers.", "Resumes Core before the tip so peers reconnect."),
-    "pruning.prune_defer_free_gib": ("No poda si queda al menos este espacio libre.", "Does not prune while at least this much space is free."),
+    "pruning.prune_defer_free_gib": ("0 permite podar cuando la altura segura lo permita. Un valor positivo aplaza la poda si queda al menos ese espacio libre.", "0 prunes whenever the safe height allows. A positive value defers pruning while at least that much space is free."),
     "pruning.min_gain_blocks": ("Evalúa la poda cada N bloques seguros.", "Evaluates pruning every N safe blocks."),
     "pruning.poll_seconds": ("Frecuencia de comprobación de disco y Core.", "Disk and Core check frequency."),
     "pruning.repair_max_gap_blocks": ("Hueco máximo que se intentará reparar automáticamente.", "Maximum gap that will be repaired automatically."),

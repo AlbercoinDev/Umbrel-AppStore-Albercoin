@@ -225,8 +225,8 @@ class WebApp:
                 process=processes.get(network, {}),
                 live=live,
                 onion=onion,
-                logs=DEMO_LOGS if self.demo and enabled else self.supervisor.tail_log(network),
-                core_logs=[] if self.demo else self.supervisor.core_log_tail(network),
+                logs=DEMO_LOGS if self.demo and enabled else self.supervisor.tail_log(network, limit=1000),
+                core_logs=[] if self.demo else self.supervisor.core_log_tail(network, limit=1000),
                 tls=self.tls_managers[network].status() if not self.demo else {
                     "ca_available": False,
                     "certificate_available": False,
@@ -426,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             save_settings(app.paths.settings_file, settings)
             app.supervisor.apply_settings(network)
-            self._redirect("/")
+            self._redirect(f"/?network={network}&lang={lang}")
             return
 
         if parsed.path == "/runtime/retry":
@@ -699,6 +699,10 @@ button:disabled {{ opacity:.45; cursor:not-allowed; }}
 .error {{ border-color:rgba(255,125,125,.4); background:rgba(255,125,125,.1); color:#ffc0c0; }}
 .help {{ color:var(--muted); font-size:13px; line-height:1.5; }}
 pre {{ margin:0; padding:16px; border-radius:14px; background:rgba(0,0,0,.32); border:1px solid var(--line); overflow:auto; max-height:360px; color:#cfeaff; font-size:12.5px; line-height:1.5; }}
+.logs {{ margin-top:24px; }}
+.logs pre {{ height:320px; max-height:320px; overflow:auto; overflow-anchor:none; }}
+.logs h3 {{ margin-top:18px; }}
+.log-end {{ margin-bottom:8px; }}
 details {{ margin-top:14px; }}
 summary {{ cursor:pointer; color:var(--muted); font-weight:650; }}
 label {{ font-weight:650; }}
@@ -809,6 +813,18 @@ def _toggle_form(app: WebApp, network: NetworkSnapshot, lang: str) -> str:
 </form>"""
 
 
+def _logs_block(network: NetworkSnapshot, lang: str) -> str:
+    end = "Ir al final" if lang == "es" else "Go to end"
+    result = '<section class="logs">'
+    for name, label, lines in (
+        ("elite-log", t(lang, "logs") + " · e-lite", network.logs),
+        ("core-log", "Bitcoin Core", network.core_logs),
+    ):
+        text = "\n".join(lines) if lines else t(lang, "no_logs")
+        result += f'<h3>{h(label)}</h3><button class="secondary log-end" type="button">{h(end)}</button><pre id="{name}" tabindex="0">{h(text)}</pre>'
+    return result + '</section>'
+
+
 def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str) -> str:
     plain, tls_port = network.ports
     net_name = t(lang, f"network_{network.network}")
@@ -821,7 +837,7 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
 </div>
 <div class="inline"><span class="pill muted"><span class="dot"></span>{h(t(lang, "network_disabled"))}</span>
 <a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>"""
-        return f'<div class="card">{body}</div>'
+        return f'<div class="card">{body}{_logs_block(network, lang)}</div>'
 
     status = status_class(network)
     state_text = state_label(lang, network.state) if network.phase == "live" else (
@@ -838,21 +854,16 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
     message = t(lang, "waiting_core_sync") if network.core_ibd else (
         t(lang, "fully_synced") if network.fully_synced else t(lang, "index_sync")
     )
-    clearnet_tcp = f"{domain}:{plain}"
-    clearnet_tls = f"{domain}:{tls_port}"
-    onion_tcp = f"{network.onion}:{plain}" if network.onion else ""
-    onion_tls = f"{network.onion}:{tls_port}" if network.onion else ""
+    clearnet_tcp = domain
+    onion_tcp = network.onion
     error = ""
     if network.phase in ("runtime_error", "process_error"):
         detail = network.runtime.get("error") or network.process.get("last_error") or ""
         error = f'<div class="card error"><p>{h(detail)}</p></div>'
     if network.tls.get("error"):
         error += f'<div class="card error"><p>{h(network.tls["error"])}</p></div>'
-    log_text = "\n".join(network.logs) if network.logs else t(lang, "no_logs")
-    core_log_text = "\n".join(network.core_logs) if network.core_logs else t(lang, "no_logs")
     onion_html = (
         f'<div class="endpoint"><code>{h(onion_tcp)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(onion_tcp)}">{h(t(lang, "copy"))}</button></div>'
-        f'<div class="endpoint"><code>{h(onion_tls)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(onion_tls)}">{h(t(lang, "copy"))}</button></div>'
         if onion_tcp else f'<p class="help">{h(t(lang, "onion_generating"))}</p>'
     )
     return f"""
@@ -874,10 +885,10 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
   <div class="grid" style="margin-top:12px">
     <div class="stat"><div class="k">{h(t(lang, "clearnet"))}</div>
       <div class="endpoint"><code>{h(clearnet_tcp)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(clearnet_tcp)}">{h(t(lang, "copy"))}</button></div>
-      <div class="endpoint"><code>{h(clearnet_tls)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(clearnet_tls)}">{h(t(lang, "copy"))}</button></div>
+      <div class="ports">Plain: <code>{plain}</code> TLS: <code>{tls_port}</code></div>
       <p class="help">{h(t(lang, "clearnet_help"))}</p>
     </div>
-    <div class="stat"><div class="k">{h(t(lang, "tor"))}</div>{onion_html}<p class="help">{h(t(lang, "tor_help"))}</p></div>
+    <div class="stat"><div class="k">{h(t(lang, "tor"))}</div>{onion_html}<div class="ports">Plain: <code>{plain}</code> TLS: <code>{tls_port}</code></div><p class="help">{h(t(lang, "tor_help"))}</p></div>
   </div>
   <div class="grid three" style="margin-top:12px">
     <div class="stat"><div class="k">{h(t(lang, "height"))}</div><div class="v">{network.indexed:,}</div></div>
@@ -890,11 +901,52 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
     <div class="row"><span class="k">{h(t(lang, "db_size"))}</span><span class="v">{h(fmt_bytes(int(live.get("db_bytes", 0) or 0)))}</span></div>
     <div class="row"><span class="k">{h(t(lang, "memory"))}</span><span class="v">{int(memory.get("available_mib", 0) or 0):,} MiB</span></div>
     <div class="row"><span class="k">{h(t(lang, "profile"))}</span><span class="v">{h(str(tuning.get("profile", "—")))}</span></div>
-    <div class="row"><span class="k">{h(t(lang, "tls_sans"))}</span><span class="v">{h(", ".join(network.tls.get("sans", [])) or "—")}</span></div>
+    {_detail_rows(network, lang)}
   </div>
   <div class="inline" style="margin-top:12px"><a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>
-  <details><summary>{h(t(lang, "logs"))}</summary><pre>{h(log_text)}</pre><details><summary>{h(t(lang, "show_core_log"))}</summary><pre>{h(core_log_text)}</pre></details></details>
+  {_logs_block(network, lang)}
 </div>"""
+
+
+def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
+    live = network.live or {}
+    core = live.get("core") or {}
+    tuning = live.get("tuning") or {}
+    disk = live.get("disk") or {}
+    missing = "No disponible" if lang == "es" else "Unavailable"
+    def value(source: dict, key: str) -> object:
+        result = source.get(key)
+        if result is None:
+            return missing
+        if isinstance(result, bool):
+            return ("Sí" if lang == "es" else "Yes") if result else "No"
+        return result
+    rows = [
+        ("Altura Core / cabeceras", "Core height / headers", f"{network.core_height:,} / {network.headers:,}" if network.live else missing),
+        ("Conexiones Core", "Core connections", value(core, "connections")),
+        ("Descarga inicial Core", "Core initial download", value(core, "initial_block_download")),
+        ("Poda activa", "Pruned", value(core, "pruned")),
+        ("Altura de poda", "Prune height", value(core, "pruneheight")),
+        ("Bloques/s", "Blocks/s", value(tuning, "blocks_per_sec")),
+        ("Caché (MiB)", "Cache (MiB)", value(tuning, "cache_mib")),
+        ("Límite peticiones/s (0 = desactivado)", "Rate limit/s (0 = disabled)", value(live, "rate_limit_rps")),
+        ("Ráfaga", "Burst", value(live, "rate_burst")),
+        ("Peticiones limitadas", "Rate limited requests", value(live, "rate_limited")),
+        ("RPC Core en loopback", "Core loopback RPC", value(live, "core_rpc_loopback")),
+        ("Certificado TLS disponible", "TLS certificate available", value(network.tls, "certificate_available")),
+        ("Dirección Tor disponible", "Tor address available", bool(network.onion)),
+        ("Versiones e-lite / Core / Tor", "Versions e-lite / Core / Tor", f"{E_LITE_VERSION} / {BITCOIN_VERSION} / {TOR_VERSION}"),
+    ]
+    for key, es, en in (
+        ("index_bytes", "Índice en disco", "Index on disk"),
+        ("txids_bytes", "TXIDs en disco", "TXIDs on disk"),
+        ("cache_bytes", "Caché en disco", "Cache on disk"),
+        ("log_bytes", "Logs en disco", "Logs on disk"),
+        ("snapshot_bytes", "Snapshots en disco", "Snapshots on disk"),
+        ("total_bytes", "Total e-lite en disco", "Total e-lite on disk"),
+    ):
+        rows.append((es, en, fmt_bytes(disk[key]) if disk.get(key) is not None else missing))
+    return "".join(f'<div class="row"><span class="k">{h(es if lang == "es" else en)}</span><span class="v">{h(val)}</span></div>' for es, en, val in rows)
 
 
 def setup_page(
@@ -991,18 +1043,66 @@ def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error
 </div>"""
     else:
         summary = f'<div class="card warning"><p>{h(t(lang, "no_networks"))}</p></div>'
-    cards = "".join(_network_card(app, snapshot.networks[network], lang, snapshot.domain) for network in NETWORKS)
+    selected = (parse_qs(query).get("network") or ["mainnet"])[0]
+    if selected not in NETWORKS:
+        selected = "mainnet"
+    tabs = "".join(
+        f'<a class="{"active" if n == selected else ""}" aria-current="{"page" if n == selected else "false"}" href="/?network={n}&lang={lang}">{h(t(lang, f"network_{n}"))}</a>'
+        for n in NETWORKS
+    )
+    cards = _network_card(app, snapshot.networks[selected], lang, snapshot.domain)
     content = f"""
 {notice}
-<div class="card"><div class="inline" style="justify-content:space-between">
+<div class="card" id="network-summary"><div class="inline" style="justify-content:space-between">
   <h2 style="margin:0">{h(t(lang, "networks"))}</h2>
   <span class="badge">{h(t(lang, "version_label", version=E_LITE_VERSION, core=BITCOIN_VERSION))}</span>
 </div>{summary}</div>
 {runtime}
-{cards}
 <div class="card warning"><p><strong>{h(t(lang, "alpha_warning"))}</strong></p><p>{h(t(lang, "security_warning"))}</p></div>
+<div class="tabbar" aria-label="{h(t(lang, 'networks'))}">{tabs}</div>
+<div id="network-panel">{cards}</div>
+<script>
+function bindLogs() {{
+  document.querySelectorAll('.logs pre').forEach(el => {{ el.scrollTop = el.scrollHeight; }});
+  document.querySelectorAll('.log-end').forEach(button => {{
+    button.onclick = () => {{ const el = button.nextElementSibling; el.scrollTop = el.scrollHeight; }};
+  }});
+}}
+bindLogs();
+let refreshing = false;
+async function refreshPanel() {{
+  if (refreshing) return;
+  refreshing = true;
+  try {{
+    const response = await fetch(window.location.href, {{cache:'no-store'}});
+    if (!response.ok) return;
+    const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const next = doc.getElementById('network-panel');
+    const panel = document.getElementById('network-panel');
+    if (!next || !panel || panel.querySelector('input[name="mainnet_ack"]:checked') || panel.contains(document.activeElement) && document.activeElement.matches('input,select,textarea')) return;
+    const summary = document.getElementById('network-summary');
+    const nextSummary = doc.getElementById('network-summary');
+    if (summary && nextSummary) summary.replaceChildren(...nextSummary.childNodes);
+    const positions = {{}};
+    panel.querySelectorAll('.logs pre').forEach(el => {{
+      positions[el.id] = {{top:el.scrollTop, follow:el.scrollHeight-el.clientHeight-el.scrollTop < 24}};
+      const replacement = next.querySelector('#' + el.id);
+      // Keep historical lines and the user's scroll anchor while reading backwards.
+      if (replacement && !positions[el.id].follow) replacement.textContent = el.textContent;
+    }});
+    panel.replaceChildren(...next.childNodes);
+    bindLogs();
+    Object.entries(positions).forEach(([id, pos]) => {{
+      const el = document.getElementById(id);
+      if (el && !pos.follow) el.scrollTop = pos.top;
+    }});
+  }} catch (error) {{ /* Retain the last visible state on temporary network errors. */ }}
+  finally {{ refreshing = false; }}
+}}
+setInterval(refreshPanel, 10000);
+</script>
 """
-    return page(t(lang, "status_page"), content, lang, active="status", refresh=10)
+    return page(t(lang, "status_page"), content, lang, active="status")
 
 
 def config_page(
@@ -1031,10 +1131,6 @@ def config_page(
         f'<a class="{"active" if n == selected else ""}" href="/config?network={n}&lang={lang}">{h(t(lang, f"network_{n}"))}</a>'
         for n in NETWORKS
     )
-    network_rows = "".join(
-        f'<label class="checkline"><input type="checkbox" name="enabled_{n}" value="1" {"checked" if settings.network(n).enabled else ""}> {h(t(lang, f"network_{n}"))}</label>'
-        for n in NETWORKS
-    )
     config = settings.network(selected)
     groups: dict[str, list[str]] = {}
     for field_def in FIELDS:
@@ -1053,20 +1149,12 @@ def config_page(
 {notice}
 {error_html}
 <div class="card">
-  <h2>{h(t(lang, "network_management"))}</h2>
-  <p class="help">{h(t(lang, "network_management_help"))}</p>
-  <form method="post" action="/networks?lang={lang}" onsubmit="return confirmNetworks(this)">
-    {network_rows}
-    <label class="checkline"><input type="checkbox" name="mainnet_ack" value="1"> {h(t(lang, "setup_mainnet_ack"))}</label>
-    <div class="inline"><button type="submit">{h(t(lang, "save_networks"))}</button></div>
-  </form>
-</div>
-<div class="card">
   <div class="tabbar">{tabs}</div>
   <p class="help">{h(t(lang, "config_help"))}</p>
 </div>
 <form method="post" action="/config?lang={lang}" onsubmit="return confirmSave(this)" data-network="{h(selected)}">
   <input type="hidden" name="network" value="{h(selected)}">
+  <h2>{h(t(lang, f"network_{selected}"))}</h2>
   <div class="card">
     <h2>{h(t(lang, "tls_public_title"))}</h2>
     <p class="help">{h(t(lang, "tls_public_help"))}</p>
@@ -1095,14 +1183,6 @@ function resetDefaults(form) {{
 }}
 function confirmSave(form) {{
   return confirm({json.dumps(t(lang, "restart_notice"))});
-}}
-function confirmNetworks(form) {{
-  const mainnet = form.querySelector('input[name="enabled_mainnet"]');
-  if (mainnet && mainnet.checked) {{
-    const ack = form.querySelector('input[name="mainnet_ack"]');
-    if (!ack || !ack.checked) {{ alert({json.dumps(t(lang, "setup_mainnet_required"))}); return false; }}
-  }}
-  return true;
 }}
 </script>
 """

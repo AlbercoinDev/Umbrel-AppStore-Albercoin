@@ -54,8 +54,8 @@ FIELDS: tuple[Field, ...] = (
     Field("server.rate_limit", "optional_int", None, "server", minimum=0, maximum=10000),
     Field("server.rate_burst", "optional_int", None, "server", minimum=1, maximum=1000000),
     Field("rawtx.enabled", "bool", True, "server"),
-    Field("rawtx.cache_mib", "int", 2048, "server", minimum=0, maximum=262144),
-    Field("rawtx.decoys", "int", 3, "server", minimum=0, maximum=32),
+    Field("rawtx.cache_mib", "int", 256, "server", minimum=0, maximum=262144),
+    Field("rawtx.decoys", "int", 1, "server", minimum=0, maximum=32),
     Field("rawtx.use_p2p", "bool", True, "server"),
     Field("rawtx.use_esplora", "bool", True, "server"),
     Field("rawtx.allow_clearnet", "bool", False, "server", advanced=True),
@@ -74,7 +74,7 @@ FIELDS: tuple[Field, ...] = (
     Field("core.timeout_seconds", "int", 30, "core", minimum=1, maximum=600),
     Field("core.extra_args", "list", (), "core", advanced=True),
     Field("core.restart", "bool", True, "core", advanced=True),
-    Field("logging.max_mib", "int", 64, "core", minimum=0, maximum=1024, advanced=True),
+    Field("logging.max_mib", "int", 16, "core", minimum=0, maximum=1024, advanced=True),
 )
 
 FIELDS_BY_KEY = {f.key: f for f in FIELDS}

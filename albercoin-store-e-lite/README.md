@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29-01`
+- Versión: `0.1.0-alpha.29.3.5-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.3.5`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,13 +72,27 @@ conexión rechazada.
 
 ## Configuración
 
-Cada red tiene su propia configuración, con los mismos parámetros y la casilla
-**Usar valor predeterminado** por campo. La gestión de redes permite activar o
-desactivar mainnet, testnet4 y signet.
+Estado y Configuración presentan pestañas en el orden **mainnet, testnet4,
+signet**. Cada red tiene su propia configuración y la casilla **Usar valor
+predeterminado** por campo. La activación y desactivación se realiza únicamente
+en Estado; Configuración no duplica la gestión de redes. Los cambios se aplican
+solo a la red editada.
+
+En Estado, las conexiones muestran el hostname local y la dirección onion una
+sola vez, sin puerto, con los puertos Plain y TLS separados. El recuadro de
+detalles incluye Core, poda, indexación, caché, rate limiting y versiones.
+Los registros e-lite y Core siempre están visibles al final, en recuadros de
+altura fija, con hasta 1000 líneas recientes (máximo 128 KiB por archivo).
+Se actualizan cada 10 segundos sin recargar la página: al desplazarse hacia
+arriba se conserva la lectura; **Ir al final** recupera el seguimiento en vivo.
+No es un visor del archivo histórico completo ni de los logs rotados.
 
 En **Servidor y red** están `server.rate_limit` y `server.rate_burst`. Su valor
-predeterminado es `auto`: 50 peticiones/s y burst 300 cuando hay un listener
-no-loopback. `rate_limit = 0` desactiva el límite.
+predeterminado es `auto`: 200 peticiones/s y burst 5000 para todos los clientes.
+Las peticiones esperan cuando se agotan los tokens, en lugar de rechazarse.
+`rate_limit = 0` desactiva el límite. La caché rawtx predeterminada es 256 MiB,
+con un bloque señuelo y rotación del log de e-lite a los 16 MiB. Los ajustes
+manuales guardados se conservan.
 
 Cada red tiene además un campo de **hostnames públicos TLS**. Los nombres
 añadidos se incluyen en el SAN de su certificado. Ejemplo:
@@ -184,7 +198,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.3.5-01
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.
@@ -196,8 +210,8 @@ La primera vez descarga los tres componentes y pide elegir redes.
 - **Consumo**. Tres redes activas implican tres Bitcoin Core, tres índices, tres
   e-lite y tres Tor. Mainnet puede necesitar mucho disco y días de sincronización.
 - **Alpha**. e-lite no autentica clientes y su protocolo puede cambiar.
-- **Rate limiting**. e-lite aplica por defecto 50 req/s y burst 300 cuando hay
-  listeners no-loopback; `server.rate_limit` y `server.rate_burst` se pueden
+- **Rate limiting**. e-lite aplica por defecto 200 req/s y burst 5000 para todos
+  los clientes; `server.rate_limit` y `server.rate_burst` se pueden
   cambiar por red o desactivar con `rate_limit = 0`.
 - **TLS autofirmado**. Algunas wallets no aceptan la CA local; el TCP sigue
   disponible.

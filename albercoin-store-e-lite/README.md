@@ -185,7 +185,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.4.3-01@sha256:0a270cd54a1da73757f5095d96958fda3d0593b37df233b1fe002f9bd8d4c797
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.4.5-01@sha256:05bc22b4004cd011d3af7e0b27cce65664e12a1d2c2d7d19b9cc355df460a101
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -195,7 +195,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.4.3-01@sha256:0a270cd54a1da73757f5095d96958fda3d0593b37df233b1fe002f9bd8d4c797
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.4.5-01@sha256:05bc22b4004cd011d3af7e0b27cce65664e12a1d2c2d7d19b9cc355df460a101
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.
@@ -222,7 +222,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.4.3-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.4.5-01
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

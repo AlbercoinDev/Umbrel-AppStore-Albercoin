@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config_writer import AppPaths, build_config, write_config
-from .settings import Settings
+from .settings import NETWORKS, Settings
 from .tls import TLSManager
 
 CONSOLE_LOG_LIMIT = 8 * 1024 * 1024
@@ -138,6 +138,7 @@ class NodeSupervisor:
                     self.paths,
                     bitcoin_binary=self.bitcoin_binary,
                     tor_binary=self.tor_binary,
+                    active_networks=sum(1 for name in NETWORKS if settings.network(name).enabled),
                 )
                 write_config(self.paths.network_config_file(self.network), contents)
             except Exception as exc:  # noqa: BLE001

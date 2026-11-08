@@ -22,13 +22,14 @@ class ConfigWriterTests(unittest.TestCase):
         paths.ensure()
         return paths
 
-    def _build(self, network: str, config: NetworkConfig, paths: AppPaths) -> tuple[str, dict]:
+    def _build(self, network: str, config: NetworkConfig, paths: AppPaths, active_networks: int = 1) -> tuple[str, dict]:
         text = build_config(
             network,
             config,
             paths,
             bitcoin_binary=paths.runtime / "bitcoin-1" / "bin" / "bitcoind",
             tor_binary=paths.runtime / "tor-1" / "tor",
+            active_networks=active_networks,
         )
         return text, tomllib.loads(text)
 
@@ -62,6 +63,19 @@ class ConfigWriterTests(unittest.TestCase):
                 self.assertGreater(data["tor"]["socks_port"], 0)
                 self.assertNotIn("tor_socks", data.get("rawtx", {}))
                 self.assertIn("[server]", text)
+
+    def test_memory_fraction_split_between_networks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths, active_networks=2)
+            self.assertEqual(data["index"]["memory_fraction"], 0.3)
+            _, data = self._build("signet", NetworkConfig(), paths, active_networks=3)
+            self.assertEqual(data["index"]["memory_fraction"], 0.2)
+            _, data = self._build("signet", NetworkConfig(), paths, active_networks=1)
+            self.assertNotIn("index", data)
+            override = NetworkConfig(overrides={"index.memory_fraction": 0.5})
+            _, data = self._build("signet", override, paths, active_networks=3)
+            self.assertEqual(data["index"]["memory_fraction"], 0.5)
 
     def test_mainnet_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

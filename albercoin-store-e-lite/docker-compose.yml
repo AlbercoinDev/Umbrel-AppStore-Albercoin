@@ -15,6 +15,12 @@ services:
       # Keep ephemeral source ports below the Electrum listeners so an
       # outgoing Core/Tor connection cannot collide with a TLS bind.
       net.ipv4.ip_local_port_range: "32768 54000"
+    ulimits:
+      # e-lite caps RocksDB max_open_files at ulimit-64. Docker defaults to
+      # 1024, which would leave ~960 and negate the 29.4.4 index improvement.
+      nofile:
+        soft: 8192
+        hard: 8192
     environment:
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"

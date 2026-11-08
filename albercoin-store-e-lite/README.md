@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.4.3-01`
+- Versión: `0.1.0-alpha.29.4.5-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.4.3`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.4.5`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.4.3 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.4.5 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 0` y `min_gain_blocks = 1000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -127,6 +127,22 @@ Tor lo gestiona e-lite dentro del mismo contenedor, una instancia por red:
   el error.
 
 No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
+
+## Rendimiento en Umbrel
+
+- Los datos van por un **bind mount** (`$APP_DATA_DIR/data`), no por overlay:
+  la E/S es prácticamente nativa. TLS se termina dentro de e-lite y no hay
+  proxy intermedio.
+- El Compose fija `nofile = 8192`. e-lite limita RocksDB a `ulimit -n - 64`;
+  con el valor por defecto de Docker (1024) se quedaría en ~960 y perdería la
+  mejora de índices de 29.4.4.
+- Cada red tiene su propio proceso, Core y Tor. Con varias redes activas el
+  wrapper escribe `index.memory_fraction = 0.60 / n` (solo si no has fijado un
+  valor manual), para que la suma de techos de memoria no supere el 60 % de la
+  RAM. Una sola red mantiene el valor automático de e-lite.
+- El panel muestra un aviso cuando hay más de una red activa. Para máximo
+  rendimiento deja solo mainnet; testnet4 y signet comparten CPU, RAM y disco.
+- No se modifican los binarios de e-lite: todas las mitigaciones son del wrapper.
 
 ## Datos persistentes
 

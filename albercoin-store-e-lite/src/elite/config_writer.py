@@ -158,6 +158,7 @@ def build_config(
     *,
     bitcoin_binary: Path,
     tor_binary: Path,
+    active_networks: int = 1,
 ) -> str:
     if network not in NETWORKS:
         raise ValueError("unknown network")
@@ -212,7 +213,13 @@ def build_config(
         "index.batch_blocks",
         "index.reorg_window",
     ]
-    _section(lines, "index", [(key.split(".", 1)[1], value(key)) for key in index_keys if present(key)])
+    index_values = [(key.split(".", 1)[1], value(key)) for key in index_keys if present(key)]
+    # Every instance budgets memory independently. When several networks share
+    # the same host, split e-lite's memory ceiling instead of letting each one
+    # plan for the full default (0.75 of total RAM).
+    if active_networks > 1 and not present("index.memory_fraction"):
+        index_values.append(("memory_fraction", round(0.60 / active_networks, 2)))
+    _section(lines, "index", index_values)
 
     server_values: list[tuple[str, Any]] = [
         ("tls", True),

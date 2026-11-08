@@ -1043,6 +1043,13 @@ def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error
 </div>"""
     else:
         summary = f'<div class="card warning"><p>{h(t(lang, "no_networks"))}</p></div>'
+    multi_warning = ""
+    if snapshot.active_count > 1:
+        multi_warning = (
+            '<div style="margin-top:14px;padding:12px 14px;border:1px solid rgba(255,196,107,.35);'
+            'border-radius:14px;background:rgba(255,196,107,.08);color:#ffe2b0">'
+            f'{h(t(lang, "multi_network_performance"))}</div>'
+        )
     selected = (parse_qs(query).get("network") or ["mainnet"])[0]
     if selected not in NETWORKS:
         selected = "mainnet"
@@ -1056,7 +1063,7 @@ def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error
 <div class="card" id="network-summary"><div class="inline" style="justify-content:space-between">
   <h2 style="margin:0">{h(t(lang, "networks"))}</h2>
   <span class="badge">{h(t(lang, "version_label", version=E_LITE_VERSION, core=BITCOIN_VERSION))}</span>
-</div>{summary}</div>
+</div>{summary}{multi_warning}</div>
 {runtime}
 <div class="card warning"><p><strong>{h(t(lang, "alpha_warning"))}</strong></p><p>{h(t(lang, "security_warning"))}</p></div>
 <div class="tabbar" aria-label="{h(t(lang, 'networks'))}">{tabs}</div>

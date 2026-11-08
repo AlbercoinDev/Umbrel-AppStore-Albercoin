@@ -46,6 +46,7 @@ class WebTests(unittest.TestCase):
         self.assertIn("55011", body)
         self.assertIn("Configuración", body)
         self.assertIn("Redes", body)
+        self.assertIn("Varias redes comparten CPU, RAM y disco", body)
 
     def test_config_page_has_default_controls(self) -> None:
         _, _, body = self.get("/config?network=signet")

@@ -53,6 +53,9 @@ DEMO_STATUS: dict[str, Any] = {
     "tuning": {"profile": "ssd", "cache_mib": 1024, "blocks_per_sec": 418},
     "memory": {"available_mib": 9300},
     "file_descriptors": {"soft_limit": 8192, "reserve": 256, "max_open_files_requested": 8192, "max_open_files_effective": 7936},
+    "tor": {"managed": True, "socks_port": 9050, "control_port": 0},
+    "pipeline": {"prepared": 190500, "applied": 184250, "discarded": 620},
+    "rocksdb": {"pending_compaction_bytes": 73400320, "properties_ok": True},
     "core": {"connections": 9, "initial_block_download": False, "pruned": True, "pruneheight": 176000},
 }
 
@@ -915,6 +918,9 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
     tuning = live.get("tuning") or {}
     disk = live.get("disk") or {}
     descriptors = live.get("file_descriptors") or {}
+    tor = live.get("tor") or {}
+    pipeline = live.get("pipeline") or {}
+    rocksdb = live.get("rocksdb") or {}
     missing = "No disponible" if lang == "es" else "Unavailable"
     def value(source: dict, key: str) -> object:
         result = source.get(key)
@@ -939,6 +945,26 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "Descriptores abiertos (efectivo / límite)",
             "Open files (effective / limit)",
             f"{descriptors['max_open_files_effective']} / {descriptors['soft_limit']}" if descriptors else missing,
+        ),
+        (
+            "SOCKS de Tor",
+            "Tor SOCKS",
+            f"127.0.0.1:{tor['socks_port']}" if tor.get("managed") and tor.get("socks_port") else missing,
+        ),
+        (
+            "ControlPort de Tor",
+            "Tor ControlPort",
+            ("No gestionado" if lang == "es" else "Not managed") if not tor.get("control_port") else tor["control_port"],
+        ),
+        (
+            "Bloques del pipeline (preparados / aplicados / descartados)",
+            "Pipeline blocks (prepared / applied / discarded)",
+            f"{pipeline['prepared']:,} / {pipeline['applied']:,} / {pipeline['discarded']:,}" if pipeline else missing,
+        ),
+        (
+            "Compactación pendiente",
+            "Pending compaction",
+            fmt_bytes(int(rocksdb["pending_compaction_bytes"])) if rocksdb.get("pending_compaction_bytes") is not None else missing,
         ),
         ("Certificado TLS disponible", "TLS certificate available", value(network.tls, "certificate_available")),
         ("Dirección Tor disponible", "Tor address available", bool(network.onion)),

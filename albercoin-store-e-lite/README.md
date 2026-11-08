@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.5.0-01`
+- Versión: `0.1.0-alpha.29.6.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.5.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.6.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.5.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.6.0 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 0` y `min_gain_blocks = 1000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -133,8 +133,16 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - Los datos van por un **bind mount** (`$APP_DATA_DIR/data`), no por overlay:
   la E/S es prácticamente nativa. TLS se termina dentro de e-lite y no hay
   proxy intermedio.
-- e-lite 29.5.0 ajusta el presupuesto de memoria: `caché + memtables + runtime`
+- e-lite 29.6.0 ajusta el presupuesto de memoria: `caché + memtables + runtime`
   siempre cabe en el techo detectado, y lee límites de cgroup v2/v1.
+- El pipeline de indexación es continuo: las acciones del supervisor se
+  ejecutan en los límites de commit en vez de reiniciar lectores cada 10 s.
+  La poda solo hace `SyncWAL` antes de `pruneblockchain`, y `/status.pipeline`
+  permite ver bloques preparados, aplicados y descartados.
+- Core se arranca con `-listenonion=0`. El Tor gestionado no tiene
+  `ControlPort`, así que Core ya no reintenta `127.0.0.1:9051` cada minuto.
+  Solo se gestiona el onion de Electrum; el de Core queda desactivado.
+  El panel muestra el SOCKS por red y que el ControlPort no está gestionado.
 - El Compose fija `nofile = 8192`. e-lite reserva descriptores para sockets,
   RPC, proveedores y logs, y publica el valor efectivo en
   `/status.file_descriptors`. Con el límite por defecto de Docker (1024) se

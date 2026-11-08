@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: bitcoin
 name: e-lite
-version: "0.1.0-alpha.29.4.5-01"
+version: "0.1.0-alpha.29.5.0-01"
 tagline: Servidor Electrum autónomo con Bitcoin Core incluido
 description: >-
   e-lite es un servidor Electrum 1.4–1.7 autónomo que incluye su propio Bitcoin Core
@@ -22,11 +22,11 @@ description: >-
   y ocupar mucho disco. El TLS usa un certificado autofirmado. Los puertos
   Electrum no tienen autenticación de clientes; úsalos solo en redes de confianza.
 releaseNotes: >-
-  Actualiza e-lite a 0.1.0-alpha.29.4.5: caché RocksDB estable y lectura de
-  prevouts más rápida. Ajusta el presupuesto de memoria cuando hay varias redes
-  activas, eleva los descriptores del contenedor y avisa del coste de ejecutar
-  mainnet, testnet4 y signet a la vez. Conserva datos, CA, certificados, puertos
-  y onions.
+  Actualiza e-lite a 0.1.0-alpha.29.5.0: presupuesto de memoria ajustado,
+  detección de cgroup y descriptores visibles. Añade tope de caché de Core por
+  red, opción avanzada para equipos con poca RAM y muestra los descriptores
+  efectivos. Documenta el mínimo de 8 GB para mainnet y la sincronización
+  inicial serializada. Conserva datos, CA, certificados, puertos y onions.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/e-lite
 dependencies: []

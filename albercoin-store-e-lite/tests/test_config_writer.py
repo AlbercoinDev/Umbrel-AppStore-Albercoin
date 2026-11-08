@@ -22,7 +22,14 @@ class ConfigWriterTests(unittest.TestCase):
         paths.ensure()
         return paths
 
-    def _build(self, network: str, config: NetworkConfig, paths: AppPaths, active_networks: int = 1) -> tuple[str, dict]:
+    def _build(
+        self,
+        network: str,
+        config: NetworkConfig,
+        paths: AppPaths,
+        active_networks: int = 1,
+        total_mib: int = 7909,
+    ) -> tuple[str, dict]:
         text = build_config(
             network,
             config,
@@ -30,6 +37,7 @@ class ConfigWriterTests(unittest.TestCase):
             bitcoin_binary=paths.runtime / "bitcoin-1" / "bin" / "bitcoind",
             tor_binary=paths.runtime / "tor-1" / "tor",
             active_networks=active_networks,
+            total_mib=total_mib,
         )
         return text, tomllib.loads(text)
 
@@ -76,6 +84,28 @@ class ConfigWriterTests(unittest.TestCase):
             override = NetworkConfig(overrides={"index.memory_fraction": 0.5})
             _, data = self._build("signet", override, paths, active_networks=3)
             self.assertEqual(data["index"]["memory_fraction"], 0.5)
+
+    def test_multi_network_dbcache_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths, active_networks=3, total_mib=7909)
+            self.assertEqual(data["core"]["extra_args"], ["-dbcache=659"])
+            _, data = self._build("signet", NetworkConfig(), paths, active_networks=2, total_mib=7909)
+            self.assertEqual(data["core"]["extra_args"], ["-dbcache=988"])
+            _, data = self._build("signet", NetworkConfig(), paths, active_networks=1, total_mib=7909)
+            self.assertNotIn("extra_args", data["core"])
+            override = NetworkConfig(overrides={"core.extra_args": ["-dbcache=1200"]})
+            _, data = self._build("signet", override, paths, active_networks=3, total_mib=7909)
+            self.assertEqual(data["core"]["extra_args"], ["-dbcache=1200"])
+
+    def test_allow_low_memory_override(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths)
+            self.assertNotIn("index", data)
+            override = NetworkConfig(overrides={"index.allow_low_memory": True})
+            _, data = self._build("signet", override, paths)
+            self.assertTrue(data["index"]["allow_low_memory"])
 
     def test_mainnet_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

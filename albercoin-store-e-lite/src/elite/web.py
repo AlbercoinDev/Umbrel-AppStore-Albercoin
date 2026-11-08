@@ -52,6 +52,7 @@ DEMO_STATUS: dict[str, Any] = {
     "uptime_seconds": 6 * 3600 + 42 * 60,
     "tuning": {"profile": "ssd", "cache_mib": 1024, "blocks_per_sec": 418},
     "memory": {"available_mib": 9300},
+    "file_descriptors": {"soft_limit": 8192, "reserve": 256, "max_open_files_requested": 8192, "max_open_files_effective": 7936},
     "core": {"connections": 9, "initial_block_download": False, "pruned": True, "pruneheight": 176000},
 }
 
@@ -913,6 +914,7 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
     core = live.get("core") or {}
     tuning = live.get("tuning") or {}
     disk = live.get("disk") or {}
+    descriptors = live.get("file_descriptors") or {}
     missing = "No disponible" if lang == "es" else "Unavailable"
     def value(source: dict, key: str) -> object:
         result = source.get(key)
@@ -933,6 +935,11 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
         ("Ráfaga", "Burst", value(live, "rate_burst")),
         ("Peticiones limitadas", "Rate limited requests", value(live, "rate_limited")),
         ("RPC Core en loopback", "Core loopback RPC", value(live, "core_rpc_loopback")),
+        (
+            "Descriptores abiertos (efectivo / límite)",
+            "Open files (effective / limit)",
+            f"{descriptors['max_open_files_effective']} / {descriptors['soft_limit']}" if descriptors else missing,
+        ),
         ("Certificado TLS disponible", "TLS certificate available", value(network.tls, "certificate_available")),
         ("Dirección Tor disponible", "Tor address available", bool(network.onion)),
         ("Versiones e-lite / Core / Tor", "Versions e-lite / Core / Tor", f"{E_LITE_VERSION} / {BITCOIN_VERSION} / {TOR_VERSION}"),

@@ -151,6 +151,22 @@ def _section(lines: list[str], name: str, values: list[tuple[str, Any]]) -> None
     lines.append("")
 
 
+def total_memory_mib() -> int:
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemTotal:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def network_dbcache_mib(total_mib: int, networks: int) -> int:
+    if total_mib <= 0 or networks < 1:
+        return 0
+    return max(450, min(2048, total_mib // (4 * networks)))
+
+
 def build_config(
     network: str,
     config: NetworkConfig,
@@ -159,6 +175,7 @@ def build_config(
     bitcoin_binary: Path,
     tor_binary: Path,
     active_networks: int = 1,
+    total_mib: int | None = None,
 ) -> str:
     if network not in NETWORKS:
         raise ValueError("unknown network")
@@ -197,6 +214,13 @@ def build_config(
             core_values.append((key.split(".", 1)[1], value(key)))
     if present("core.extra_args") and value("core.extra_args"):
         core_values.append(("extra_args", list(value("core.extra_args"))))
+    elif active_networks > 1:
+        # e-lite sizes each managed Core's -dbcache from total RAM. With
+        # several networks that budget is duplicated per instance, so cap it
+        # here unless the operator set their own extra_args.
+        dbcache = network_dbcache_mib(total_memory_mib() if total_mib is None else total_mib, active_networks)
+        if dbcache:
+            core_values.append(("extra_args", [f"-dbcache={dbcache}"]))
     _section(lines, "core", core_values)
 
     index_keys = [
@@ -210,6 +234,7 @@ def build_config(
         "index.readers",
         "index.commit_interval_ms",
         "index.commit_sync",
+        "index.allow_low_memory",
         "index.batch_blocks",
         "index.reorg_window",
     ]

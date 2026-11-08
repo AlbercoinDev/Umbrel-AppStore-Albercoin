@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.4.5-01`
+- Versión: `0.1.0-alpha.29.5.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.4.5`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.5.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.4.5 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.5.0 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 0` y `min_gain_blocks = 1000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -133,13 +133,28 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - Los datos van por un **bind mount** (`$APP_DATA_DIR/data`), no por overlay:
   la E/S es prácticamente nativa. TLS se termina dentro de e-lite y no hay
   proxy intermedio.
-- El Compose fija `nofile = 8192`. e-lite limita RocksDB a `ulimit -n - 64`;
-  con el valor por defecto de Docker (1024) se quedaría en ~960 y perdería la
-  mejora de índices de 29.4.4.
+- e-lite 29.5.0 ajusta el presupuesto de memoria: `caché + memtables + runtime`
+  siempre cabe en el techo detectado, y lee límites de cgroup v2/v1.
+- El Compose fija `nofile = 8192`. e-lite reserva descriptores para sockets,
+  RPC, proveedores y logs, y publica el valor efectivo en
+  `/status.file_descriptors`. Con el límite por defecto de Docker (1024) se
+  quedaría en ~960 y perdería la mejora de índices.
 - Cada red tiene su propio proceso, Core y Tor. Con varias redes activas el
   wrapper escribe `index.memory_fraction = 0.60 / n` (solo si no has fijado un
-  valor manual), para que la suma de techos de memoria no supere el 60 % de la
-  RAM. Una sola red mantiene el valor automático de e-lite.
+  valor manual), para que la suma de techos no supere el 60 % de la RAM.
+  Una sola red mantiene el valor automático de e-lite.
+- Con varias redes, el wrapper también fija `-dbcache` por Core
+  (`clamp(RAM/(4·n), 450, 2048)` MiB) salvo que hayas definido
+  `core.extra_args`. Evita que cada Core planifique su propia caché sobre la
+  RAM total.
+- **Mínimo de RAM**: mainnet necesita 7500 MiB efectivos; testnet4, signet y
+  regtest, 3800 MiB. En **Avanzado** existe `index.allow_low_memory`, que omite
+  la comprobación; no está soportado para uso real.
+- **Primera sincronización**: e-lite toma un `flock` por usuario
+  (`/tmp/e-lite-<uid>/ibd.lock`). En este contenedor las redes comparten ese
+  bloqueo: la primera que arranca hace el IBD y las demás esperan, sirviendo su
+  índice si ya existe. En una instalación nueva con tres redes, testnet4 y
+  signet empiezan cuando mainnet está a 1000 bloques de Core.
 - El panel muestra un aviso cuando hay más de una red activa. Para máximo
   rendimiento deja solo mainnet; testnet4 y signet comparten CPU, RAM y disco.
 - No se modifican los binarios de e-lite: todas las mitigaciones son del wrapper.

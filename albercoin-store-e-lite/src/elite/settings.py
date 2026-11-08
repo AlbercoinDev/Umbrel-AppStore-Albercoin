@@ -48,6 +48,7 @@ FIELDS: tuple[Field, ...] = (
     Field("index.readers", "int", 0, "performance", minimum=0, maximum=64),
     Field("index.commit_interval_ms", "int", 0, "performance", minimum=0, maximum=30000),
     Field("index.commit_sync", "enum", "auto", "performance", options=("auto", "always", "txids"), advanced=True),
+    Field("index.allow_low_memory", "bool", False, "performance", advanced=True),
     Field("index.batch_blocks", "int", 256, "performance", minimum=0, maximum=4096),
     Field("index.reorg_window", "int", 288, "performance", minimum=1, maximum=100000),
     Field("server.max_clients", "int", 32, "server", minimum=1, maximum=1024),

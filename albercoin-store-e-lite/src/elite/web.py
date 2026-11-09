@@ -56,6 +56,7 @@ DEMO_STATUS: dict[str, Any] = {
     "tor": {"managed": True, "socks_port": 9050, "control_port": 0},
     "pipeline": {"prepared": 190500, "applied": 184250, "discarded": 620},
     "rocksdb": {"pending_compaction_bytes": 73400320, "properties_ok": True},
+    "scheduler": {"mode": "overlap", "index_paused": False, "backlog_bytes": 12884901888, "high_bytes": 32212254720, "low_bytes": 7516192768},
     "machine": {
         "cpu": {"physical": 4, "logical": 8, "effective": 4, "physical_effective": 4, "smt": True},
         "disk": {"data": {"kind": "nvme", "mount": "/data"}, "core": {"kind": "nvme", "mount": "/data"}, "same_device": True},
@@ -930,6 +931,7 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
     cpu = machine.get("cpu") or {}
     machine_disk = (machine.get("disk") or {}).get("data") or {}
     machine_plan = machine.get("plan") or {}
+    scheduler = live.get("scheduler") or {}
     missing = "No disponible" if lang == "es" else "Unavailable"
     def value(source: dict, key: str) -> object:
         result = source.get(key)
@@ -969,6 +971,21 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "Bloques del pipeline (preparados / aplicados / descartados)",
             "Pipeline blocks (prepared / applied / discarded)",
             f"{pipeline['prepared']:,} / {pipeline['applied']:,} / {pipeline['discarded']:,}" if pipeline else missing,
+        ),
+        (
+            "Backlog sin indexar",
+            "Unindexed backlog",
+            fmt_bytes(int(scheduler["backlog_bytes"])) if scheduler.get("backlog_bytes") is not None else missing,
+        ),
+        (
+            "Planificador Core / e-lite",
+            "Core / e-lite scheduler",
+            (
+                f"{scheduler['mode']} · "
+                + ("pausado" if scheduler.get("index_paused") else "activo")
+                if lang == "es"
+                else f"{scheduler['mode']} · " + ("paused" if scheduler.get("index_paused") else "active")
+            ) if scheduler else missing,
         ),
         (
             "Núcleos físicos / lógicos",

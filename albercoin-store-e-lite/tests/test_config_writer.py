@@ -98,6 +98,24 @@ class ConfigWriterTests(unittest.TestCase):
             _, data = self._build("signet", override, paths, active_networks=3, total_mib=7909)
             self.assertEqual(data["core"]["extra_args"], ["-dbcache=1200"])
 
+    def test_byte_watermarks_and_legacy_bridge(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths)
+            self.assertNotIn("pruning", data)
+            legacy = NetworkConfig(overrides={"pruning.max_bulk_lag_blocks": 12000})
+            _, data = self._build("signet", legacy, paths)
+            self.assertEqual(data["pruning"]["max_bulk_lag_blocks"], 12000)
+            self.assertEqual(data["pruning"]["max_bulk_lag_gib"], 0)
+            resume = NetworkConfig(overrides={"pruning.core_resume_ahead_blocks": 2500})
+            _, data = self._build("signet", resume, paths)
+            self.assertEqual(data["pruning"]["core_resume_ahead_blocks"], 2500)
+            self.assertEqual(data["pruning"]["core_resume_ahead_gib"], 0)
+            modern = NetworkConfig(overrides={"pruning.max_bulk_lag_gib": 50, "pruning.scheduler": "alternate"})
+            _, data = self._build("signet", modern, paths)
+            self.assertEqual(data["pruning"]["max_bulk_lag_gib"], 50)
+            self.assertEqual(data["pruning"]["scheduler"], "alternate")
+
     def test_allow_low_memory_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))

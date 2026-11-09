@@ -289,15 +289,27 @@ def build_config(
         "pruning.allow_auto_prune",
         "pruning.min_free_gib",
         "pruning.critical_free_gib",
+        "pruning.max_bulk_lag_gib",
         "pruning.max_bulk_lag_blocks",
+        "pruning.scheduler",
         "pruning.pause_core_during_bulk",
+        "pruning.core_resume_ahead_gib",
         "pruning.core_resume_ahead_blocks",
         "pruning.prune_defer_free_gib",
         "pruning.min_gain_blocks",
         "pruning.poll_seconds",
         "pruning.repair_max_gap_blocks",
     ]
-    _section(lines, "pruning", [(key.split(".", 1)[1], value(key)) for key in pruning_keys if present(key)])
+    pruning_values = [(key.split(".", 1)[1], value(key)) for key in pruning_keys if present(key)]
+    # The byte watermarks take precedence in 29.8.0. If the operator kept using
+    # the legacy block knobs, disable the GiB values so their choice still wins.
+    for legacy, gib in (
+        ("pruning.max_bulk_lag_blocks", "pruning.max_bulk_lag_gib"),
+        ("pruning.core_resume_ahead_blocks", "pruning.core_resume_ahead_gib"),
+    ):
+        if present(legacy) and not present(gib):
+            pruning_values.append((gib.split(".", 1)[1], 0))
+    _section(lines, "pruning", pruning_values)
 
     _section(
         lines,

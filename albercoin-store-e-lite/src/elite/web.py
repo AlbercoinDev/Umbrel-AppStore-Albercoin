@@ -56,6 +56,11 @@ DEMO_STATUS: dict[str, Any] = {
     "tor": {"managed": True, "socks_port": 9050, "control_port": 0},
     "pipeline": {"prepared": 190500, "applied": 184250, "discarded": 620},
     "rocksdb": {"pending_compaction_bytes": 73400320, "properties_ok": True},
+    "machine": {
+        "cpu": {"physical": 4, "logical": 8, "effective": 4, "physical_effective": 4, "smt": True},
+        "disk": {"data": {"kind": "nvme", "mount": "/data"}, "core": {"kind": "nvme", "mount": "/data"}, "same_device": True},
+        "plan": {"readers": 4, "jobs": 2, "cache_mib": 1024, "commit_ms": 20000},
+    },
     "core": {"connections": 9, "initial_block_download": False, "pruned": True, "pruneheight": 176000},
 }
 
@@ -921,6 +926,10 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
     tor = live.get("tor") or {}
     pipeline = live.get("pipeline") or {}
     rocksdb = live.get("rocksdb") or {}
+    machine = live.get("machine") or {}
+    cpu = machine.get("cpu") or {}
+    machine_disk = (machine.get("disk") or {}).get("data") or {}
+    machine_plan = machine.get("plan") or {}
     missing = "No disponible" if lang == "es" else "Unavailable"
     def value(source: dict, key: str) -> object:
         result = source.get(key)
@@ -960,6 +969,21 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "Bloques del pipeline (preparados / aplicados / descartados)",
             "Pipeline blocks (prepared / applied / discarded)",
             f"{pipeline['prepared']:,} / {pipeline['applied']:,} / {pipeline['discarded']:,}" if pipeline else missing,
+        ),
+        (
+            "Núcleos físicos / lógicos",
+            "Physical / logical cores",
+            f"{cpu['physical']} / {cpu['logical']}" if cpu else missing,
+        ),
+        (
+            "Disco de datos detectado",
+            "Detected data disk",
+            f"{machine_disk['kind']} ({machine_disk['mount']})" if machine_disk else missing,
+        ),
+        (
+            "Plan de máquina (lectores / jobs / commit)",
+            "Machine plan (readers / jobs / commit)",
+            f"{machine_plan['readers']} / {machine_plan['jobs']} / {machine_plan['commit_ms']} ms" if machine_plan else missing,
         ),
         (
             "Compactación pendiente",

@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.6.0-01`
+- Versión: `0.1.0-alpha.29.7.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.6.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.7.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.6.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.7.1 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 0` y `min_gain_blocks = 1000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -133,8 +133,15 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - Los datos van por un **bind mount** (`$APP_DATA_DIR/data`), no por overlay:
   la E/S es prácticamente nativa. TLS se termina dentro de e-lite y no hay
   proxy intermedio.
-- e-lite 29.6.0 ajusta el presupuesto de memoria: `caché + memtables + runtime`
+- e-lite 29.7.1 ajusta el presupuesto de memoria: `caché + memtables + runtime`
   siempre cabe en el techo detectado, y lee límites de cgroup v2/v1.
+- El plan de máquina usa **núcleos físicos** (no hilos SMT) y clasifica el
+  disco de datos y el de Core (NVMe, SSD SATA, HDD, virtual, red). De ahí salen
+  lectores, jobs de RocksDB, caché y el intervalo de commit. El panel muestra
+  CPU y disco detectados, y `/status.machine` expone el plan completo.
+- Los commits en bloque son más grandes y menos frecuentes (250k txs, 512
+  bloques, 20–60 s según disco, con tope de bytes), y la poda se ejecuta en su
+  propio hilo después de la barrera de commit: ya no bloquea la indexación.
 - El pipeline de indexación es continuo: las acciones del supervisor se
   ejecutan en los límites de commit en vez de reiniciar lectores cada 10 s.
   La poda solo hace `SyncWAL` antes de `pruneblockchain`, y `/status.pipeline`

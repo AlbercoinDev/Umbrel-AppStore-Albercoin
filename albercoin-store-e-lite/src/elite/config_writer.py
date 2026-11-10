@@ -209,7 +209,7 @@ def build_config(
         ("core_datadir", str(paths.network_core_data(network))),
         ("require_loopback_rpc", True),
     ]
-    for key in ("core.timeout_seconds", "core.prune_mib", "core.restart"):
+    for key in ("core.timeout_seconds", "core.prune_mib", "core.restart", "core.io_priority", "core.cgroup_io_weight"):
         if present(key):
             core_values.append((key.split(".", 1)[1], value(key)))
     if present("core.extra_args") and value("core.extra_args"):
@@ -233,6 +233,8 @@ def build_config(
         "index.background_jobs",
         "index.readers",
         "index.commit_interval_ms",
+        "index.prefetch_deadline_ms",
+        "index.adaptive_memtables",
         "index.commit_sync",
         "index.allow_low_memory",
         "index.batch_blocks",

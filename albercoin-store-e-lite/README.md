@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.8.0-01`
+- Versión: `0.1.0-alpha.29.8.4-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.8.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.8.4`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,9 +72,9 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.8.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.8.4 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
-`prune_defer_free_gib = 0` y `min_gain_blocks = 1000`; los ajustes manuales
+`prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
 certificados por red, sin regenerar la CA en la actualización. Para wallets
 que requieren confianza explícita (incluido Sparrow/Java), importa la CA de
@@ -150,6 +150,16 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   y e-lite se turnan para escribir. `alternate` requiere
   `pause_core_during_bulk`.
 - El panel muestra el backlog sin indexar y el modo del planificador.
+- Presupuesto desde `MemAvailable` (no RAM instalada) y `-dbcache` de Core
+  ajustado a la memoria libre; con varias redes el wrapper sigue fijando su
+  propio tope de `-dbcache`.
+- Opciones en **Avanzado**: `core.io_priority` (ionice 0–7),
+  `core.cgroup_io_weight` (io.weight 1–10000, requiere delegación),
+  `index.adaptive_memtables` y `index.prefetch_deadline_ms` (50–60000 ms).
+  Todas están desactivadas por defecto.
+- La poda normal reserva 20 GiB libres y avanza cada 5.000 bloques; la poda de
+  emergencia por poco disco sigue saltándose ambos límites.
+- Discos ZFS y overlay se detectan como clase propia y usan el perfil SSD.
 - El pipeline de indexación es continuo: las acciones del supervisor se
   ejecutan en los límites de commit en vez de reiniciar lectores cada 10 s.
   La poda solo hace `SyncWAL` antes de `pruneblockchain`, y `/status.pipeline`

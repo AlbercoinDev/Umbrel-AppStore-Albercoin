@@ -97,8 +97,8 @@ class WebTests(unittest.TestCase):
     def test_updated_pruning_defaults_and_overrides(self) -> None:
         from elite.settings import NetworkConfig
         config = NetworkConfig()
-        self.assertEqual(config.value("pruning.prune_defer_free_gib"), 0)
-        self.assertEqual(config.value("pruning.min_gain_blocks"), 1000)
+        self.assertEqual(config.value("pruning.prune_defer_free_gib"), 20)
+        self.assertEqual(config.value("pruning.min_gain_blocks"), 5000)
         self.post('/config', {"network": "signet", "value__pruning.prune_defer_free_gib": "50", "value__pruning.min_gain_blocks": "10000"})
         config = load_settings(self.paths.settings_file).network('signet')
         self.assertEqual(config.value("pruning.prune_defer_free_gib"), 50)

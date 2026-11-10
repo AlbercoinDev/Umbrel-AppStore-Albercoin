@@ -116,6 +116,26 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertEqual(data["pruning"]["max_bulk_lag_gib"], 50)
             self.assertEqual(data["pruning"]["scheduler"], "alternate")
 
+    def test_opt_in_io_and_prefetch_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths)
+            self.assertNotIn("io_priority", data["core"])
+            self.assertNotIn("cgroup_io_weight", data["core"])
+            override = NetworkConfig(
+                overrides={
+                    "core.io_priority": 5,
+                    "core.cgroup_io_weight": 100,
+                    "index.prefetch_deadline_ms": 250,
+                    "index.adaptive_memtables": True,
+                }
+            )
+            _, data = self._build("signet", override, paths)
+            self.assertEqual(data["core"]["io_priority"], 5)
+            self.assertEqual(data["core"]["cgroup_io_weight"], 100)
+            self.assertEqual(data["index"]["prefetch_deadline_ms"], 250)
+            self.assertTrue(data["index"]["adaptive_memtables"])
+
     def test_allow_low_memory_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))

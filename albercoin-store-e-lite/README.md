@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.8.6-01`
+- Versión: `0.1.0-alpha.29.8.7-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.8.6`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.8.7`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.8.6 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.8.7 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -159,6 +159,8 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   real entre column families y expone ficheros L0 y compactaciones activas.
   El panel muestra compactaciones/L0 y la caché real; los picos de commit
   quedan explicados en el log.
+- 29.8.7 corrige la lectura de la caché de bloques (antes ×7 por sumarla en
+  todas las familias) y el ARC en ZFS (columna incorrecta del kstat).
 - Presupuesto desde `MemAvailable` (no RAM instalada) y `-dbcache` de Core
   ajustado a la memoria libre; con varias redes el wrapper sigue fijando su
   propio tope de `-dbcache`.

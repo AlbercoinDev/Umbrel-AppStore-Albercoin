@@ -235,6 +235,7 @@ def build_config(
         "index.commit_interval_ms",
         "index.prefetch_deadline_ms",
         "index.adaptive_memtables",
+        "index.max_open_files",
         "index.commit_sync",
         "index.allow_low_memory",
         "index.batch_blocks",

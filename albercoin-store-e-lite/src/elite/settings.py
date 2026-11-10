@@ -48,6 +48,7 @@ FIELDS: tuple[Field, ...] = (
     Field("index.readers", "int", 0, "performance", minimum=0, maximum=64),
     Field("index.commit_interval_ms", "int", 0, "performance", minimum=0, maximum=30000),
     Field("index.prefetch_deadline_ms", "int", 0, "performance", minimum=0, maximum=60000, advanced=True),
+    Field("index.max_open_files", "int", 0, "performance", minimum=0, maximum=1048576, advanced=True),
     Field("index.adaptive_memtables", "bool", False, "performance", advanced=True),
     Field("index.commit_sync", "enum", "auto", "performance", options=("auto", "always", "txids"), advanced=True),
     Field("index.allow_low_memory", "bool", False, "performance", advanced=True),

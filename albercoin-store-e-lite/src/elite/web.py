@@ -51,7 +51,7 @@ DEMO_STATUS: dict[str, Any] = {
     "disk_free_bytes": 412 * 1024**3,
     "uptime_seconds": 6 * 3600 + 42 * 60,
     "tuning": {"profile": "ssd", "cache_mib": 1024, "blocks_per_sec": 418},
-    "memory": {"available_mib": 9300},
+    "memory": {"available_mib": 9300, "effective_mib": 8200, "dynamic_reserve_mib": 2048, "memtable_bytes_mib": 512, "table_readers_mib": 96},
     "file_descriptors": {"soft_limit": 8192, "reserve": 256, "max_open_files_requested": 8192, "max_open_files_effective": 7936},
     "tor": {"managed": True, "socks_port": 9050, "control_port": 0},
     "pipeline": {"prepared": 190500, "applied": 184250, "discarded": 620},
@@ -952,6 +952,16 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
         ("Ráfaga", "Burst", value(live, "rate_burst")),
         ("Peticiones limitadas", "Rate limited requests", value(live, "rate_limited")),
         ("RPC Core en loopback", "Core loopback RPC", value(live, "core_rpc_loopback")),
+        (
+            "Memoria efectiva / reserva dinámica",
+            "Effective memory / dynamic reserve",
+            f"{int(memory['effective_mib']):,} / {int(memory['dynamic_reserve_mib']):,} MiB" if "effective_mib" in memory and "dynamic_reserve_mib" in memory else missing,
+        ),
+        (
+            "Memtables / table readers reales",
+            "Actual memtables / table readers",
+            f"{int(memory['memtable_bytes_mib']):,} / {int(memory['table_readers_mib']):,} MiB" if "memtable_bytes_mib" in memory and "table_readers_mib" in memory else missing,
+        ),
         (
             "Descriptores abiertos (efectivo / límite)",
             "Open files (effective / limit)",

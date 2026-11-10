@@ -922,6 +922,7 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
     live = network.live or {}
     core = live.get("core") or {}
     tuning = live.get("tuning") or {}
+    memory = live.get("memory") or {}
     disk = live.get("disk") or {}
     descriptors = live.get("file_descriptors") or {}
     tor = live.get("tor") or {}

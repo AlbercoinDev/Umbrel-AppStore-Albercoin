@@ -55,7 +55,7 @@ DEMO_STATUS: dict[str, Any] = {
     "file_descriptors": {"soft_limit": 8192, "reserve": 256, "max_open_files_requested": 8192, "max_open_files_effective": 7936},
     "tor": {"managed": True, "socks_port": 9050, "control_port": 0},
     "pipeline": {"prepared": 190500, "applied": 184250, "discarded": 620},
-    "rocksdb": {"pending_compaction_bytes": 73400320, "properties_ok": True},
+    "rocksdb": {"pending_compaction_bytes": 73400320, "properties_ok": True, "running_compactions": 1, "level0_files": 23, "block_cache_bytes": 838860800},
     "scheduler": {"mode": "overlap", "index_paused": False, "backlog_bytes": 12884901888, "high_bytes": 32212254720, "low_bytes": 7516192768},
     "machine": {
         "cpu": {"physical": 4, "logical": 8, "effective": 4, "physical_effective": 4, "smt": True},
@@ -1012,6 +1012,16 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "Plan de máquina (lectores / jobs / commit)",
             "Machine plan (readers / jobs / commit)",
             f"{machine_plan['readers']} / {machine_plan['jobs']} / {machine_plan['commit_ms']} ms" if machine_plan else missing,
+        ),
+        (
+            "Compactaciones / ficheros L0",
+            "Compactions / L0 files",
+            f"{rocksdb['running_compactions']} / {rocksdb['level0_files']}" if "running_compactions" in rocksdb and "level0_files" in rocksdb else missing,
+        ),
+        (
+            "Caché de bloques real",
+            "Actual block cache",
+            fmt_bytes(int(rocksdb["block_cache_bytes"])) if rocksdb.get("block_cache_bytes") is not None else missing,
         ),
         (
             "Compactación pendiente",

@@ -149,6 +149,31 @@ def facts_age(facts: dict) -> int:
         return 0
 
 
+def parse_export_output(lines: list[str]) -> dict:
+    """Read the facts e-lite prints after a snapshot (no archive scan needed)."""
+    result: dict = {}
+    for line in lines:
+        text = line.strip()
+        if text.startswith("network:"):
+            result["network"] = text.split(":", 1)[1].strip()
+        elif text.startswith("tip:"):
+            parts = text.split()
+            if len(parts) >= 3:
+                try:
+                    result["tip_height"] = int(parts[1])
+                except ValueError:
+                    continue
+                result["index_hash"] = parts[2]
+        elif text.startswith("txnum:"):
+            try:
+                result["txnum"] = int(text.split(":", 1)[1].strip())
+            except ValueError:
+                pass
+        elif text.startswith("logical_snapshot_hash:"):
+            result["digest"] = text.split(":", 1)[1].strip()
+    return result
+
+
 def parse_debug_log(path: Path) -> dict:
     """Best-effort tip/version from Core's debug.log (fallback when stopped)."""
     try:
@@ -454,6 +479,13 @@ class BackupManager:
         with self._lock:
             self._sizes[network] = {"index": index, "core": core, "computed_at": time.time(), "computing": False, "ready": True}
 
+    def cached_sizes(self, network: str) -> dict | None:
+        with self._lock:
+            entry = dict(self._sizes.get(network) or {})
+        if entry.get("ready") and (time.time() - entry.get("computed_at", 0) <= self.SIZES_TTL_SECONDS):
+            return entry
+        return None
+
     def _invalidate_sizes(self, network: str) -> None:
         with self._lock:
             self._sizes.pop(network, None)
@@ -624,8 +656,14 @@ class BackupManager:
             raise RuntimeError("la red aún no tiene configuración; iníciala primero")
         index_dir = self.paths.network_e_lite_data(network)
         core_dir = self.paths.network_core_data(network)
-        index_raw = _du(index_dir, EXCLUDE_INDEX)
-        core_raw = _du(core_dir, EXCLUDE_CORE)
+        cached = self.cached_sizes(network)
+        if cached:
+            index_raw = int(cached.get("index") or 0)
+            core_raw = int(cached.get("core") or 0)
+        else:
+            self._phase("measuring", "Calculando tamaños (puede tardar)…")
+            index_raw = _du(index_dir, EXCLUDE_INDEX)
+            core_raw = _du(core_dir, EXCLUDE_CORE)
         if index_raw == 0:
             raise RuntimeError("el índice está vacío; no hay nada que exportar")
         facts = self._facts(network)
@@ -663,7 +701,7 @@ class BackupManager:
             ]
             self._run_process(tar_command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
             self._check_cancel()
-            self._phase("exporting-index", "Exportando índice…")
+            self._phase("preparing-index", "Preparando índice (apertura + digest)…")
             compress = str(args.get("compress") or "3")
             if compress not in ("0", "3", "6"):
                 compress = "3"
@@ -672,13 +710,20 @@ class BackupManager:
                 "export-snapshot", "--config", str(config_file),
                 "--hash-files", "--compress-level", compress, "--output", str(index_file),
             ]
-            self._run_process(command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
+            lines = self._run_process(command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
             self._check_cancel()
             self._phase("finalizing", "Validando la copia…")
-            manifest = read_manifest(index_file)
-            if manifest.get("network") != network:
-                raise RuntimeError(f"la copia generada pertenece a {manifest.get('network')}")
-            height = int(manifest.get("height") or 0)
+            parsed = parse_export_output(lines)
+            if not parsed.get("tip_height"):
+                fallback = read_manifest(index_file)
+                parsed = {
+                    "network": fallback.get("network") or "",
+                    "tip_height": int(fallback.get("height") or 0),
+                    "index_hash": fallback.get("hash", ""),
+                }
+            if parsed.get("network") not in ("", network):
+                raise RuntimeError(f"la copia generada pertenece a {parsed.get('network')}")
+            height = int(parsed.get("tip_height") or 0)
             tip = int(facts.get("tip_height") or 0)
             prune_height = int(facts.get("prune_height") or 0)
             if tip and height > tip:
@@ -700,7 +745,7 @@ class BackupManager:
                 "index_ratio": round(index_bytes / max(1, index_raw), 3),
                 "core_bytes": core_bytes,
                 "index_height": height,
-                "index_hash": manifest.get("hash", ""),
+                "index_hash": parsed.get("index_hash", ""),
                 "core_tip_height": tip,
                 "core_tip_hash": facts.get("tip_hash", ""),
                 "core_pruned": bool(facts.get("pruned")),
@@ -710,7 +755,6 @@ class BackupManager:
                 "facts_updated_at": int(facts.get("updated_at") or 0),
             }
             bundle_file.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
-            write_sidecar(index_file, manifest)
             save_ratio(self.paths, network, bundle["index_ratio"])
             with self._lock:
                 self._listing.clear()
@@ -752,6 +796,13 @@ class BackupManager:
         total = core_raw + index_est
         with self._lock:
             phase = self._state.get("phase")
+        if phase == "preparing-index" and index_done > 0:
+            self._phase("exporting-index", "Empaquetando índice…")
+            phase = "exporting-index"
+        if phase == "preparing-index":
+            self._update(phase_detail="Abriendo índice y calculando digest…")
+            self._set_progress(core_done, total, 0, 0)
+            return
         if phase == "packing-core":
             phase_done, phase_total = core_done, core_raw
             detail = f"Core {_fmt(core_done)} / {_fmt(core_raw)}"
@@ -914,11 +965,21 @@ class BackupManager:
     def _progress_import_index(self, target: Path, core_bytes: int, total: int) -> None:
         done = _du(target) if target.exists() else 0
         index_total = max(0, total - core_bytes)
+        with self._lock:
+            phase = self._state.get("phase")
+        if phase == "extracting-index" and index_total and done >= index_total * 0.999:
+            self._phase("verifying-index", "Verificando el índice restaurado…")
+            self._set_progress(core_bytes + done, total, 0, 0)
+            return
+        if phase == "verifying-index":
+            self._update(phase_detail="Comprobando digest del índice restaurado…")
+            self._set_progress(core_bytes + done, total, 0, 0)
+            return
         self._update(phase_detail=f"Índice {_fmt(done)} / {_fmt(index_total)}")
         self._set_progress(core_bytes + done, total, done, index_total)
 
     # ------------------------------------------------------------------ process
-    def _run_process(self, command: list[str], progress, timeout: int) -> None:
+    def _run_process(self, command: list[str], progress, timeout: int) -> list[str]:
         env = os.environ.copy()
         env["HOME"] = str(self.paths.data)
         env["PYTHONUNBUFFERED"] = "1"
@@ -954,15 +1015,20 @@ class BackupManager:
         self._update(log=lines[-40:])
         if process.returncode != 0:
             raise RuntimeError(" | ".join(lines[-3:]) or f"el comando terminó con código {process.returncode}")
+        return lines
 
     def _drain(self, process: subprocess.Popen[str], lines: list[str]) -> None:
         if process.stdout is None:
             return
         for line in process.stdout:
-            lines.append(line.rstrip("\n"))
+            text = line.rstrip("\n")
+            lines.append(text)
             del lines[:-200]
             with self._lock:
                 self._state["tail"] = lines[-5:]
+            lowered = text.lower()
+            if "verify=full" in lowered or "starting core on the restored datadir" in lowered:
+                self._update(message="Verificando con Core (verifychain)…")
 
     def _append_job_log(self, message: str) -> None:
         try:

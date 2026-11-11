@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.10.0-10`
+- Versión: `0.1.0-alpha.29.10.0-11`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -243,8 +243,11 @@ la reactiva al terminar.
   valida red, tamaños y coherencia antes de restaurar.
 - El espacio necesario usa el tamaño real del manifiesto más un margen del
   10 % (mínimo 256 MiB).
-- El progreso es **por fase**: empaquetar Core y exportar índice tienen cada
-  uno su barra y contador desde 0; el total del trabajo se muestra aparte.
+- El progreso es **por fase**: medir, parar, empaquetar Core, preparar índice
+  (apertura + digest), empaquetar índice, validar y reactivar; cada fase con su
+  barra, contador y tiempo. El total del trabajo se muestra aparte.
+- La exportación lee altura y hash de la salida de e-lite, sin descomprimir el
+  archivo recién creado (el manifiesto va al final del tar).
 - Se puede **cancelar** un trabajo; se mata el grupo de procesos, se limpian
   parciales y se reactiva la red.
 - Tras importar se invalidan `core-facts.json` y la caché de tamaños.
@@ -305,7 +308,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-10@sha256:549b3c67567ebc808284bb3f6faf3c36e77fbf635635d007e397d1508230ad36
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-11@sha256:549b3c67567ebc808284bb3f6faf3c36e77fbf635635d007e397d1508230ad36
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -315,7 +318,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-10@sha256:549b3c67567ebc808284bb3f6faf3c36e77fbf635635d007e397d1508230ad36
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-11@sha256:549b3c67567ebc808284bb3f6faf3c36e77fbf635635d007e397d1508230ad36
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.
@@ -342,7 +345,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-10
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-11
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

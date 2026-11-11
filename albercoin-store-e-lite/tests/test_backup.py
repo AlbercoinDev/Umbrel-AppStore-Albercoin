@@ -21,6 +21,7 @@ from elite.backup import (
     network_leftovers,
     read_manifest,
     _bundle_files,
+    parse_export_output,
     restored_estimate,
     write_sidecar,
 )
@@ -136,6 +137,15 @@ class BackupTests(unittest.TestCase):
             paths.ensure()
             save_facts(paths, "signet", {"tip_height": 123, "prune_height": 0})
             self.assertEqual(load_facts(paths, "signet")["tip_height"], 123)
+
+    def test_parse_export_output(self) -> None:
+        parsed = parse_export_output(
+            ["snapshot: /x (1.00 MiB)", "network: signet", "tip: 184250 " + "a" * 64, "txnum: 77", "logical_snapshot_hash: " + "b" * 64]
+        )
+        self.assertEqual(parsed["network"], "signet")
+        self.assertEqual(parsed["tip_height"], 184250)
+        self.assertEqual(parsed["index_hash"], "a" * 64)
+        self.assertEqual(parsed["digest"], "b" * 64)
 
     def test_space_helpers_are_proportional(self) -> None:
         self.assertEqual(space_margin(1024 * 1024), 256 * 1024 * 1024)

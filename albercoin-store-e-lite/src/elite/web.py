@@ -1287,6 +1287,29 @@ setInterval(refreshPanel, 10000);
     return page(t(lang, "status_page"), content, lang, active="status")
 
 
+PHASE_LABELS = {
+    "preparing": ("Preparando", "Preparing"),
+    "measuring": ("Midiendo", "Measuring"),
+    "stopping": ("Parando", "Stopping"),
+    "packing-core": ("Core", "Core"),
+    "preparing-index": ("Preparando índice", "Index prep"),
+    "exporting-index": ("Índice", "Index"),
+    "extracting-core": ("Restaurando Core", "Core restore"),
+    "extracting-index": ("Restaurando índice", "Index restore"),
+    "verifying-index": ("Verificando", "Verifying"),
+    "finalizing": ("Validando", "Validating"),
+    "starting": ("Reiniciando", "Restarting"),
+    "done": ("Listo", "Done"),
+    "error": ("Error", "Error"),
+    "cancelled": ("Cancelado", "Cancelled"),
+}
+
+
+def _phase_label(lang: str, phase: str) -> str:
+    es, en = PHASE_LABELS.get(phase, (phase, phase))
+    return es if lang == "es" else en
+
+
 def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> str:
     L = lambda es, en: es if lang == "es" else en
     params = parse_qs(query)
@@ -1367,9 +1390,11 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
         global_pct = min(100.0, done / total * 100.0) if total else 0.0
         global_detail = f"{fmt_bytes(done)} / {fmt_bytes(total)} · {global_pct:.1f}%" if total else ""
         phases = "".join(
-            f'<span class="badge">{h(x.get("phase", ""))} {x.get("seconds", 0):g}s</span>'
+            f'<span class="badge">✓ {h(_phase_label(lang, str(x.get("phase", ""))))} {x.get("seconds", 0):g}s</span>'
             for x in reversed(list(job.get("phases") or []))
         )
+        elapsed = int(max(0, time.time() - float(job.get("phase_started_at") or time.time()))) if job.get("active") else 0
+        elapsed_text = f"{'lleva' if lang == 'es' else 'elapsed'} {fmt_duration(elapsed)}" if job.get("active") else ""
         warnings = "".join(f'<p class="help">{h(w)}</p>' for w in list(job.get("warnings") or []))
         cancel = ""
         if job.get("active"):
@@ -1379,7 +1404,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
 </form>"""
         progress = f"""<div class="card" id="backup-progress">
   <h2>{h(L("Progreso", "Progress"))}</h2>
-  <div class="inline" style="justify-content:space-between"><span id="backup-phase">{h(job.get("message", ""))}</span><strong id="backup-percent">{pct:.1f}%</strong></div>
+  <div class="inline" style="justify-content:space-between"><span id="backup-phase">{h(job.get("message", ""))} <span class="badge" id="backup-elapsed">{h(elapsed_text)}</span></span><strong id="backup-percent">{pct:.1f}%</strong></div>
   <div class="progress"><span id="backup-bar" style="width:{pct:.1f}%"></span></div>
   <p class="help" id="backup-detail">{h(detail)}</p>
   <p class="help" id="backup-global">{h(L("Total", "Overall"))}: {h(global_detail)}</p>
@@ -1454,6 +1479,8 @@ if (fileSelect && coreHint) fileSelect.addEventListener('change', () => {{
   if (verifyRow) verifyRow.style.display = option && option.dataset.kind === 'bundle' ? 'none' : 'block';
 }});
 fileSelect && fileSelect.dispatchEvent(new Event('change'));
+const PHASE_LABELS = {json.dumps({k: (v[0] if lang == "es" else v[1]) for k, v in PHASE_LABELS.items()}, ensure_ascii=False)};
+const ELAPSED_LABEL = {json.dumps("lleva" if lang == "es" else "elapsed")};
 let wasActive = {str(bool(job.get("active"))).lower()};
 let sizesComputing = {str(bool(sizes.get("computing"))).lower()};
 async function pollSizes() {{
@@ -1490,7 +1517,11 @@ async function pollBackup() {{
     const globalNode = document.getElementById('backup-global');
     if (globalNode) globalNode.textContent = 'Total: ' + fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.total ? ' · ' + (100 * s.done / s.total).toFixed(1) + '%' : '');
     document.getElementById('backup-phase').textContent = s.message || s.phase || '';
-    document.getElementById('backup-phases').innerHTML = (s.phases || []).slice().reverse().map(x => '<span class="badge">✓ ' + x.phase + ' ' + x.seconds + 's</span>').join(' ');
+    document.getElementById('backup-phases').innerHTML = (s.phases || []).slice().reverse().map(x => '<span class="badge">✓ ' + (PHASE_LABELS[x.phase] || x.phase) + ' ' + x.seconds + 's</span>').join(' ');
+    const elapsedNode = document.getElementById('backup-elapsed');
+    if (elapsedNode) {{
+      elapsedNode.textContent = s.active && s.phase_started_at ? ELAPSED_LABEL + ' ' + fmtTime(Date.now() / 1000 - s.phase_started_at) : '';
+    }}
     document.getElementById('backup-tail').textContent = (s.tail || []).slice(-5).join(String.fromCharCode(10));
     document.getElementById('backup-error').textContent = s.error || '';
     if (s.active) {{ setTimeout(pollBackup, 1000); }} else {{ wasActive = false; setTimeout(() => location.reload(), 1200); }}

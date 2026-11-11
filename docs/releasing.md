@@ -24,7 +24,7 @@ e-lite únicamente distribuye binarios `x86_64`. Es una excepción deliberada al
 requisito multiarquitectura de Umbrel y está documentada en el README de la app.
 
 La imagen incluye el controlador web; e-lite, Bitcoin Core y Tor se descargan y
-verifican en el primer arranque. La etiqueta es `0.1.0-alpha.29.10.0-10` y el Compose
+verifican en el primer arranque. La etiqueta es `0.1.0-alpha.29.10.0-11` y el Compose
 fija el digest publicado. Un cambio de versión de e-lite, Core o Tor exige
 actualizar `src/elite/runtime.py` (versión, URL y SHA256), el manifiesto, la
 documentación y volver a publicar/fijar la imagen.

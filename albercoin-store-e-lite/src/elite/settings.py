@@ -79,6 +79,7 @@ FIELDS: tuple[Field, ...] = (
     Field("pruning.core_resume_ahead_blocks", "int", 5000, "pruning", minimum=0, maximum=1000000),
     Field("pruning.prune_defer_free_gib", "int", 20, "pruning", minimum=0, maximum=100000),
     Field("pruning.min_gain_blocks", "int", 5000, "pruning", minimum=0, maximum=1000000),
+    Field("pruning.min_gain_live_blocks", "int", 144, "pruning", minimum=0, maximum=1000000),
     Field("pruning.poll_seconds", "int", 10, "pruning", minimum=1, maximum=3600),
     Field("pruning.repair_max_gap_blocks", "int", 2048, "pruning", minimum=0, maximum=100000),
     Field("core.timeout_seconds", "int", 30, "core", minimum=1, maximum=600),

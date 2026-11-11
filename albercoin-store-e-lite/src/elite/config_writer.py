@@ -303,6 +303,7 @@ def build_config(
         "pruning.core_resume_ahead_blocks",
         "pruning.prune_defer_free_gib",
         "pruning.min_gain_blocks",
+        "pruning.min_gain_live_blocks",
         "pruning.poll_seconds",
         "pruning.repair_max_gap_blocks",
     ]

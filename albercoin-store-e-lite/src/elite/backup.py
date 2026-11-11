@@ -369,6 +369,10 @@ class BackupManager:
             "phase": "idle",
             "message": "",
             "phase_detail": "",
+            "phase_done": 0,
+            "phase_total": 0,
+            "phase_percent": 0.0,
+            "phase_eta_seconds": None,
             "done": 0,
             "total": 0,
             "space_needed": 0,
@@ -513,7 +517,10 @@ class BackupManager:
                 self._state["phases"] = list(self._state.get("phases") or []) + [
                     {"phase": self._state.get("phase"), "seconds": round(now - started, 1)}
                 ]
-            self._state.update(phase=phase, message=message, phase_detail=detail, phase_started_at=now)
+            self._state.update(
+                phase=phase, message=message, phase_detail=detail, phase_started_at=now,
+                phase_done=0, phase_total=0, phase_percent=0.0, phase_eta_seconds=None,
+            )
         self.log(f"backup: {phase}: {message}")
 
     def _active(self) -> bool:
@@ -708,7 +715,7 @@ class BackupManager:
             with self._lock:
                 self._listing.clear()
             size = index_bytes + core_bytes
-            self._update(ok=True, phase="done", message=f"Copia completada · altura {height}", phase_detail="", done=size, total=size, eta_seconds=0, path=str(bundle_file), warnings=warnings, finished_at=time.time())
+            self._update(ok=True, phase="done", message=f"Copia completada · altura {height}", phase_detail="", done=size, total=size, phase_done=size, phase_total=size, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, path=str(bundle_file), warnings=warnings, finished_at=time.time())
             self._append_job_log(f"export {bundle_file.name} (height {height}, {size} bytes)")
             self._restart(network, enabled)
         except BaseException:
@@ -743,9 +750,16 @@ class BackupManager:
             except OSError:
                 index_done = 0
         total = core_raw + index_est
-        detail = f"Core {_fmt(core_done)} / {_fmt(core_raw)} · índice {_fmt(index_done)} / {_fmt(index_est)}"
+        with self._lock:
+            phase = self._state.get("phase")
+        if phase == "packing-core":
+            phase_done, phase_total = core_done, core_raw
+            detail = f"Core {_fmt(core_done)} / {_fmt(core_raw)}"
+        else:
+            phase_done, phase_total = index_done, index_est
+            detail = f"Índice {_fmt(index_done)} / {_fmt(index_est)}"
         self._update(phase_detail=detail)
-        self._set_progress(core_done + index_done, total)
+        self._set_progress(core_done + index_done, total, phase_done, phase_total)
 
     # ------------------------------------------------------------------- import
     def _run_import(self, args: dict, enabled: bool) -> None:
@@ -832,7 +846,7 @@ class BackupManager:
         self._invalidate_sizes(network)
         with self._lock:
             self._listing.clear()
-        self._update(ok=True, phase="done", message=f"Restaurado a altura {bundle.get('index_height', 0)}", phase_detail="", done=total, total=total, eta_seconds=0, finished_at=time.time())
+        self._update(ok=True, phase="done", message=f"Restaurado a altura {bundle.get('index_height', 0)}", phase_detail="", done=total, total=total, phase_done=total, phase_total=total, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, finished_at=time.time())
         self._append_job_log(f"import {bundle_file.name} (height {bundle.get('index_height')})")
         self._restart(network, enabled)
 
@@ -888,19 +902,20 @@ class BackupManager:
         self._invalidate_sizes(network)
         with self._lock:
             self._listing.clear()
-        self._update(ok=True, phase="done", message=f"Restaurado a altura {manifest.get('height', 0)}", phase_detail="", done=total, total=total, eta_seconds=0, finished_at=time.time())
+        self._update(ok=True, phase="done", message=f"Restaurado a altura {manifest.get('height', 0)}", phase_detail="", done=total, total=total, phase_done=total, phase_total=total, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, finished_at=time.time())
         self._append_job_log(f"import {archive.name} (height {manifest.get('height')})")
         self._restart(network, enabled)
 
     def _progress_import_core(self, core_target: Path, core_bytes: int, total: int) -> None:
         done = _du(core_target) if core_target.exists() else 0
         self._update(phase_detail=f"Core {_fmt(done)} / {_fmt(core_bytes)}")
-        self._set_progress(done, total)
+        self._set_progress(done, total, done, core_bytes)
 
     def _progress_import_index(self, target: Path, core_bytes: int, total: int) -> None:
         done = _du(target) if target.exists() else 0
-        self._update(phase_detail=f"Índice {_fmt(done)} / {_fmt(max(0, total - core_bytes))}")
-        self._set_progress(core_bytes + done, total)
+        index_total = max(0, total - core_bytes)
+        self._update(phase_detail=f"Índice {_fmt(done)} / {_fmt(index_total)}")
+        self._set_progress(core_bytes + done, total, done, index_total)
 
     # ------------------------------------------------------------------ process
     def _run_process(self, command: list[str], progress, timeout: int) -> None:
@@ -958,7 +973,7 @@ class BackupManager:
         except OSError:
             pass
 
-    def _set_progress(self, done: int, total: int) -> None:
+    def _set_progress(self, done: int, total: int, phase_done: int = 0, phase_total: int = 0) -> None:
         now = time.time()
         with self._lock:
             started = self._state.get("started_at") or now
@@ -966,7 +981,17 @@ class BackupManager:
             rate = done / elapsed
             total = max(total, done)
             eta = int(max(0, total - done) / rate) if rate > 0 and total > done else 0
-            self._state.update(done=done, total=total, eta_seconds=eta)
+            phase_started = self._state.get("phase_started_at") or now
+            phase_elapsed = max(0.001, now - phase_started)
+            phase_rate = phase_done / phase_elapsed
+            phase_total = max(phase_total, phase_done)
+            phase_eta = int(max(0, phase_total - phase_done) / phase_rate) if phase_rate > 0 and phase_total > phase_done else 0
+            percent = min(100.0, phase_done / phase_total * 100.0) if phase_total else 0.0
+            self._state.update(
+                done=done, total=total, eta_seconds=eta,
+                phase_done=phase_done, phase_total=phase_total,
+                phase_percent=round(percent, 1), phase_eta_seconds=phase_eta,
+            )
 
 
 def _fmt(value: int) -> str:

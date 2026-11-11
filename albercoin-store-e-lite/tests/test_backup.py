@@ -103,6 +103,21 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(second["index"], 5)
             self.assertEqual(second["core"], 0)
 
+    def test_phase_progress_is_independent(self) -> None:
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            manager._update(phase="exporting-index", phase_started_at=time.time(), started_at=time.time())
+            manager._set_progress(900, 1200, 200, 400)
+            status = manager.status()
+            self.assertEqual(status["phase_done"], 200)
+            self.assertEqual(status["phase_total"], 400)
+            self.assertEqual(status["phase_percent"], 50.0)
+            self.assertEqual(status["done"], 900)
+            self.assertEqual(status["total"], 1200)
+
     def test_debug_log_parsing_and_facts_persistence(self) -> None:
         from elite.backup import load_facts, parse_debug_log, save_facts
         from elite.config_writer import AppPaths

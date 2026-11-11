@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.10.0-09`
+- Versión: `0.1.0-alpha.29.10.0-10`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -242,8 +242,9 @@ la reactiva al terminar.
   (con tamaños exactos, altura, punta/poda de Core y versión). La importación
   valida red, tamaños y coherencia antes de restaurar.
 - El espacio necesario usa el tamaño real del manifiesto más un margen del
-  10 % (mínimo 256 MiB). El progreso no incluye ese margen: empieza en 0 y
-  termina en 100 %.
+  10 % (mínimo 256 MiB).
+- El progreso es **por fase**: empaquetar Core y exportar índice tienen cada
+  uno su barra y contador desde 0; el total del trabajo se muestra aparte.
 - Se puede **cancelar** un trabajo; se mata el grupo de procesos, se limpian
   parciales y se reactiva la red.
 - Tras importar se invalidan `core-facts.json` y la caché de tamaños.
@@ -304,7 +305,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-09@sha256:7a1ca14e594bc6652d1828e9685e7c62f6b1670fe0dc585a0753549006d13f3a
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-10@sha256:7a1ca14e594bc6652d1828e9685e7c62f6b1670fe0dc585a0753549006d13f3a
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -314,7 +315,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-09@sha256:7a1ca14e594bc6652d1828e9685e7c62f6b1670fe0dc585a0753549006d13f3a
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-10@sha256:7a1ca14e594bc6652d1828e9685e7c62f6b1670fe0dc585a0753549006d13f3a
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.
@@ -341,7 +342,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-09
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-10
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

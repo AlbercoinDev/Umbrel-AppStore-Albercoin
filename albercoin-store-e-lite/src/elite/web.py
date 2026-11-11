@@ -1357,11 +1357,15 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     if job.get("active") or job.get("phase") in ("done", "error"):
         done = int(job.get("done") or 0)
         total = int(job.get("total") or 0)
-        pct = min(100.0, done / total * 100.0) if total else 0.0
-        eta = int(job.get("eta_seconds") or 0)
-        detail = f"{fmt_bytes(done)} / {fmt_bytes(total)}"
+        phase_done = int(job.get("phase_done") or 0)
+        phase_total = int(job.get("phase_total") or 0)
+        pct = min(100.0, phase_done / phase_total * 100.0) if phase_total else 0.0
+        eta = int(job.get("phase_eta_seconds") or 0)
+        detail = f"{fmt_bytes(phase_done)} / {fmt_bytes(phase_total)}" if phase_total else ""
         if eta and job.get("active"):
             detail += f" · ~{fmt_duration(eta)}"
+        global_pct = min(100.0, done / total * 100.0) if total else 0.0
+        global_detail = f"{fmt_bytes(done)} / {fmt_bytes(total)} · {global_pct:.1f}%" if total else ""
         phases = "".join(
             f'<span class="badge">{h(x.get("phase", ""))} {x.get("seconds", 0):g}s</span>'
             for x in reversed(list(job.get("phases") or []))
@@ -1378,7 +1382,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
   <div class="inline" style="justify-content:space-between"><span id="backup-phase">{h(job.get("message", ""))}</span><strong id="backup-percent">{pct:.1f}%</strong></div>
   <div class="progress"><span id="backup-bar" style="width:{pct:.1f}%"></span></div>
   <p class="help" id="backup-detail">{h(detail)}</p>
-  <p class="help" id="backup-phase-detail">{h(job.get("phase_detail", ""))}</p>
+  <p class="help" id="backup-global">{h(L("Total", "Overall"))}: {h(global_detail)}</p>
   <div class="inline" id="backup-phases">{phases}</div>
   <pre id="backup-tail">{h(chr(10).join(list(job.get("tail") or [])[-5:]))}</pre>
   {warnings}
@@ -1472,20 +1476,20 @@ async function pollBackup() {{
     const response = await fetch('/api/backup/status', {{cache:'no-store'}});
     const s = await response.json();
     const bar = document.getElementById('backup-bar');
-    if (!s.total || (!s.done && (s.phase === 'stopping' || s.phase === 'exporting'))) {{
+    if (!s.phase_total) {{
       bar.classList.add('indeterminate'); bar.style.width = '34%';
       document.getElementById('backup-percent').textContent = '';
       document.getElementById('backup-detail').textContent = 'tamaño y tiempo estimados cuando empiece la escritura';
     }} else {{
       bar.classList.remove('indeterminate');
-      const pct = Math.min(100, (s.done / s.total) * 100);
+      const pct = Math.min(100, s.phase_percent || 0);
       bar.style.width = pct.toFixed(1) + '%';
       document.getElementById('backup-percent').textContent = pct.toFixed(1) + '%';
-      document.getElementById('backup-detail').textContent = fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.eta_seconds ? ' · ~' + fmtTime(s.eta_seconds) : '');
+      document.getElementById('backup-detail').textContent = fmtBytes(s.phase_done) + ' / ' + fmtBytes(s.phase_total) + (s.phase_eta_seconds ? ' · ~' + fmtTime(s.phase_eta_seconds) : '');
     }}
+    const globalNode = document.getElementById('backup-global');
+    if (globalNode) globalNode.textContent = 'Total: ' + fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.total ? ' · ' + (100 * s.done / s.total).toFixed(1) + '%' : '');
     document.getElementById('backup-phase').textContent = s.message || s.phase || '';
-    const phaseDetail = document.getElementById('backup-phase-detail');
-    if (phaseDetail) phaseDetail.textContent = s.phase_detail || '';
     document.getElementById('backup-phases').innerHTML = (s.phases || []).slice().reverse().map(x => '<span class="badge">✓ ' + x.phase + ' ' + x.seconds + 's</span>').join(' ');
     document.getElementById('backup-tail').textContent = (s.tail || []).slice(-5).join(String.fromCharCode(10));
     document.getElementById('backup-error').textContent = s.error || '';

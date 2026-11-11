@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.10.0-03`
+- Versión: `0.1.0-alpha.29.10.0-04`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -222,7 +222,8 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 
 ## Copias de seguridad
 
-Cada pestaña de red tiene **Exportar** e **Importar**. La copia incluye el
+La pestaña **Copias** de la navegación centraliza todo el panel: pestañas por
+red, destino, exportación, importación, progreso y limpieza. La copia incluye el
 índice de e-lite y el datadir de Bitcoin Core en un único `.tar.gz` verificado
 (formato 2). El proceso detiene la red si estaba activa, ejecuta el trabajo y
 la reactiva al terminar.

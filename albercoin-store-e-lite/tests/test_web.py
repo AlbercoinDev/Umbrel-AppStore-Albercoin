@@ -63,6 +63,13 @@ class WebTests(unittest.TestCase):
         self.assertIn('Auto usa 5000', body)
         self.assertIn('Restaurar valores predeterminados de esta red', body)
 
+    def test_backup_nav_and_no_buttons_on_cards(self) -> None:
+        _, _, body = self.get("/")
+        self.assertIn('href="/backup?lang=es"', body)
+        self.assertNotIn('action=export', body)
+        _, _, body = self.get("/backup?network=signet")
+        self.assertIn('href="/backup?lang=es"', body)
+
     def test_tabs_connections_and_visible_logs(self) -> None:
         _, _, body = self.get('/?network=signet')
         self.assertLess(body.index('href="/?network=mainnet'), body.index('href="/?network=testnet4'))

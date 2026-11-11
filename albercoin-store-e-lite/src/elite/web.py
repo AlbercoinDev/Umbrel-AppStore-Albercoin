@@ -697,9 +697,10 @@ def _nav(lang: str, active: str) -> str:
     q = f"?lang={lang}"
     status = f'<a class="{"active" if active == "status" else ""}" href="/{q}">{h(t(lang, "status"))}</a>'
     config = f'<a class="{"active" if active == "config" else ""}" href="/config{q}">{h(t(lang, "configuration"))}</a>'
+    backups = f'<a class="{"active" if active == "backup" else ""}" href="/backup{q}">{h(t(lang, "backup_nav"))}</a>'
     other = "en" if lang == "es" else "es"
     language = f'<a class="lang" href="?lang={other}">{h(t(lang, "language"))}</a>'
-    return f'<nav>{status}{config}{language}</nav>'
+    return f'<nav>{status}{config}{backups}{language}</nav>'
 
 
 def page(title: str, content: str, lang: str, active: str = "status", refresh: int = 0) -> str:
@@ -903,9 +904,7 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
   {_toggle_form(app, network, lang)}
 </div>
 <div class="inline"><span class="pill muted"><span class="dot"></span>{h(t(lang, "network_disabled"))}</span>
-<a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a>
-<a class="button secondary" href="/backup?network={network.network}&action=export">{h(t(lang, "backup_export"))}</a>
-<a class="button secondary" href="/backup?network={network.network}&action=import">{h(t(lang, "backup_import"))}</a></div>"""
+<a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>"""
         return f'<div class="card">{body}{_logs_block(network, lang)}</div>'
 
     status = status_class(network)
@@ -972,9 +971,7 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
     <div class="row"><span class="k">{h(t(lang, "profile"))}</span><span class="v">{h(str(tuning.get("profile", "—")))}</span></div>
     {_detail_rows(network, lang)}
   </div>
-  <div class="inline" style="margin-top:12px"><a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a>
-  <a class="button secondary" href="/backup?network={network.network}&action=export">{h(t(lang, "backup_export"))}</a>
-  <a class="button secondary" href="/backup?network={network.network}&action=import">{h(t(lang, "backup_import"))}</a></div>
+  <div class="inline" style="margin-top:12px"><a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>
   {_logs_block(network, lang)}
 </div>"""
 
@@ -1441,7 +1438,7 @@ async function pollBackup() {{
 pollBackup();
 </script>
 """
-    return page(t(lang, "backup_title"), content, lang, active="status")
+    return page(t(lang, "backup_title"), content, lang, active="backup")
 
 
 def _network_data_bytes(app: WebApp, network: str) -> int:

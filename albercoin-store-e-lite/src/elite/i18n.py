@@ -7,6 +7,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "app_name": "e-lite",
         "status": "Estado",
         "backup_title": "Copias",
+        "backup_nav": "Copias",
         "backup_export": "Exportar",
         "backup_import": "Importar",
         "configuration": "Configuración",

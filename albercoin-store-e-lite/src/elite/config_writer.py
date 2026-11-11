@@ -51,8 +51,12 @@ class AppPaths:
             ca_key=tls / "ca.key",
         )
 
+    @property
+    def exports_dir(self) -> Path:
+        return self.data / "exports"
+
     def ensure(self) -> None:
-        for directory in (self.data, self.config, self.ca_certificate.parent, self.runtime, self.logs):
+        for directory in (self.data, self.config, self.ca_certificate.parent, self.runtime, self.logs, self.exports_dir):
             directory.mkdir(parents=True, exist_ok=True)
         for network in NETWORKS:
             self.network_e_lite_data(network).mkdir(parents=True, exist_ok=True)

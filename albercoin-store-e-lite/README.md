@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.9.2-01`
+- Versión: `0.1.0-alpha.29.10.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.9.2`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.10.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.9.2 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.10.0 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -219,6 +219,28 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - El panel muestra un aviso cuando hay más de una red activa. Para máximo
   rendimiento deja solo mainnet; testnet4 y signet comparten CPU, RAM y disco.
 - No se modifican los binarios de e-lite: todas las mitigaciones son del wrapper.
+
+## Copias de seguridad
+
+Cada pestaña de red tiene **Exportar** e **Importar**. La copia incluye el
+índice de e-lite y el datadir de Bitcoin Core en un único `.tar.gz` verificado
+(formato 2). El proceso detiene la red si estaba activa, ejecuta el trabajo y
+la reactiva al terminar.
+
+- **Destino**: `/exports` si has concedido una carpeta del disco externo en
+  Ajustes de la app → Almacenamiento; si no, `data/exports` (muévelo desde
+  Files → Apps → e-lite).
+- **Exportar**: `e-lite export-snapshot --with-core --hash-files
+  --compress-level 3`.
+- **Importar**: restaura en un directorio vacío, verifica el snapshot y mueve
+  el Core restaurado a `data/networks/<red>/core`. Si falla, recupera los
+  datos anteriores.
+- La barra muestra fase, bytes copiados, total estimado y tiempo restante.
+- Las bases de datos y las copias quedan **excluidas** del backup de Umbrel
+  (`data/networks`, `data/exports`); la configuración, CA, TLS y onion sí se
+  incluyen.
+- La red se para durante la copia: el índice abre RocksDB en exclusiva y Core
+  debe estar detenido para que el datadir sea consistente.
 
 ## Datos persistentes
 

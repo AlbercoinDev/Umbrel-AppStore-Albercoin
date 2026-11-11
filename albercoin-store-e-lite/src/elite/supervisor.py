@@ -351,6 +351,18 @@ class SupervisorManager:
             for node in self.nodes.values():
                 node.request_restart()
 
+    def suspend(self, network: str) -> None:
+        """Stop one network for maintenance and keep it stopped."""
+        node = self.nodes[network]
+        node.stop()
+
+    def resume(self, network: str) -> None:
+        """Start one network again if it is still enabled."""
+        settings = self.settings_loader()
+        node = self.nodes[network]
+        if settings.network(network).enabled and not node.is_started():
+            node.start()
+
     def apply_settings(self, network: str | None = None) -> None:
         settings = self.settings_loader()
         names = [network] if network else list(self.nodes)

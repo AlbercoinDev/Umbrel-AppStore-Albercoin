@@ -10,6 +10,7 @@ import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from .backup import BackupManager
 from .config_writer import AppPaths
 from .runtime import RuntimeManager
 from .settings import NETWORKS, load_settings
@@ -74,6 +75,7 @@ def main() -> int:
         tor_binary=runtime.tor_binary,
         log=LOG.info,
     )
+    backup = BackupManager(paths, supervisor, lambda: load_settings(paths.settings_file), log=LOG.info)
     app = WebApp(
         paths,
         runtime,
@@ -82,6 +84,7 @@ def main() -> int:
         domain=domain,
         hostname=hostname,
         demo=demo,
+        backup=backup,
     )
     httpd = make_server(app, 3000)
 

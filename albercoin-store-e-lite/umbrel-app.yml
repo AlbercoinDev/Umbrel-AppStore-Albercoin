@@ -2,9 +2,17 @@ manifestVersion: 1.1
 id: albercoin-store-e-lite
 storage:
   dataRoot: data
+folderAccess:
+  - id: backup-drive
+    name: Copia de seguridad e-lite
+    note: Elige una carpeta de un disco externo o recurso de red. Aparecerá en la app como /exports.
+    mounts:
+      - service: app
+        targetPath: /exports
+        readOnly: false
 category: bitcoin
 name: e-lite
-version: "0.1.0-alpha.29.9.2-01"
+version: "0.1.0-alpha.29.10.0-01"
 tagline: Servidor Electrum autónomo con Bitcoin Core incluido
 description: >-
   e-lite es un servidor Electrum 1.4–1.7 autónomo que incluye su propio Bitcoin Core
@@ -22,9 +30,10 @@ description: >-
   y ocupar mucho disco. El TLS usa un certificado autofirmado. Los puertos
   Electrum no tienen autenticación de clientes; úsalos solo en redes de confianza.
 releaseNotes: >-
-  Actualiza e-lite a 0.1.0-alpha.29.9.2: poda diaria en modo vivo
-  (min_gain_live_blocks, 144 bloques ≈ un día) para no retener ~7,5 GiB entre
-  podas. Conserva CA, certificados, puertos y onions.
+  Actualiza e-lite a 0.1.0-alpha.29.10.0 y añade copias por red desde el
+  panel: exporta e importa índice + Bitcoin Core en un archivo verificado, con
+  barra de progreso, tamaño y tiempo estimado. La red se detiene durante el
+  proceso y se reactiva al terminar. Conserva CA, certificados, puertos y onions.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/e-lite
 dependencies: []
@@ -84,3 +93,4 @@ backupIgnore:
   - data/config/e-lite.toml
   - data/config/networks/*/tor/data
   - data/config/networks/*/tor/tor.log
+  - data/exports

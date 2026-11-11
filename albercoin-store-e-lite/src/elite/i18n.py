@@ -6,6 +6,9 @@ TEXTS: dict[str, dict[str, str]] = {
     "es": {
         "app_name": "e-lite",
         "status": "Estado",
+        "backup_title": "Copias",
+        "backup_export": "Exportar",
+        "backup_import": "Importar",
         "configuration": "Configuración",
         "networks": "Redes",
         "active_networks": "Redes activas",
@@ -163,6 +166,9 @@ TEXTS: dict[str, dict[str, str]] = {
     "en": {
         "app_name": "e-lite",
         "status": "Status",
+        "backup_title": "Backups",
+        "backup_export": "Export",
+        "backup_import": "Import",
         "configuration": "Settings",
         "networks": "Networks",
         "active_networks": "Active networks",

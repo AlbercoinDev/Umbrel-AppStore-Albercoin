@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.8.9-01`
+- Versión: `0.1.0-alpha.29.9.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.8.9`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.9.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.8.9 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.9.1 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -168,6 +168,14 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   mantiene 2. Con ARC sin límite en ZFS, e-lite avisa y sugiere un tope.
 - `logging.level` en **Avanzado**: `info`, `debug` (por defecto durante la
   alpha) o `trace`. Se recarga con SIGUSR1, como el resto de campos calientes.
+- Al llegar a la punta, la poda ignora el aplazamiento por espacio libre y
+  corta hasta el máximo seguro; luego agrupa de nuevo cada 5.000 bloques.
+- El plan de compactación aplica hilos físicos también al arrancar (SSD/NVMe
+  2–8, ZFS/virtual 4, HDD/red 2).
+- `index.zfs_arc_dynamic` (activado) gestiona el tope del ARC por fase:
+  `zfs_arc_max_mib` durante la descarga (0 = mitad de RAM) y
+  `zfs_arc_min_mib` (1024) una vez sincronizado. Solo actúa si puede escribir
+  el parámetro de ZFS; sin permiso queda en modo aviso.
 - Presupuesto desde `MemAvailable` (no RAM instalada) y `-dbcache` de Core
   ajustado a la memoria libre; con varias redes el wrapper sigue fijando su
   propio tope de `-dbcache`.

@@ -20,14 +20,24 @@ from .supervisor import SupervisorManager
 
 ALLOWED_EXTRA_ROOT = Path("/exports")
 MANIFEST_NAME = "e-lite-snapshot.json"
+BUNDLE_FORMAT = "umbrel-1"
 EXCLUDE_INDEX = {"rawtx-cache", "tor", "tls", "LOG", "LOCK", "e-lite.log", "e-lite.log.1", "banner.txt", "core-paused-by-e-lite"}
 EXCLUDE_CORE = {"debug.log", ".cookie", "bitcoind.pid", "mempool.dat", "peers.dat", "banlist.dat", "anchors.dat"}
-BUNDLE_FORMAT = "umbrel-1"
 EXPORT_TIMEOUT_SECONDS = 6 * 3600
 IMPORT_TIMEOUT_SECONDS = 4 * 3600
-SPACE_MARGIN_BYTES = 256 * 1024 * 1024
+BASE_MARGIN_BYTES = 256 * 1024 * 1024
+FACTS_MAX_AGE_SECONDS = 24 * 3600
+FACTS_FILE = "core-facts.json"
+DEFAULT_INDEX_RATIO = 0.55
+_TIP_RE = re.compile(r"UpdateTip: new best=([0-9a-f]{64})\s+height=(\d+)")
+_VERSION_RE = re.compile(r"Bitcoin Core version v([0-9][0-9A-Za-z.\-]*)")
 
 
+class Cancelled(RuntimeError):
+    """Raised when the operator cancels the running job."""
+
+
+# --------------------------------------------------------------------------- helpers
 def _du(path: Path, exclude: set[str] | None = None) -> int:
     total = 0
     if not path.exists():
@@ -58,13 +68,12 @@ def same_device(a: Path, b: Path) -> bool:
         return False
 
 
-def export_tmp_candidates(output: Path) -> tuple[Path, ...]:
-    """e-lite writes `<output>.tmp` via Rust `with_extension("tmp")`.
+def space_margin(total: int) -> int:
+    return max(BASE_MARGIN_BYTES, int(total * 0.10))
 
-    For `foo.tar.gz` that yields `foo.tar.tmp`; we also probe the more
-    intuitive `foo.tar.gz.tmp` so a future change cannot silently break the
-    progress bar again.
-    """
+
+def export_tmp_candidates(output: Path) -> tuple[Path, ...]:
+    """e-lite writes `<output>.tmp` via Rust `with_extension("tmp")`."""
     return output.with_suffix(".tmp"), output.with_name(output.name + ".tmp")
 
 
@@ -87,13 +96,126 @@ def read_manifest(archive: Path) -> dict:
 
 
 def restored_estimate(manifest: dict, archive_bytes: int) -> int:
-    """Bytes the restore will need on the data disk (index + Core)."""
+    """Bytes the restore of an upstream snapshot needs on the data disk."""
     core = manifest.get("core") or {}
     core_bytes = int(core.get("bytes") or 0)
     if core_bytes:
-        index_bytes = max(0, archive_bytes - core_bytes) * 2
-        return core_bytes + index_bytes
+        return core_bytes + max(0, archive_bytes - core_bytes) * 2
     return archive_bytes * 2
+
+
+def bundle_space_needed(bundle: dict) -> int:
+    index_raw = int(bundle.get("index_raw_bytes") or 0)
+    core_bytes = int(bundle.get("core_bytes") or 0)
+    total = index_raw + core_bytes
+    return total + space_margin(total)
+
+
+def facts_path(paths: AppPaths, network: str) -> Path:
+    return paths.network_config_dir(network) / FACTS_FILE
+
+
+def load_facts(paths: AppPaths, network: str) -> dict:
+    try:
+        data = json.loads(facts_path(paths, network).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_facts(paths: AppPaths, network: str, facts: dict) -> None:
+    if not facts.get("tip_height"):
+        return
+    payload = dict(facts)
+    payload.setdefault("source", "live")
+    payload["updated_at"] = int(time.time())
+    try:
+        facts_path(paths, network).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def clear_facts(paths: AppPaths, network: str) -> None:
+    try:
+        facts_path(paths, network).unlink()
+    except OSError:
+        pass
+
+
+def facts_age(facts: dict) -> int:
+    try:
+        return max(0, int(time.time()) - int(facts.get("updated_at") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_debug_log(path: Path) -> dict:
+    """Best-effort tip/version from Core's debug.log (fallback when stopped)."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - 4 * 1024 * 1024))
+            text = handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return {}
+    tip = None
+    for match in _TIP_RE.finditer(text):
+        tip = match
+    result: dict = {}
+    if tip:
+        result["tip_hash"] = tip.group(1)
+        result["tip_height"] = int(tip.group(2))
+    version = _VERSION_RE.search(text)
+    if version:
+        result["core_version"] = version.group(1)
+    return result
+
+
+def core_facts(paths: AppPaths, network: str, metrics_port: int) -> dict:
+    """Live /status facts, else persisted facts, else debug.log."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{metrics_port}/status", timeout=3) as response:
+            data = json.load(response)
+        core = data.get("core") or {}
+        facts = {
+            "tip_height": int(data.get("core_height") or 0),
+            "pruned": bool(core.get("pruned")),
+            "prune_height": int(core.get("pruneheight") or 0),
+            "source": "live",
+        }
+        parsed = parse_debug_log(paths.network_core_log(network))
+        if parsed.get("core_version"):
+            facts["core_version"] = parsed["core_version"]
+        if facts["tip_height"]:
+            save_facts(paths, network, facts)
+            return facts
+    except Exception:
+        pass
+    persisted = load_facts(paths, network)
+    if persisted.get("tip_height"):
+        persisted["source"] = "persisted"
+        return persisted
+    parsed = parse_debug_log(paths.network_core_log(network)) or parse_debug_log(paths.network_core_data(network) / "debug.log")
+    if parsed.get("tip_height"):
+        parsed["source"] = "debug-log"
+        return parsed
+    return {}
+
+
+def _sidecar_path(archive: Path) -> Path:
+    name = archive.name
+    suffix = ".tar.gz"
+    if name.endswith(suffix):
+        return archive.with_name(name[: -len(suffix)] + ".manifest.json")
+    return archive.with_suffix(".manifest.json")
+
+
+def write_sidecar(archive: Path, manifest: dict) -> None:
+    try:
+        _sidecar_path(archive).write_text(json.dumps(manifest), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def network_leftovers(paths: AppPaths, network: str) -> list[Path]:
@@ -129,19 +251,65 @@ def save_ratio(paths: AppPaths, network: str, index_ratio: float) -> None:
         pass
 
 
-def _sidecar_path(archive: Path) -> Path:
-    name = archive.name
-    suffix = ".tar.gz"
-    if name.endswith(suffix):
-        return archive.with_name(name[: -len(suffix)] + ".manifest.json")
-    return archive.with_suffix(".manifest.json")
+def validate_bundle(bundle: dict, index_file: Path, core_file: Path) -> list[str]:
+    """Return blocking errors for a bundle before restoring it."""
+    if bundle.get("format") != BUNDLE_FORMAT:
+        return ["manifiesto de copia no reconocido"]
+    if not index_file.is_file():
+        return ["falta el archivo de índice de la copia"]
+    errors = []
+    if int(bundle.get("index_bytes") or 0) and index_file.stat().st_size != int(bundle["index_bytes"]):
+        errors.append("el tamaño del índice no coincide con el manifiesto")
+    if core_file.is_file() or bundle.get("core_file"):
+        if not core_file.is_file():
+            errors.append("falta el archivo de Core de la copia")
+        elif int(bundle.get("core_bytes") or 0) and core_file.stat().st_size != int(bundle["core_bytes"]):
+            errors.append("el tamaño de Core no coincide con el manifiesto")
+    index_height = int(bundle.get("index_height") or 0)
+    core_tip = int(bundle.get("core_tip_height") or 0)
+    if core_tip and index_height > core_tip:
+        errors.append(f"el índice ({index_height}) está por delante de Core ({core_tip})")
+    prune_height = int(bundle.get("core_prune_height") or 0)
+    if prune_height and index_height - 288 < prune_height:
+        errors.append("el margen de poda es menor de 288 bloques")
+    return errors
 
 
-def write_sidecar(archive: Path, manifest: dict) -> None:
-    try:
-        _sidecar_path(archive).write_text(json.dumps(manifest), encoding="utf-8")
-    except OSError:
-        pass
+def _snapshot_files(destination: Path, scan_limit: int = 1) -> list[dict]:
+    items: list[dict] = []
+    if not destination.is_dir():
+        return items
+    for entry in sorted(destination.glob("*.tar.gz"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if entry.name.endswith(".index.tar.gz"):
+            continue
+        manifest: dict | None = None
+        sidecar = _sidecar_path(entry)
+        try:
+            if sidecar.is_file():
+                manifest = json.loads(sidecar.read_text(encoding="utf-8"))
+            elif scan_limit > 0:
+                manifest = read_manifest(entry)
+                scan_limit -= 1
+                write_sidecar(entry, manifest)
+        except Exception:
+            manifest = None
+        core = (manifest or {}).get("core") or {}
+        items.append(
+            {
+                "name": entry.name,
+                "kind": "snapshot",
+                "bytes": entry.stat().st_size,
+                "network": (manifest or {}).get("network", ""),
+                "height": (manifest or {}).get("height", 0),
+                "hash": (manifest or {}).get("hash", ""),
+                "format": (manifest or {}).get("format", 1),
+                "has_core": bool(core),
+                "core_tip": core.get("tip_height", 0),
+                "created": entry.stat().st_mtime,
+                "manifest_read": manifest is not None,
+            }
+        )
+    return items
 
 
 def _bundle_files(destination: Path) -> list[dict]:
@@ -165,7 +333,7 @@ def _bundle_files(destination: Path) -> list[dict]:
                 "hash": data.get("index_hash", ""),
                 "format": 2,
                 "has_core": bool(data.get("core_file")),
-                "core_tip": int(data.get("core_tip") or 0),
+                "core_tip": int(data.get("core_tip_height") or 0),
                 "created": entry.stat().st_mtime,
                 "manifest_read": True,
             }
@@ -173,132 +341,11 @@ def _bundle_files(destination: Path) -> list[dict]:
     return items
 
 
-FACTS_FILE = "core-facts.json"
-_TIP_RE = re.compile(r"UpdateTip: new best=([0-9a-f]{64})\s+height=(\d+)")
-_VERSION_RE = re.compile(r"Bitcoin Core version v([0-9][0-9A-Za-z.\-]*)")
-
-
-def facts_path(paths: AppPaths, network: str) -> Path:
-    return paths.network_config_dir(network) / FACTS_FILE
-
-
-def load_facts(paths: AppPaths, network: str) -> dict:
-    try:
-        data = json.loads(facts_path(paths, network).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def save_facts(paths: AppPaths, network: str, facts: dict) -> None:
-    if not facts.get("tip_height"):
-        return
-    payload = dict(facts)
-    payload["updated_at"] = int(time.time())
-    try:
-        facts_path(paths, network).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    except OSError:
-        pass
-
-
-def parse_debug_log(path: Path) -> dict:
-    """Best-effort tip/version from Core's debug.log (fallback when stopped)."""
-    try:
-        with path.open("rb") as handle:
-            handle.seek(0, os.SEEK_END)
-            size = handle.tell()
-            handle.seek(max(0, size - 4 * 1024 * 1024))
-            text = handle.read().decode("utf-8", errors="replace")
-    except OSError:
-        return {}
-    tip = None
-    for match in _TIP_RE.finditer(text):
-        tip = match
-    result: dict = {}
-    if tip:
-        result["tip_hash"] = tip.group(1)
-        result["tip_height"] = int(tip.group(2))
-    version = _VERSION_RE.search(text)
-    if version:
-        result["core_version"] = version.group(1)
-    return result
-
-
-def core_facts(paths: AppPaths, network: str, metrics_port: int) -> dict:
-    """Read live Core facts from /status, else persisted facts/debug.log."""
-    facts: dict = {}
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{metrics_port}/status", timeout=3) as response:
-            data = json.load(response)
-        core = data.get("core") or {}
-        facts = {
-            "tip_height": int(data.get("core_height") or 0),
-            "pruned": bool(core.get("pruned")),
-            "prune_height": int(core.get("pruneheight") or 0),
-            "source": "live",
-        }
-    except Exception:
-        facts = {}
-    if facts.get("tip_height"):
-        parsed = parse_debug_log(paths.network_core_log(network))
-        if parsed.get("core_version"):
-            facts["core_version"] = parsed["core_version"]
-        save_facts(paths, network, facts)
-        return facts
-    persisted = load_facts(paths, network)
-    if persisted.get("tip_height"):
-        persisted["source"] = "persisted"
-        return persisted
-    parsed = parse_debug_log(paths.network_core_log(network)) or parse_debug_log(paths.network_core_data(network) / "debug.log")
-    if parsed.get("tip_height"):
-        parsed["source"] = "debug-log"
-        return parsed
-    return {}
-
-
-def _snapshot_files(destination: Path, scan_limit: int = 1) -> list[dict]:
-    """List archives using sidecar manifests; scan at most `scan_limit` tars.
-
-    The manifest lives at the end of each tar stream, so scanning a large
-    archive means decompressing it; the sidecar keeps listing instant.
-    """
-    items: list[dict] = []
-    if not destination.is_dir():
-        return items
-    for entry in sorted(destination.glob("*.tar.gz"), key=lambda p: p.stat().st_mtime, reverse=True):
-        if entry.name.endswith(".index.tar.gz"):
-            continue
-        manifest: dict | None = None
-        sidecar = _sidecar_path(entry)
-        try:
-            if sidecar.is_file():
-                manifest = json.loads(sidecar.read_text(encoding="utf-8"))
-            elif scan_limit > 0:
-                manifest = read_manifest(entry)
-                scan_limit -= 1
-                write_sidecar(entry, manifest)
-        except Exception:
-            manifest = None
-        core = (manifest or {}).get("core") or {}
-        items.append(
-            {
-                "name": entry.name,
-                "bytes": entry.stat().st_size,
-                "network": (manifest or {}).get("network", ""),
-                "height": (manifest or {}).get("height", 0),
-                "hash": (manifest or {}).get("hash", ""),
-                "format": (manifest or {}).get("format", 1),
-                "has_core": bool(core),
-                "core_tip": core.get("tip_height", 0),
-                "created": entry.stat().st_mtime,
-                "manifest_read": manifest is not None,
-            }
-        )
-    return items
-
-
+# --------------------------------------------------------------------------- manager
 class BackupManager:
     """Run one export/import job at a time and publish its progress."""
+
+    SIZES_TTL_SECONDS = 600
 
     def __init__(self, paths: AppPaths, supervisor: SupervisorManager, settings_loader, log=None) -> None:
         self.paths = paths
@@ -307,6 +354,7 @@ class BackupManager:
         self.log = log or (lambda _message: None)
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._cancel = threading.Event()
         self._state: dict = self._idle()
         self._sizes: dict[str, dict] = {}
         self._listing: dict[str, tuple[tuple, list[dict]]] = {}
@@ -320,8 +368,10 @@ class BackupManager:
             "network": "",
             "phase": "idle",
             "message": "",
+            "phase_detail": "",
             "done": 0,
             "total": 0,
+            "space_needed": 0,
             "eta_seconds": None,
             "path": "",
             "error": "",
@@ -381,10 +431,7 @@ class BackupManager:
             return dict(self._state)
 
     # -------------------------------------------------------------------- sizes
-    SIZES_TTL_SECONDS = 600
-
     def sizes(self, network: str) -> dict:
-        """Cached sizes per network, computed in the background on demand."""
         with self._lock:
             entry = dict(self._sizes.get(network) or {})
         stale = not entry or (time.time() - entry.get("computed_at", 0) > self.SIZES_TTL_SECONDS)
@@ -403,13 +450,17 @@ class BackupManager:
         with self._lock:
             self._sizes[network] = {"index": index, "core": core, "computed_at": time.time(), "computing": False, "ready": True}
 
+    def _invalidate_sizes(self, network: str) -> None:
+        with self._lock:
+            self._sizes.pop(network, None)
+
     def files(self, destination: str) -> list[dict]:
         try:
             root = self._allowed(destination)
         except (ValueError, OSError):
             return []
         key_parts = []
-        for entry in sorted(root.glob("*.tar.gz")):
+        for entry in sorted(root.glob("*")):
             try:
                 stat = entry.stat()
                 key_parts.append((entry.name, stat.st_size, int(stat.st_mtime)))
@@ -421,6 +472,7 @@ class BackupManager:
         if cached and cached[0] == key:
             return cached[1]
         items = _snapshot_files(root) + _bundle_files(root)
+        items.sort(key=lambda item: item.get("created") or 0, reverse=True)
         with self._lock:
             self._listing[str(key)] = (key, items)
         return items
@@ -432,17 +484,13 @@ class BackupManager:
         removed = 0
         for entry in network_leftovers(self.paths, network):
             try:
-                if entry.is_dir():
-                    shutil.rmtree(entry, ignore_errors=True)
-                else:
-                    entry.unlink()
+                shutil.rmtree(entry, ignore_errors=True) if entry.is_dir() else entry.unlink()
                 removed += 1
             except OSError:
                 pass
         return removed
 
     def cleanup_stale(self) -> None:
-        """Remove partial `.tmp` archives left behind by an interrupted export."""
         for destination in (ALLOWED_EXTRA_ROOT, self.paths.exports_dir):
             if not destination.is_dir():
                 continue
@@ -457,7 +505,7 @@ class BackupManager:
         with self._lock:
             self._state.update(values)
 
-    def _phase(self, phase: str, message: str) -> None:
+    def _phase(self, phase: str, message: str, detail: str = "") -> None:
         now = time.time()
         with self._lock:
             started = self._state.get("phase_started_at")
@@ -465,7 +513,7 @@ class BackupManager:
                 self._state["phases"] = list(self._state.get("phases") or []) + [
                     {"phase": self._state.get("phase"), "seconds": round(now - started, 1)}
                 ]
-            self._state.update(phase=phase, message=message, phase_started_at=now)
+            self._state.update(phase=phase, message=message, phase_detail=detail, phase_started_at=now)
         self.log(f"backup: {phase}: {message}")
 
     def _active(self) -> bool:
@@ -479,6 +527,12 @@ class BackupManager:
     def start_import(self, network: str, destination: str, filename: str, verify: str = "basic", delete_previous: bool = False) -> tuple[bool, str]:
         return self._start("import", network, destination, {"filename": filename, "verify": verify, "delete_previous": delete_previous})
 
+    def cancel(self) -> bool:
+        if not self._active():
+            return False
+        self._cancel.set()
+        return True
+
     def _start(self, action: str, network: str, destination: str, extra: dict) -> tuple[bool, str]:
         if network not in NETWORKS:
             return False, "red desconocida"
@@ -489,6 +543,7 @@ class BackupManager:
             target.mkdir(parents=True, exist_ok=True)
         except (ValueError, OSError) as exc:
             return False, f"destino no válido: {exc}"
+        self._cancel.clear()
         with self._lock:
             self._state = self._idle()
             self._state.update({"active": True, "action": action, "network": network, "started_at": time.time(), "phase": "preparing", "message": "Preparando", "phase_started_at": time.time()})
@@ -511,10 +566,12 @@ class BackupManager:
                 self._run_export(args, enabled)
             else:
                 self._run_import(args, enabled)
+        except Cancelled:
+            self._update(active=False, ok=False, phase="cancelled", message="Cancelado", error="", finished_at=time.time())
+            self.log("backup: cancelled")
+            if enabled:
+                self.supervisor.resume(network)
         except Exception as exc:  # noqa: BLE001
-            output = self._state.get("path")
-            if output:
-                cleanup_tmp_files(Path(output))
             self._update(active=False, ok=False, phase="error", error=str(exc), message="Error", finished_at=time.time())
             self.log(f"backup: error: {exc}")
             if enabled:
@@ -527,18 +584,18 @@ class BackupManager:
 
     def _facts(self, network: str) -> dict:
         from .config_writer import network_metrics_port
+
         return core_facts(self.paths, network, network_metrics_port(network))
 
     def _stop(self, network: str) -> None:
-        # Persist live Core facts before stopping so an export from a stopped
-        # network can still check coherence without starting anything.
-        self._facts(network)
         self._phase("stopping", "Parando la red (Core puede tardar hasta 2 min en vaciar su caché)")
         self.supervisor.suspend(network)
         node = self.supervisor.nodes[network]
         for _ in range(10):
             if not node.status().get("running"):
                 return
+            if self._cancel.is_set():
+                raise Cancelled()
             time.sleep(1)
         raise RuntimeError("la red no se detuvo a tiempo; cancelado antes de tocar los datos")
 
@@ -547,19 +604,12 @@ class BackupManager:
             self._phase("starting", "Reactivando la red")
             self.supervisor.resume(network)
 
+    def _check_cancel(self) -> None:
+        if self._cancel.is_set():
+            raise Cancelled()
+
+    # ------------------------------------------------------------------- export
     def _run_export(self, args: dict, enabled: bool) -> None:
-        return self._run_export_fast(args, enabled)
-
-    def _run_export_fast(self, args: dict, enabled: bool) -> None:
-        """Index snapshot + a plain tar of the Core datadir, without the probe.
-
-        The probe exists to read Core's tip/prune/version and to verify the
-        pair; we read those from e-lite's live /status before stopping the
-        network and copy the datadir after a clean shutdown, which is just as
-        consistent and much faster (no second bitcoind startup).
-        """
-        from .config_writer import network_metrics_port
-
         network = args["network"]
         destination: Path = args["destination"]
         config_file = self.paths.network_config_file(network)
@@ -567,61 +617,57 @@ class BackupManager:
             raise RuntimeError("la red aún no tiene configuración; iníciala primero")
         index_dir = self.paths.network_e_lite_data(network)
         core_dir = self.paths.network_core_data(network)
-        index_bytes = _du(index_dir, EXCLUDE_INDEX)
-        core_bytes = _du(core_dir, EXCLUDE_CORE)
-        if index_bytes == 0:
+        index_raw = _du(index_dir, EXCLUDE_INDEX)
+        core_raw = _du(core_dir, EXCLUDE_CORE)
+        if index_raw == 0:
             raise RuntimeError("el índice está vacío; no hay nada que exportar")
         facts = self._facts(network)
         ratios = load_ratios(self.paths)
-        index_ratio = float(ratios.get(network) or 0.55)
-        index_est = int(index_bytes * index_ratio)
-        estimate = index_est + core_bytes + SPACE_MARGIN_BYTES
+        index_ratio = float(ratios.get(network) or DEFAULT_INDEX_RATIO)
+        index_est = int(index_raw * index_ratio)
+        total = core_raw + index_est
+        needed = total + space_margin(total)
         warnings: list[str] = []
         if not facts.get("tip_height"):
             warnings.append("no se pudo leer la punta de Core; la copia no se comprobará contra ella")
+        elif facts_age(facts) > FACTS_MAX_AGE_SECONDS:
+            warnings.append("los datos de Core tienen más de 24 h; podrían estar desactualizados")
         if same_device(destination, self.paths.data):
             warnings.append("el destino está en el mismo disco que los datos: no sirve como backup")
         free = free_bytes(destination)
-        if free < estimate:
+        if free < needed:
             raise RuntimeError(
-                f"espacio insuficiente en el destino: hay {free // (1024**3)} GiB libres y se necesitan unos {estimate // (1024**3)} GiB"
+                f"espacio insuficiente en el destino: hay {free // (1024**3)} GiB libres y se necesitan unos {needed // (1024**3)} GiB"
             )
         stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         base = destination / f"e-lite-{network}-{stamp}"
         index_file = base.with_name(base.name + ".index.tar.gz")
         core_file = base.with_name(base.name + ".core.tar")
         bundle_file = base.with_name(base.name + ".umbrel.json")
-        self._update(total=estimate, path=str(bundle_file), warnings=warnings)
+        self._update(total=total, space_needed=needed, path=str(bundle_file), warnings=warnings)
         self._stop(network)
-        compress = str(args.get("compress") or "3")
-        if compress not in ("0", "3", "6"):
-            compress = "3"
-        self._phase("packing-core", "Empaquetando Core (sin sonda)…")
-        tar_command = [
-            "tar",
-            "-C", str(core_dir),
-            "-cf", str(core_file),
-            "--exclude=./debug.log",
-            "--exclude=./.cookie",
-            "--exclude=./bitcoind.pid",
-            "--exclude=./mempool.dat",
-            "--exclude=./peers.dat",
-            "--exclude=./banlist.dat",
-            "--exclude=./anchors.dat",
-            ".",
-        ]
         try:
-            self._run_process(tar_command, lambda _target: self._progress_fast(core_file, index_file, core_bytes, index_est), core_file, EXPORT_TIMEOUT_SECONDS)
+            self._phase("packing-core", "Empaquetando Core…")
+            tar_command = [
+                "tar", "-C", str(core_dir), "-cf", str(core_file),
+                "--exclude=./debug.log", "--exclude=./.cookie", "--exclude=./bitcoind.pid",
+                "--exclude=./mempool.dat", "--exclude=./peers.dat", "--exclude=./banlist.dat",
+                "--exclude=./anchors.dat", ".",
+            ]
+            self._run_process(tar_command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
+            self._check_cancel()
             self._phase("exporting-index", "Exportando índice…")
+            compress = str(args.get("compress") or "3")
+            if compress not in ("0", "3", "6"):
+                compress = "3"
             command = [
                 str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
-                "export-snapshot",
-                "--config", str(config_file),
-                "--hash-files",
-                "--compress-level", compress,
-                "--output", str(index_file),
+                "export-snapshot", "--config", str(config_file),
+                "--hash-files", "--compress-level", compress, "--output", str(index_file),
             ]
-            self._run_process(command, lambda _target: self._progress_fast(core_file, index_file, core_bytes, index_est), index_file, EXPORT_TIMEOUT_SECONDS)
+            self._run_process(command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
+            self._check_cancel()
+            self._phase("finalizing", "Validando la copia…")
             manifest = read_manifest(index_file)
             if manifest.get("network") != network:
                 raise RuntimeError(f"la copia generada pertenece a {manifest.get('network')}")
@@ -632,54 +678,56 @@ class BackupManager:
                 raise RuntimeError(f"el índice ({height}) está por delante de Core ({tip}); no se puede exportar")
             if prune_height and height - 288 < prune_height:
                 warnings.append("el margen de poda es menor de 288 bloques; la importación puede necesitar resincronizar")
+            index_bytes = index_file.stat().st_size
+            core_bytes = core_file.stat().st_size
             bundle = {
                 "format": BUNDLE_FORMAT,
                 "network": network,
                 "created": int(time.time()),
+                "app_version": _app_version(),
                 "e_lite_version": _elite_version(),
                 "index_file": index_file.name,
                 "core_file": core_file.name,
-                "index_bytes": index_file.stat().st_size,
-                "core_bytes": core_file.stat().st_size,
+                "index_bytes": index_bytes,
+                "index_raw_bytes": index_raw,
+                "index_ratio": round(index_bytes / max(1, index_raw), 3),
+                "core_bytes": core_bytes,
                 "index_height": height,
                 "index_hash": manifest.get("hash", ""),
-                "core_tip": tip,
+                "core_tip_height": tip,
+                "core_tip_hash": facts.get("tip_hash", ""),
                 "core_pruned": bool(facts.get("pruned")),
-                "prune_height": prune_height,
+                "core_prune_height": prune_height,
+                "core_version": facts.get("core_version", ""),
+                "facts_source": facts.get("source", ""),
+                "facts_updated_at": int(facts.get("updated_at") or 0),
             }
             bundle_file.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
             write_sidecar(index_file, manifest)
+            save_ratio(self.paths, network, bundle["index_ratio"])
             with self._lock:
                 self._listing.clear()
-            save_ratio(self.paths, network, min(1.0, max(0.05, bundle["index_bytes"] / max(1, index_bytes))))
-            cleanup_tmp_files(index_file)
-            size = bundle["index_bytes"] + bundle["core_bytes"]
-            self._update(
-                ok=True,
-                phase="done",
-                message=f"Copia completada · altura {height}",
-                done=size,
-                total=size,
-                eta_seconds=0,
-                path=str(bundle_file),
-                warnings=warnings,
-                finished_at=time.time(),
-            )
-            self._append_job_log(f"fast export {bundle_file.name} (height {height}, {size} bytes)")
+            size = index_bytes + core_bytes
+            self._update(ok=True, phase="done", message=f"Copia completada · altura {height}", phase_detail="", done=size, total=size, eta_seconds=0, path=str(bundle_file), warnings=warnings, finished_at=time.time())
+            self._append_job_log(f"export {bundle_file.name} (height {height}, {size} bytes)")
             self._restart(network, enabled)
-        finally:
-            if self._state.get("phase") == "error":
-                cleanup_tmp_files(index_file)
+        except BaseException:
+            cleanup_tmp_files(index_file)
+            for partial in (core_file, bundle_file, _sidecar_path(index_file)):
                 try:
-                    if core_file.exists():
-                        core_file.unlink()
+                    if partial.exists():
+                        partial.unlink()
                 except OSError:
                     pass
+            raise
 
-    def _progress_fast(self, core_file: Path, index_file: Path, core_bytes: int, index_est: int) -> None:
-        with self._lock:
-            total = int(self._state.get("total") or 0)
-        core_done = core_file.stat().st_size if core_file.exists() else 0
+    def _progress_export(self, core_file: Path, index_file: Path, core_raw: int, index_est: int) -> None:
+        core_done = 0
+        try:
+            if core_file.exists():
+                core_done = core_file.stat().st_size
+        except OSError:
+            core_done = 0
         index_done = 0
         for candidate in export_tmp_candidates(index_file):
             try:
@@ -688,33 +736,18 @@ class BackupManager:
                     break
             except OSError:
                 continue
-        if not index_done and index_file.exists():
+        if not index_done:
             try:
-                index_done = index_file.stat().st_size
+                if index_file.exists():
+                    index_done = index_file.stat().st_size
             except OSError:
                 index_done = 0
-        self._set_progress(core_done + index_done, max(total, core_bytes + index_est))
+        total = core_raw + index_est
+        detail = f"Core {_fmt(core_done)} / {_fmt(core_raw)} · índice {_fmt(index_done)} / {_fmt(index_est)}"
+        self._update(phase_detail=detail)
+        self._set_progress(core_done + index_done, total)
 
-    def _progress_export(self, output: Path) -> None:
-        with self._lock:
-            total = int(self._state.get("total") or 0)
-        done = 0
-        for candidate in export_tmp_candidates(output):
-            try:
-                if candidate.exists():
-                    done = candidate.stat().st_size
-                    break
-            except OSError:
-                continue
-        if done == 0 and output.exists():
-            try:
-                done = output.stat().st_size
-            except OSError:
-                done = 0
-        message = "Sondeando Core…" if done == 0 else "Exportando…"
-        self._update(message=message)
-        self._set_progress(done, total)
-
+    # ------------------------------------------------------------------- import
     def _run_import(self, args: dict, enabled: bool) -> None:
         network = args["network"]
         destination: Path = args["destination"]
@@ -722,45 +755,122 @@ class BackupManager:
         if not archive.is_file():
             raise RuntimeError("el archivo seleccionado no existe")
         if archive.name.endswith(".umbrel.json"):
-            return self._run_import_fast(args, enabled, archive)
-        manifest = read_manifest(archive)
-        if manifest.get("network") != network:
-            raise RuntimeError(f"la copia pertenece a {manifest.get('network')}, no a {network}")
-        core_section = manifest.get("core") or {}
-        total = restored_estimate(manifest, archive.stat().st_size)
-        need = total + SPACE_MARGIN_BYTES
-        free = free_bytes(self.paths.data)
-        if free < need:
-            raise RuntimeError(
-                f"espacio insuficiente en el disco de datos: hay {free // (1024**3)} GiB libres y se necesitan unos {need // (1024**3)} GiB"
-            )
-        warnings: list[str] = []
-        if not core_section:
-            warnings.append("esta copia no incluye Core; comprueba que la punta de Core no sea anterior a la del índice")
-        self._update(total=total, path=str(archive), warnings=warnings, no_core=not core_section)
-        self._stop(network)
+            return self._import_bundle(args, enabled, archive)
+        return self._import_snapshot(args, enabled, archive)
+
+    def _prepare_targets(self, network: str) -> tuple[Path, Path, Path, Path]:
         target = self.paths.network_e_lite_data(network)
         core_target = self.paths.network_core_data(network)
         stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         previous_index = target.with_name(f"{target.name}.pre-import-{stamp}")
         previous_core = core_target.with_name(f"{core_target.name}.pre-import-{stamp}")
+        return target, core_target, previous_index, previous_core
+
+    def _rollback(self, target: Path, core_target: Path, previous_index: Path, previous_core: Path) -> None:
+        if previous_index.exists():
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            os.replace(previous_index, target)
+        if previous_core.exists():
+            if core_target.exists():
+                shutil.rmtree(core_target, ignore_errors=True)
+            os.replace(previous_core, core_target)
+
+    def _import_bundle(self, args: dict, enabled: bool, bundle_file: Path) -> None:
+        network = args["network"]
+        destination = bundle_file.parent
+        bundle = json.loads(bundle_file.read_text(encoding="utf-8"))
+        index_file = destination / str(bundle.get("index_file") or "")
+        core_file = destination / str(bundle.get("core_file") or "")
+        errors = validate_bundle(bundle, index_file, core_file)
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        has_core = core_file.is_file()
+        index_raw = int(bundle.get("index_raw_bytes") or 0) or int(bundle.get("index_bytes") or 0) * 2
+        core_bytes = int(bundle.get("core_bytes") or 0)
+        total = index_raw + core_bytes
+        needed = bundle_space_needed(bundle)
+        free = free_bytes(self.paths.data)
+        if free < needed:
+            raise RuntimeError(
+                f"espacio insuficiente en el disco de datos: hay {free // (1024**3)} GiB libres y se necesitan unos {needed // (1024**3)} GiB"
+            )
+        warnings: list[str] = []
+        if not has_core:
+            warnings.append("esta copia no incluye Core; el índice no debe superar la punta actual de Core")
+        self._update(total=total, space_needed=needed, path=str(bundle_file), warnings=warnings, no_core=not has_core)
+        self._stop(network)
+        target, core_target, previous_index, previous_core = self._prepare_targets(network)
+        if target.exists():
+            os.replace(target, previous_index)
+        if has_core and core_target.exists():
+            os.replace(core_target, previous_core)
+        try:
+            if has_core:
+                self._phase("extracting-core", "Restaurando Core…")
+                core_target.mkdir(parents=True, exist_ok=True)
+                command = ["tar", "-C", str(core_target), "-xf", str(core_file)]
+                self._run_process(command, lambda: self._progress_import_core(core_target, core_bytes, total), IMPORT_TIMEOUT_SECONDS)
+                self._check_cancel()
+            self._phase("extracting-index", "Restaurando el índice…")
+            command = [
+                str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
+                "import-snapshot", "--config", str(self.paths.network_config_file(network)), "--input", str(index_file),
+            ]
+            self._run_process(command, lambda: self._progress_import_index(target, core_bytes, total), IMPORT_TIMEOUT_SECONDS)
+            self._check_cancel()
+            self._phase("finalizing", "Validando datos restaurados…")
+            if has_core and not (core_target / "blocks").is_dir():
+                raise RuntimeError("el Core restaurado no contiene blocks/")
+            if args.get("delete_previous"):
+                shutil.rmtree(previous_index, ignore_errors=True)
+                shutil.rmtree(previous_core, ignore_errors=True)
+        except BaseException:
+            self._rollback(target, core_target, previous_index, previous_core)
+            raise
+        clear_facts(self.paths, network)
+        self._invalidate_sizes(network)
+        with self._lock:
+            self._listing.clear()
+        self._update(ok=True, phase="done", message=f"Restaurado a altura {bundle.get('index_height', 0)}", phase_detail="", done=total, total=total, eta_seconds=0, finished_at=time.time())
+        self._append_job_log(f"import {bundle_file.name} (height {bundle.get('index_height')})")
+        self._restart(network, enabled)
+
+    def _import_snapshot(self, args: dict, enabled: bool, archive: Path) -> None:
+        network = args["network"]
+        manifest = read_manifest(archive)
+        if manifest.get("network") != network:
+            raise RuntimeError(f"la copia pertenece a {manifest.get('network')}, no a {network}")
+        core_section = manifest.get("core") or {}
+        total = restored_estimate(manifest, archive.stat().st_size)
+        needed = total + space_margin(total)
+        free = free_bytes(self.paths.data)
+        if free < needed:
+            raise RuntimeError(
+                f"espacio insuficiente en el disco de datos: hay {free // (1024**3)} GiB libres y se necesitan unos {needed // (1024**3)} GiB"
+            )
+        warnings: list[str] = []
+        if not core_section:
+            warnings.append("esta copia no incluye Core; el índice no debe superar la punta actual de Core")
+        self._update(total=total, space_needed=needed, path=str(archive), warnings=warnings, no_core=not core_section)
+        self._stop(network)
+        target, core_target, previous_index, previous_core = self._prepare_targets(network)
         if target.exists():
             os.replace(target, previous_index)
         if core_section and core_target.exists():
             os.replace(core_target, previous_core)
-        self._phase("extracting", "Restaurando el snapshot")
         command = [
             str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
-            "import-snapshot",
-            "--config", str(self.paths.network_config_file(network)),
-            "--input", str(archive),
+            "import-snapshot", "--config", str(self.paths.network_config_file(network)), "--input", str(archive),
         ]
         if args.get("verify") == "basic":
             command += ["--verify", "basic"]
         elif args.get("verify") == "full":
             command += ["--verify", "full"]
         try:
-            self._run_process(command, self._progress_import, target, IMPORT_TIMEOUT_SECONDS)
+            self._phase("extracting-index", "Restaurando el snapshot…")
+            self._run_process(command, lambda: self._progress_import_index(target, 0, total), IMPORT_TIMEOUT_SECONDS)
+            self._check_cancel()
             restored_core = target / "bitcoin"
             if core_section:
                 if not restored_core.is_dir():
@@ -771,104 +881,34 @@ class BackupManager:
             if args.get("delete_previous"):
                 shutil.rmtree(previous_index, ignore_errors=True)
                 shutil.rmtree(previous_core, ignore_errors=True)
-        except Exception:
-            # Roll back to the previous data if the import failed.
-            if previous_index.exists():
-                if target.exists():
-                    shutil.rmtree(target, ignore_errors=True)
-                os.replace(previous_index, target)
-            if core_section and previous_core.exists() and not core_target.exists():
-                os.replace(previous_core, core_target)
+        except BaseException:
+            self._rollback(target, core_target, previous_index, previous_core)
             raise
-        self._update(ok=True, phase="done", message=f"Restaurado a altura {manifest.get('height', 0)}", done=int(self._state.get("total") or 0), eta_seconds=0, finished_at=time.time())
-        self._append_job_log(f"imported {archive.name} (height {manifest.get('height')})")
-        self.log(f"backup: imported {archive} (height {manifest.get('height')})")
-        self._restart(network, enabled)
-
-    def _run_import_fast(self, args: dict, enabled: bool, bundle_file: Path) -> None:
-        network = args["network"]
-        destination = bundle_file.parent
-        bundle = json.loads(bundle_file.read_text(encoding="utf-8"))
-        if bundle.get("format") != BUNDLE_FORMAT:
-            raise RuntimeError("manifiesto de copia no reconocido")
-        if bundle.get("network") != network:
-            raise RuntimeError(f"la copia pertenece a {bundle.get('network')}, no a {network}")
-        index_file = destination / str(bundle.get("index_file") or "")
-        core_file = destination / str(bundle.get("core_file") or "")
-        if not index_file.is_file():
-            raise RuntimeError("falta el archivo de índice de la copia")
-        has_core = core_file.is_file()
-        core_bytes = int(bundle.get("core_bytes") or 0)
-        index_est = int(bundle.get("index_bytes") or 0) * 2
-        total = core_bytes + index_est
-        need = total + SPACE_MARGIN_BYTES
-        free = free_bytes(self.paths.data)
-        if free < need:
-            raise RuntimeError(
-                f"espacio insuficiente en el disco de datos: hay {free // (1024**3)} GiB libres y se necesitan unos {need // (1024**3)} GiB"
-            )
-        warnings = [] if has_core else ["esta copia no incluye Core; comprueba que la punta de Core no sea anterior a la del índice"]
-        self._update(total=total, path=str(bundle_file), warnings=warnings, no_core=not has_core)
-        self._stop(network)
-        target = self.paths.network_e_lite_data(network)
-        core_target = self.paths.network_core_data(network)
-        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-        previous_index = target.with_name(f"{target.name}.pre-import-{stamp}")
-        previous_core = core_target.with_name(f"{core_target.name}.pre-import-{stamp}")
-        if target.exists():
-            os.replace(target, previous_index)
-        if has_core and core_target.exists():
-            os.replace(core_target, previous_core)
-        try:
-            if has_core:
-                self._phase("extracting-core", "Restaurando Core…")
-                core_target.mkdir(parents=True, exist_ok=True)
-                command = ["tar", "-C", str(core_target), "-xf", str(core_file)]
-                self._run_process(command, lambda _t: self._set_progress(_du(core_target), total), core_target, IMPORT_TIMEOUT_SECONDS)
-            self._phase("extracting", "Restaurando el índice…")
-            command = [
-                str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
-                "import-snapshot",
-                "--config", str(self.paths.network_config_file(network)),
-                "--input", str(index_file),
-            ]
-            self._run_process(command, lambda _t: self._set_progress(core_bytes + _du(target), total), target, IMPORT_TIMEOUT_SECONDS)
-            if args.get("delete_previous"):
-                shutil.rmtree(previous_index, ignore_errors=True)
-                shutil.rmtree(previous_core, ignore_errors=True)
-        except Exception:
-            if previous_index.exists():
-                if target.exists():
-                    shutil.rmtree(target, ignore_errors=True)
-                os.replace(previous_index, target)
-            if has_core and previous_core.exists():
-                if core_target.exists():
-                    shutil.rmtree(core_target, ignore_errors=True)
-                os.replace(previous_core, core_target)
-            raise
-        self._update(ok=True, phase="done", message=f"Restaurado a altura {bundle.get('index_height', 0)}", done=total, eta_seconds=0, finished_at=time.time())
-        self._append_job_log(f"fast import {bundle_file.name} (height {bundle.get('index_height')})")
-        self._restart(network, enabled)
-
-    def _progress_import(self, target: Path) -> None:
+        clear_facts(self.paths, network)
+        self._invalidate_sizes(network)
         with self._lock:
-            total = int(self._state.get("total") or 0)
-        done = _du(target) if target.exists() else 0
-        self._update(message="Verificando…" if done >= total > 0 else "Restaurando…")
+            self._listing.clear()
+        self._update(ok=True, phase="done", message=f"Restaurado a altura {manifest.get('height', 0)}", phase_detail="", done=total, total=total, eta_seconds=0, finished_at=time.time())
+        self._append_job_log(f"import {archive.name} (height {manifest.get('height')})")
+        self._restart(network, enabled)
+
+    def _progress_import_core(self, core_target: Path, core_bytes: int, total: int) -> None:
+        done = _du(core_target) if core_target.exists() else 0
+        self._update(phase_detail=f"Core {_fmt(done)} / {_fmt(core_bytes)}")
         self._set_progress(done, total)
 
-    def _run_process(self, command: list[str], progress, target: Path, timeout: int) -> None:
+    def _progress_import_index(self, target: Path, core_bytes: int, total: int) -> None:
+        done = _du(target) if target.exists() else 0
+        self._update(phase_detail=f"Índice {_fmt(done)} / {_fmt(max(0, total - core_bytes))}")
+        self._set_progress(core_bytes + done, total)
+
+    # ------------------------------------------------------------------ process
+    def _run_process(self, command: list[str], progress, timeout: int) -> None:
         env = os.environ.copy()
         env["HOME"] = str(self.paths.data)
         env["PYTHONUNBUFFERED"] = "1"
         process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=env,
-            start_new_session=True,
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env, start_new_session=True
         )
         lines: list[str] = []
         reader = threading.Thread(target=lambda: self._drain(process, lines), daemon=True)
@@ -876,7 +916,9 @@ class BackupManager:
         deadline = time.time() + timeout
         try:
             while process.poll() is None:
-                progress(target)
+                if self._cancel.is_set():
+                    raise Cancelled()
+                progress()
                 if time.time() > deadline:
                     raise RuntimeError(f"el proceso superó el límite de {timeout // 3600} h; cancelado")
                 time.sleep(1)
@@ -902,8 +944,7 @@ class BackupManager:
         if process.stdout is None:
             return
         for line in process.stdout:
-            text = line.rstrip("\n")
-            lines.append(text)
+            lines.append(line.rstrip("\n"))
             del lines[:-200]
             with self._lock:
                 self._state["tail"] = lines[-5:]
@@ -923,13 +964,27 @@ class BackupManager:
             started = self._state.get("started_at") or now
             elapsed = max(0.001, now - started)
             rate = done / elapsed
-            # The export estimate is a guess; never let the bar look stuck by
-            # showing less than what has actually been written.
             total = max(total, done)
             eta = int(max(0, total - done) / rate) if rate > 0 and total > done else 0
             self._state.update(done=done, total=total, eta_seconds=eta)
 
 
+def _fmt(value: int) -> str:
+    size = float(max(0, value))
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024 or unit == "TiB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+        size /= 1024
+    return f"{size:.1f} TiB"
+
+
 def _elite_version() -> str:
     from .runtime import E_LITE_VERSION
+
     return E_LITE_VERSION
+
+
+def _app_version() -> str:
+    from . import APP_VERSION
+
+    return APP_VERSION

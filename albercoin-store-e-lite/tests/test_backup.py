@@ -10,6 +10,9 @@ from pathlib import Path
 
 from elite.backup import (
     BUNDLE_FORMAT,
+    bundle_space_needed,
+    space_margin,
+    validate_bundle,
     EXCLUDE_INDEX,
     BackupManager,
     _du,
@@ -118,6 +121,34 @@ class BackupTests(unittest.TestCase):
             paths.ensure()
             save_facts(paths, "signet", {"tip_height": 123, "prune_height": 0})
             self.assertEqual(load_facts(paths, "signet")["tip_height"], 123)
+
+    def test_space_helpers_are_proportional(self) -> None:
+        self.assertEqual(space_margin(1024 * 1024), 256 * 1024 * 1024)
+        big = 50 * 1024**3
+        self.assertEqual(space_margin(big), int(big * 0.10))
+        needed = bundle_space_needed({"index_raw_bytes": big, "core_bytes": big})
+        self.assertEqual(needed, 2 * big + int(2 * big * 0.10))
+
+    def test_bundle_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = root / "i.tar.gz"
+            core = root / "c.tar"
+            index.write_bytes(b"1234")
+            core.write_bytes(b"12")
+            good = {
+                "format": BUNDLE_FORMAT,
+                "index_bytes": 4,
+                "core_bytes": 2,
+                "core_file": "c.tar",
+                "index_height": 100,
+                "core_tip_height": 110,
+                "core_prune_height": 0,
+            }
+            self.assertEqual(validate_bundle(good, index, core), [])
+            self.assertTrue(validate_bundle({**good, "index_bytes": 99}, index, core))
+            self.assertTrue(validate_bundle({**good, "index_height": 120, "core_tip_height": 110}, index, core))
+            self.assertTrue(validate_bundle({**good, "core_prune_height": 99}, index, core))
 
     def test_bundle_listing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

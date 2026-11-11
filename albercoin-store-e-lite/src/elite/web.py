@@ -380,6 +380,14 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/config":
             self._send_html(config_page(app, snapshot, lang, parsed.query))
             return
+        if parsed.path == "/backup/log":
+            path = app.paths.exports_dir / "backup.log"
+            try:
+                text = "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-200:])
+            except OSError:
+                text = ""
+            self._send_text(text)
+            return
         if parsed.path == "/backup":
             if not snapshot.setup_complete:
                 self._redirect("/setup?lang=" + lang)
@@ -461,6 +469,13 @@ class Handler(BaseHTTPRequestHandler):
             save_settings(app.paths.settings_file, settings)
             app.supervisor.apply_settings(network)
             self._redirect(f"/?network={network}&lang={lang}")
+            return
+
+        if parsed.path == "/backup/cancel":
+            network = (form.get("network") or [""])[0]
+            if app.backup is not None:
+                app.backup.cancel()
+            self._redirect(f"/backup?network={network}&lang={lang}")
             return
 
         if parsed.path == "/backup/cleanup":
@@ -1319,7 +1334,8 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
         f'<p class="help">{h(L("Para escribir directamente en un disco externo, concede una carpeta a la app en Ajustes de la app → Almacenamiento. Mientras tanto se usa data/exports; podrás moverlo desde Files → Apps → e-lite.", "To write directly to an external drive, grant the app a folder in App Settings → Storage. Until then data/exports is used; move it from Files → Apps → e-lite."))}</p>'
     )
     file_options = "".join(
-        f'<option value="{h(f["name"])}" data-has-core="{str(f.get("has_core")).lower()}">{h(f["name"])} · {f["height"]:,} · {fmt_bytes(f["bytes"])} · {h(f["network"])}</option>'
+        f'<option value="{h(f["name"])}" data-has-core="{str(f.get("has_core")).lower()}" data-kind="{h(f.get("kind", "snapshot"))}">'
+        f'[{"Bundle" if f.get("kind") == "bundle" else "Snapshot"}] {h(f["name"])} · {f["height"]:,} · {fmt_bytes(f["bytes"])} · {h(f["network"])}</option>'
         for f in network_files
     ) or f'<option value="">{h(L("no hay copias para esta red", "no backups for this network"))}</option>'
     no_core_hint = (
@@ -1351,15 +1367,24 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
             for x in reversed(list(job.get("phases") or []))
         )
         warnings = "".join(f'<p class="help">{h(w)}</p>' for w in list(job.get("warnings") or []))
+        cancel = ""
+        if job.get("active"):
+            cancel = f"""<form method="post" action="/backup/cancel" style="margin-top:10px">
+  <input type="hidden" name="network" value="{h(network)}">
+  <button type="submit" class="danger">{h(L("Cancelar", "Cancel"))}</button>
+</form>"""
         progress = f"""<div class="card" id="backup-progress">
   <h2>{h(L("Progreso", "Progress"))}</h2>
   <div class="inline" style="justify-content:space-between"><span id="backup-phase">{h(job.get("message", ""))}</span><strong id="backup-percent">{pct:.1f}%</strong></div>
   <div class="progress"><span id="backup-bar" style="width:{pct:.1f}%"></span></div>
   <p class="help" id="backup-detail">{h(detail)}</p>
+  <p class="help" id="backup-phase-detail">{h(job.get("phase_detail", ""))}</p>
   <div class="inline" id="backup-phases">{phases}</div>
   <pre id="backup-tail">{h(chr(10).join(list(job.get("tail") or [])[-5:]))}</pre>
   {warnings}
   <p class="error" id="backup-error">{h(job.get("error", ""))}</p>
+  <p class="help"><a href="/backup/log?lang={lang}" target="_blank">{h(L("Ver log completo", "View full log"))}</a></p>
+  {cancel}
 </div>"""
     content = f"""
 {notice}
@@ -1394,7 +1419,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     <input type="hidden" name="destination" class="dest-mirror" value="{h(selected)}">
     <p><label>{h(L("Copia", "Backup"))}</label><select name="filename">{file_options}</select></p>
     {no_core_hint}
-    <p><label>{h(L("Verificación", "Verification"))}</label><select name="verify"><option value="basic" selected>basic</option><option value="full">full (verifychain)</option></select></p>
+    <p id="verify-row"><label>{h(L("Verificación", "Verification"))}</label><select name="verify"><option value="basic" selected>basic</option><option value="full">full (verifychain)</option></select></p>
     <label class="checkline"><input type="checkbox" name="delete_previous" value="1"> {h(L("Borrar los datos anteriores cuando termine", "Delete previous data when finished"))}</label>
     <p><label>{h(L("Escribe el nombre de la red para confirmar", "Type the network name to confirm"))}</label><input type="text" name="confirm" placeholder="{h(network)}" autocomplete="off"></p>
     <button type="submit" class="danger" {"disabled" if job.get("active") or not network_files else ""}>{h(L("Importar red", "Import network"))}</button>
@@ -1418,9 +1443,11 @@ const destSelect = document.getElementById('backup-dest');
 if (destSelect) destSelect.addEventListener('change', () => document.querySelectorAll('.dest-mirror').forEach(el => el.value = destSelect.value));
 const fileSelect = document.querySelector('select[name="filename"]');
 const coreHint = document.getElementById('no-core-hint');
+const verifyRow = document.getElementById('verify-row');
 if (fileSelect && coreHint) fileSelect.addEventListener('change', () => {{
   const option = fileSelect.options[fileSelect.selectedIndex];
   coreHint.style.display = option && option.dataset.hasCore === 'false' ? 'block' : 'none';
+  if (verifyRow) verifyRow.style.display = option && option.dataset.kind === 'bundle' ? 'none' : 'block';
 }});
 fileSelect && fileSelect.dispatchEvent(new Event('change'));
 let wasActive = {str(bool(job.get("active"))).lower()};
@@ -1457,7 +1484,9 @@ async function pollBackup() {{
       document.getElementById('backup-detail').textContent = fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.eta_seconds ? ' · ~' + fmtTime(s.eta_seconds) : '');
     }}
     document.getElementById('backup-phase').textContent = s.message || s.phase || '';
-    document.getElementById('backup-phases').innerHTML = (s.phases || []).slice().reverse().map(x => '<span class="badge">' + x.phase + ' ' + x.seconds + 's</span>').join(' ');
+    const phaseDetail = document.getElementById('backup-phase-detail');
+    if (phaseDetail) phaseDetail.textContent = s.phase_detail || '';
+    document.getElementById('backup-phases').innerHTML = (s.phases || []).slice().reverse().map(x => '<span class="badge">✓ ' + x.phase + ' ' + x.seconds + 's</span>').join(' ');
     document.getElementById('backup-tail').textContent = (s.tail || []).slice(-5).join(String.fromCharCode(10));
     document.getElementById('backup-error').textContent = s.error || '';
     if (s.active) {{ setTimeout(pollBackup, 1000); }} else {{ wasActive = false; setTimeout(() => location.reload(), 1200); }}
@@ -1467,18 +1496,6 @@ pollBackup();
 </script>
 """
     return page(t(lang, "backup_title"), content, lang, active="backup")
-
-
-def _network_data_bytes(app: WebApp, network: str) -> int:
-    index, core = _network_data_split(app, network)
-    return index + core
-
-
-def _network_data_split(app: WebApp, network: str) -> tuple[int, int]:
-    from .backup import EXCLUDE_CORE, EXCLUDE_INDEX, _du
-    index = _du(app.paths.network_e_lite_data(network), EXCLUDE_INDEX)
-    core = _du(app.paths.network_core_data(network), EXCLUDE_CORE)
-    return index, core
 
 
 def config_page(

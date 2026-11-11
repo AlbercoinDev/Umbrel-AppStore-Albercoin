@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from elite.backup import (
+    BUNDLE_FORMAT,
     EXCLUDE_INDEX,
     BackupManager,
     _du,
@@ -16,6 +17,7 @@ from elite.backup import (
     export_tmp_candidates,
     network_leftovers,
     read_manifest,
+    _bundle_files,
     restored_estimate,
     write_sidecar,
 )
@@ -97,6 +99,32 @@ class BackupTests(unittest.TestCase):
             self.assertTrue(second["ready"])
             self.assertEqual(second["index"], 5)
             self.assertEqual(second["core"], 0)
+
+    def test_bundle_listing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory)
+            (destination / "e-lite-signet-x.index.tar.gz").write_bytes(b"i")
+            (destination / "e-lite-signet-x.core.tar").write_bytes(b"c")
+            (destination / "e-lite-signet-x.umbrel.json").write_text(
+                json.dumps(
+                    {
+                        "format": BUNDLE_FORMAT,
+                        "network": "signet",
+                        "index_file": "e-lite-signet-x.index.tar.gz",
+                        "core_file": "e-lite-signet-x.core.tar",
+                        "index_bytes": 1,
+                        "core_bytes": 1,
+                        "index_height": 42,
+                        "core_tip": 45,
+                    }
+                )
+            )
+            items = _bundle_files(destination)
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["network"], "signet")
+            self.assertEqual(items[0]["height"], 42)
+            self.assertTrue(items[0]["has_core"])
+            self.assertEqual(items[0]["kind"], "bundle")
 
     def test_leftovers_detection(self) -> None:
         from elite.config_writer import AppPaths

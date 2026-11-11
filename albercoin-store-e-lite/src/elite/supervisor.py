@@ -274,6 +274,10 @@ class NodeSupervisor:
             self._started_at = None
         self._cleanup_core()
 
+    def cleanup_core(self) -> None:
+        """Stop a leftover bitcoind that e-lite started for this network."""
+        self._cleanup_core()
+
     def _cleanup_core(self) -> None:
         pid_file = self.paths.network_core_pid(self.network)
         try:
@@ -355,6 +359,7 @@ class SupervisorManager:
         """Stop one network for maintenance and keep it stopped."""
         node = self.nodes[network]
         node.stop()
+        node.cleanup_core()
 
     def resume(self, network: str) -> None:
         """Start one network again if it is still enabled."""

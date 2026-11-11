@@ -1274,6 +1274,10 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     network_files = [f for f in files if f.get("network") == network]
     job = app.backup.status() if app.backup else {"active": False, "phase": "idle"}
     net = snapshot.networks[network]
+    busy_hint = (
+        f'<p class="help">{h(L("Hay una copia en curso para la red " + job.get("network", ""), "A backup is running for network " + job.get("network", "")) + ".</p>")}'
+        if job.get("active") and job.get("network") and job.get("network") != network else ""
+    )
     notice = f'<div class="card error"><p>{h(error)}</p></div>' if error else ""
     tabs = "".join(
         f'<a class="{"active" if n == network else ""}" href="/backup?network={n}&lang={lang}">{h(t(lang, f"network_{n}"))}</a>'
@@ -1311,6 +1315,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     content = f"""
 {notice}
 <div class="card"><div class="tabbar">{tabs}</div>
+  {busy_hint}
   <p class="help">{h(L("Las copias incluyen el índice de e-lite y el datadir de Bitcoin Core en un solo archivo verificado. La red se detiene durante el proceso y se reactiva al terminar si estaba activa.", "Backups include the e-lite index and the Bitcoin Core datadir in one verified archive. The network stops during the process and is restarted afterwards if it was active."))}</p>
 </div>
 <div class="card">
@@ -1323,6 +1328,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     <button type="submit" {"disabled" if job.get("active") or not destinations else ""}>{h(L("Exportar red", "Export network"))}</button>
   </form>
 </div>
+{progress if job.get("action") == "export" else ""}
 <div class="card">
   <h2>{h(L("Importar", "Import"))}</h2>
   <form method="post" action="/backup/import" onsubmit="return confirm({json.dumps(L('Se reemplazarán los datos de esta red. ¿Continuar?', 'This network data will be replaced. Continue?'))})">
@@ -1335,7 +1341,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     <button type="submit" class="danger" {"disabled" if job.get("active") or not network_files else ""}>{h(L("Importar red", "Import network"))}</button>
   </form>
 </div>
-{progress}
+{progress if job.get("action") == "import" else ""}
 <script>
 function fmtBytes(n) {{
   const units = ['B','KiB','MiB','GiB','TiB']; let v = Number(n)||0; let i = 0;
@@ -1353,11 +1359,19 @@ async function pollBackup() {{
   try {{
     const response = await fetch('/api/backup/status', {{cache:'no-store'}});
     const s = await response.json();
-    const pct = s.total ? Math.min(100, (s.done / s.total) * 100) : 0;
+    const bar = document.getElementById('backup-bar');
+    if (!s.total || (!s.done && (s.phase === 'stopping' || s.phase === 'exporting'))) {{
+      bar.classList.add('indeterminate'); bar.style.width = '34%';
+      document.getElementById('backup-percent').textContent = '';
+      document.getElementById('backup-detail').textContent = 'tamaño y tiempo estimados cuando empiece la escritura';
+    }} else {{
+      bar.classList.remove('indeterminate');
+      const pct = Math.min(100, (s.done / s.total) * 100);
+      bar.style.width = pct.toFixed(1) + '%';
+      document.getElementById('backup-percent').textContent = pct.toFixed(1) + '%';
+      document.getElementById('backup-detail').textContent = fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.eta_seconds ? ' · ~' + fmtTime(s.eta_seconds) : '');
+    }}
     document.getElementById('backup-phase').textContent = s.message || s.phase || '';
-    document.getElementById('backup-percent').textContent = pct.toFixed(1) + '%';
-    document.getElementById('backup-bar').style.width = pct.toFixed(1) + '%';
-    document.getElementById('backup-detail').textContent = fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.eta_seconds ? ' · ~' + fmtTime(s.eta_seconds) : '');
     document.getElementById('backup-error').textContent = s.error || '';
     if (s.active) {{ setTimeout(pollBackup, 1000); }} else {{ wasActive = false; setTimeout(() => location.reload(), 1200); }}
   }} catch (e) {{ setTimeout(pollBackup, 2000); }}

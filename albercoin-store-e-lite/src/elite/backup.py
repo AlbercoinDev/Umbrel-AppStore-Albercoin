@@ -37,6 +37,16 @@ def _du(path: Path, exclude: set[str] | None = None) -> int:
     return total
 
 
+def export_tmp_candidates(output: Path) -> tuple[Path, ...]:
+    """e-lite writes `<output>.tmp` via Rust `with_extension("tmp")`.
+
+    For `foo.tar.gz` that yields `foo.tar.tmp`; we also probe the more
+    intuitive `foo.tar.gz.tmp` so a future change cannot silently break the
+    progress bar again.
+    """
+    return output.with_suffix(".tmp"), output.with_name(output.name + ".tmp")
+
+
 def read_manifest(archive: Path) -> dict:
     with tarfile.open(archive, "r:gz") as tar:
         member = tar.getmember(MANIFEST_NAME)
@@ -172,9 +182,9 @@ class BackupManager:
             return False, "ya hay una copia en curso"
         try:
             target = self._allowed(destination)
-        except ValueError as exc:
-            return False, str(exc)
-        target.mkdir(parents=True, exist_ok=True)
+            target.mkdir(parents=True, exist_ok=True)
+        except (ValueError, OSError) as exc:
+            return False, f"destino no válido: {exc}"
         with self._lock:
             self._state = self._idle()
             self._state.update({"active": True, "action": action, "network": network, "started_at": time.time(), "phase": "preparing", "message": "Preparando"})
@@ -209,9 +219,11 @@ class BackupManager:
                     self._state["finished_at"] = time.time()
 
     def _stop(self, network: str, enabled: bool) -> None:
-        if enabled:
-            self._phase("stopping", "Parando la red")
-            self.supervisor.suspend(network)
+        # Always suspend: it stops the node thread if running and also cleans
+        # up a leftover Core, so `export --with-core` cannot refuse because a
+        # stale bitcoind is still answering on the RPC port.
+        self._phase("stopping", "Parando la red")
+        self.supervisor.suspend(network)
 
     def _restart(self, network: str, enabled: bool) -> None:
         if enabled:
@@ -251,8 +263,21 @@ class BackupManager:
     def _progress_export(self, output: Path) -> None:
         with self._lock:
             total = int(self._state.get("total") or 0)
-        tmp = output.with_name(output.name + ".tmp")
-        done = tmp.stat().st_size if tmp.exists() else (output.stat().st_size if output.exists() else 0)
+        done = 0
+        for candidate in export_tmp_candidates(output):
+            try:
+                if candidate.exists():
+                    done = candidate.stat().st_size
+                    break
+            except OSError:
+                continue
+        if done == 0 and output.exists():
+            try:
+                done = output.stat().st_size
+            except OSError:
+                done = 0
+        message = "Sondeando Core…" if done == 0 else "Exportando…"
+        self._update(message=message)
         self._set_progress(done, total)
 
     def _run_import(self, args: dict, enabled: bool) -> None:
@@ -317,6 +342,7 @@ class BackupManager:
         with self._lock:
             total = int(self._state.get("total") or 0)
         done = _du(target) if target.exists() else 0
+        self._update(message="Verificando…" if done >= total > 0 else "Restaurando…")
         self._set_progress(done, total)
 
     def _run_process(self, command: list[str], progress, target: Path) -> None:
@@ -349,6 +375,9 @@ class BackupManager:
             started = self._state.get("started_at") or now
             elapsed = max(0.001, now - started)
             rate = done / elapsed
+            # The export estimate is a guess; never let the bar look stuck by
+            # showing less than what has actually been written.
+            total = max(total, done)
             eta = int(max(0, total - done) / rate) if rate > 0 and total > done else 0
             self._state.update(done=done, total=total, eta_seconds=eta)
 

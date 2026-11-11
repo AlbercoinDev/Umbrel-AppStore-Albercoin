@@ -12,7 +12,7 @@ folderAccess:
         readOnly: false
 category: bitcoin
 name: e-lite
-version: "0.1.0-alpha.29.10.0-01"
+version: "0.1.0-alpha.29.10.0-02"
 tagline: Servidor Electrum autónomo con Bitcoin Core incluido
 description: >-
   e-lite es un servidor Electrum 1.4–1.7 autónomo que incluye su propio Bitcoin Core
@@ -32,8 +32,10 @@ description: >-
 releaseNotes: >-
   Actualiza e-lite a 0.1.0-alpha.29.10.0 y añade copias por red desde el
   panel: exporta e importa índice + Bitcoin Core en un archivo verificado, con
-  barra de progreso, tamaño y tiempo estimado. La red se detiene durante el
-  proceso y se reactiva al terminar. Conserva CA, certificados, puertos y onions.
+  barra de progreso, tamaño y tiempo estimado, situada justo bajo el botón de
+  exportar, con fases y barra indeterminada durante la sonda de Core. La red
+  se detiene durante el proceso y se reactiva al terminar. Conserva CA,
+  certificados, puertos y onions.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/e-lite
 dependencies: []

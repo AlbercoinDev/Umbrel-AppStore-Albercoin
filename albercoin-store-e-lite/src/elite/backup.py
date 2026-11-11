@@ -126,27 +126,55 @@ def save_ratio(paths: AppPaths, network: str, index_ratio: float) -> None:
         pass
 
 
-def _snapshot_files(destination: Path) -> list[dict]:
+def _sidecar_path(archive: Path) -> Path:
+    name = archive.name
+    suffix = ".tar.gz"
+    if name.endswith(suffix):
+        return archive.with_name(name[: -len(suffix)] + ".manifest.json")
+    return archive.with_suffix(".manifest.json")
+
+
+def write_sidecar(archive: Path, manifest: dict) -> None:
+    try:
+        _sidecar_path(archive).write_text(json.dumps(manifest), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _snapshot_files(destination: Path, scan_limit: int = 1) -> list[dict]:
+    """List archives using sidecar manifests; scan at most `scan_limit` tars.
+
+    The manifest lives at the end of each tar stream, so scanning a large
+    archive means decompressing it; the sidecar keeps listing instant.
+    """
     items: list[dict] = []
     if not destination.is_dir():
         return items
     for entry in sorted(destination.glob("*.tar.gz"), key=lambda p: p.stat().st_mtime, reverse=True):
+        manifest: dict | None = None
+        sidecar = _sidecar_path(entry)
         try:
-            manifest = read_manifest(entry)
+            if sidecar.is_file():
+                manifest = json.loads(sidecar.read_text(encoding="utf-8"))
+            elif scan_limit > 0:
+                manifest = read_manifest(entry)
+                scan_limit -= 1
+                write_sidecar(entry, manifest)
         except Exception:
-            continue
-        core = manifest.get("core") or {}
+            manifest = None
+        core = (manifest or {}).get("core") or {}
         items.append(
             {
                 "name": entry.name,
                 "bytes": entry.stat().st_size,
-                "network": manifest.get("network", ""),
-                "height": manifest.get("height", 0),
-                "hash": manifest.get("hash", ""),
-                "format": manifest.get("format", 1),
+                "network": (manifest or {}).get("network", ""),
+                "height": (manifest or {}).get("height", 0),
+                "hash": (manifest or {}).get("hash", ""),
+                "format": (manifest or {}).get("format", 1),
                 "has_core": bool(core),
                 "core_tip": core.get("tip_height", 0),
                 "created": entry.stat().st_mtime,
+                "manifest_read": manifest is not None,
             }
         )
     return items
@@ -163,6 +191,8 @@ class BackupManager:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._state: dict = self._idle()
+        self._sizes: dict[str, dict] = {}
+        self._listing: dict[str, tuple[tuple, list[dict]]] = {}
 
     @staticmethod
     def _idle() -> dict:
@@ -233,11 +263,50 @@ class BackupManager:
         with self._lock:
             return dict(self._state)
 
+    # -------------------------------------------------------------------- sizes
+    SIZES_TTL_SECONDS = 600
+
+    def sizes(self, network: str) -> dict:
+        """Cached sizes per network, computed in the background on demand."""
+        with self._lock:
+            entry = dict(self._sizes.get(network) or {})
+        stale = not entry or (time.time() - entry.get("computed_at", 0) > self.SIZES_TTL_SECONDS)
+        if stale and not entry.get("computing"):
+            with self._lock:
+                entry = self._sizes.setdefault(network, {**entry, "computing": True})
+            threading.Thread(target=self._compute_sizes, args=(network,), name=f"backup-sizes-{network}", daemon=True).start()
+        return {"index": entry.get("index", 0), "core": entry.get("core", 0), "computing": bool(entry.get("computing")), "ready": bool(entry.get("ready"))}
+
+    def _compute_sizes(self, network: str) -> None:
+        try:
+            index = _du(self.paths.network_e_lite_data(network), EXCLUDE_INDEX)
+            core = _du(self.paths.network_core_data(network), EXCLUDE_CORE)
+        except OSError:
+            index = core = 0
+        with self._lock:
+            self._sizes[network] = {"index": index, "core": core, "computed_at": time.time(), "computing": False, "ready": True}
+
     def files(self, destination: str) -> list[dict]:
         try:
-            return _snapshot_files(self._allowed(destination))
+            root = self._allowed(destination)
         except (ValueError, OSError):
             return []
+        key_parts = []
+        for entry in sorted(root.glob("*.tar.gz")):
+            try:
+                stat = entry.stat()
+                key_parts.append((entry.name, stat.st_size, int(stat.st_mtime)))
+            except OSError:
+                continue
+        key = (str(root), tuple(key_parts))
+        with self._lock:
+            cached = self._listing.get(str(key))
+        if cached and cached[0] == key:
+            return cached[1]
+        items = _snapshot_files(root)
+        with self._lock:
+            self._listing[str(key)] = (key, items)
+        return items
 
     def leftovers(self, network: str) -> list[dict]:
         return [{"name": entry.name, "path": str(entry)} for entry in network_leftovers(self.paths, network)]
@@ -411,6 +480,9 @@ class BackupManager:
         size = renamed.stat().st_size
         index_ratio = min(1.0, max(0.05, (size - core_bytes * 0.95) / max(1, index_bytes)))
         save_ratio(self.paths, network, index_ratio)
+        write_sidecar(renamed, manifest)
+        with self._lock:
+            self._listing.clear()
         cleanup_tmp_files(renamed)
         self._append_job_log(f"exported {renamed.name} ({size} bytes, height {height})")
         self._update(

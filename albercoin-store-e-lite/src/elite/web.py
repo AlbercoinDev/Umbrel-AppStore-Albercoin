@@ -354,6 +354,11 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/backup/status":
             self._send_json(app.backup.status() if app.backup else {})
             return
+        if parsed.path == "/api/backup/sizes":
+            params = parse_qs(parsed.query)
+            network_param = (params.get("network") or [""])[0]
+            self._send_json(app.backup.sizes(network_param) if app.backup else {})
+            return
         if parsed.path == "/api/backup/files":
             params = parse_qs(parsed.query)
             destination = (params.get("destination") or [""])[0]
@@ -1284,8 +1289,14 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     network_files = [f for f in files if f.get("network") == network]
     job = app.backup.status() if app.backup else {"active": False, "phase": "idle"}
     leftovers = app.backup.leftovers(network) if app.backup else []
-    index_bytes, core_bytes = _network_data_split(app, network)
+    sizes = app.backup.sizes(network) if app.backup else {"index": 0, "core": 0, "computing": False, "ready": False}
+    index_bytes, core_bytes = int(sizes.get("index") or 0), int(sizes.get("core") or 0)
     estimate = int(index_bytes * 0.55 + core_bytes * 0.95)
+    sizes_text = (
+        "calculando…"
+        if sizes.get("computing") and not (index_bytes or core_bytes)
+        else f"{L('índice', 'index')} {fmt_bytes(index_bytes)} · Core {fmt_bytes(core_bytes)} · {L('estimado comprimido', 'estimated compressed')} ~{fmt_bytes(estimate)}"
+    )
     busy_hint = (
         f'<p class="help">{h(L("Hay una copia en curso para la red " + job.get("network", ""), "A backup is running for network " + job.get("network", "")) + ".</p>")}'
         if job.get("active") and job.get("network") and job.get("network") != network else ""
@@ -1355,7 +1366,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
 <div class="card"><div class="tabbar">{tabs}</div>
   {busy_hint}
   <p class="help">{h(L("Las copias incluyen el índice de e-lite y el datadir de Bitcoin Core en un solo archivo verificado. La red se detiene durante el proceso y se reactiva al terminar si estaba activa.", "Backups include the e-lite index and the Bitcoin Core datadir in one verified archive. The network stops during the process and is restarted afterwards if it was active."))}</p>
-  <p class="help">{h(L("Tamaños actuales:", "Current sizes:"))} {h(L("índice", "index"))} {fmt_bytes(index_bytes)} · Core {fmt_bytes(core_bytes)} · {h(L("estimado comprimido", "estimated compressed"))} ~{fmt_bytes(estimate)}</p>
+  <p class="help">{h(L("Tamaños actuales:", "Current sizes:"))} <span id="backup-sizes">{h(sizes_text)}</span></p>
 </div>
 <div class="card">
   <h2>{h(L("Destino", "Destination"))}</h2>
@@ -1413,6 +1424,21 @@ if (fileSelect && coreHint) fileSelect.addEventListener('change', () => {{
 }});
 fileSelect && fileSelect.dispatchEvent(new Event('change'));
 let wasActive = {str(bool(job.get("active"))).lower()};
+let sizesComputing = {str(bool(sizes.get("computing"))).lower()};
+async function pollSizes() {{
+  if (!sizesComputing) return;
+  try {{
+    const response = await fetch('/api/backup/sizes?network={h(network)}', {{cache:'no-store'}});
+    const s = await response.json();
+    if (s.computing) {{ setTimeout(pollSizes, 3000); return; }}
+    sizesComputing = false;
+    const estimate = Math.round((s.index * 0.55 + s.core * 0.95));
+    const label = '{h(L("índice", "index"))} ' + fmtBytes(s.index) + ' · Core ' + fmtBytes(s.core) + ' · {h(L("estimado comprimido", "estimated compressed"))} ~' + fmtBytes(estimate);
+    const node = document.getElementById('backup-sizes');
+    if (node) node.textContent = label;
+  }} catch (e) {{ setTimeout(pollSizes, 4000); }}
+}}
+pollSizes();
 async function pollBackup() {{
   if (!wasActive) return;
   try {{

@@ -4,17 +4,20 @@ import io
 import json
 import tarfile
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 from elite.backup import (
     EXCLUDE_INDEX,
+    BackupManager,
     _du,
     cleanup_tmp_files,
     export_tmp_candidates,
     network_leftovers,
     read_manifest,
     restored_estimate,
+    write_sidecar,
 )
 
 
@@ -54,6 +57,46 @@ class BackupTests(unittest.TestCase):
     def test_restored_estimate(self) -> None:
         self.assertEqual(restored_estimate({"core": {"bytes": 1000}}, 1500), 2000)
         self.assertEqual(restored_estimate({}, 500), 1000)
+
+    def test_sidecar_listing_avoids_scan(self) -> None:
+        from elite.backup import _snapshot_files
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory)
+            for name, with_sidecar in (("oldest.tar.gz", False), ("old.tar.gz", False), ("new.tar.gz", True)):
+                archive = destination / name
+                manifest = {"format": 2, "network": "signet", "height": 7, "core": {"bytes": 1, "tip_height": 9}}
+                payload = json.dumps(manifest).encode()
+                with tarfile.open(archive, "w:gz") as tar:
+                    info = tarfile.TarInfo("e-lite-snapshot.json")
+                    info.size = len(payload)
+                    tar.addfile(info, io.BytesIO(payload))
+                if with_sidecar:
+                    write_sidecar(archive, manifest)
+            items = _snapshot_files(destination)
+            self.assertEqual(len(items), 3)
+            self.assertEqual(items[0]["name"], "new.tar.gz")
+            self.assertEqual(items[0]["height"], 7)
+            self.assertTrue(items[0]["manifest_read"])
+            self.assertTrue(items[1]["manifest_read"])
+            self.assertFalse(items[2]["manifest_read"])
+
+    def test_sizes_cache_computes_once(self) -> None:
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            (paths.network_e_lite_data("signet") / "db.dat").write_bytes(b"x" * 5)
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            first = manager.sizes("signet")
+            self.assertTrue(first["computing"])
+            for _ in range(100):
+                second = manager.sizes("signet")
+                if second["ready"]:
+                    break
+                time.sleep(0.05)
+            self.assertTrue(second["ready"])
+            self.assertEqual(second["index"], 5)
+            self.assertEqual(second["core"], 0)
 
     def test_leftovers_detection(self) -> None:
         from elite.config_writer import AppPaths

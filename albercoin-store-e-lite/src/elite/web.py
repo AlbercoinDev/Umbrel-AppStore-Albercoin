@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, urlsplit
 
+from . import APP_VERSION
 from .config_writer import AppPaths, network_metrics_port, network_ports
 from .i18n import field_help, field_label, select_language, t
 from .runtime import BITCOIN_VERSION, E_LITE_VERSION, TOR_VERSION, RuntimeManager
@@ -295,6 +296,7 @@ class WebApp:
         return {
             "app": "e-lite",
             "version": E_LITE_VERSION,
+            "app_version": APP_VERSION,
             "core_version": BITCOIN_VERSION,
             "tor_version": TOR_VERSION,
             "setup_complete": snapshot.setup_complete,
@@ -813,7 +815,7 @@ input:disabled, select:disabled, textarea:disabled {{ opacity:.55; }}
   <img src="/icon.svg" alt="e-lite">
   <div>
     <h1>{h(t(lang, "app_name"))}</h1>
-    <div class="sub">{h(t(lang, "version_label", version=E_LITE_VERSION, core=BITCOIN_VERSION))}</div>
+    <div class="sub">{h(t(lang, "version_label", version=E_LITE_VERSION, core=BITCOIN_VERSION, app=APP_VERSION))}</div>
   </div>
 </header>
 {_nav(lang, active)}
@@ -1215,7 +1217,7 @@ def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error
 {notice}
 <div class="card" id="network-summary"><div class="inline" style="justify-content:space-between">
   <h2 style="margin:0">{h(t(lang, "networks"))}</h2>
-  <span class="badge">{h(t(lang, "version_label", version=E_LITE_VERSION, core=BITCOIN_VERSION))}</span>
+  <span class="badge">{h(t(lang, "version_label", version=E_LITE_VERSION, core=BITCOIN_VERSION, app=APP_VERSION))}</span>
 </div>{summary}{multi_warning}</div>
 {runtime}
 <div class="card warning"><p><strong>{h(t(lang, "alpha_warning"))}</strong></p><p>{h(t(lang, "security_warning"))}</p></div>

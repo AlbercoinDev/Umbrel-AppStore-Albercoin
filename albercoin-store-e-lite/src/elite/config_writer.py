@@ -326,6 +326,8 @@ def build_config(
     logging_values: list[tuple[str, Any]] = [("file", str(paths.network_e_lite_log(network)))]
     if present("logging.max_mib"):
         logging_values.append(("max_mib", value("logging.max_mib")))
+    if present("logging.level"):
+        logging_values.append(("level", value("logging.level")))
     _section(lines, "logging", logging_values)
 
     # e-lite manages its own Tor per network. The wildcard listener is mapped

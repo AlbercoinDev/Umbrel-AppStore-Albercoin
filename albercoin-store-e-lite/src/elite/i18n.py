@@ -366,6 +366,7 @@ FIELD_LABELS: dict[str, tuple[str, str]] = {
     "core.extra_args": ("Argumentos extra de bitcoind", "Extra bitcoind arguments"),
     "core.restart": ("Reiniciar Core si se cae", "Restart Core on failure"),
     "logging.max_mib": ("Tamaño máximo del log (MiB)", "Maximum log size (MiB)"),
+    "logging.level": ("Nivel de diagnóstico", "Diagnostic level"),
 }
 
 FIELD_HELP: dict[str, tuple[str, str]] = {
@@ -421,6 +422,7 @@ FIELD_HELP: dict[str, tuple[str, str]] = {
     "core.extra_args": ("Un argumento de bitcoind por línea, empezando por '-'. Úsalo con cuidado.", "One bitcoind argument per line, starting with '-'. Use with care."),
     "core.restart": ("e-lite reinicia un Core que haya lanzado si se cae.", "e-lite restarts a Core it launched if it exits."),
     "logging.max_mib": ("Rotación del log de e-lite. 0 desactiva la rotación.", "e-lite log rotation. 0 disables rotation."),
+    "logging.level": ("info solo las líneas estándar. debug añade detalle (RocksDB, caché, E/S) y trace una línea por commit. El valor por defecto de la alpha es debug.", "info keeps standard lines only. debug adds detail (RocksDB, cache, I/O) and trace one line per commit. The alpha default is debug."),
 }
 
 

@@ -84,6 +84,7 @@ FIELDS: tuple[Field, ...] = (
     Field("core.extra_args", "list", (), "core", advanced=True),
     Field("core.restart", "bool", True, "core", advanced=True),
     Field("logging.max_mib", "int", 16, "core", minimum=0, maximum=1024, advanced=True),
+    Field("logging.level", "enum", "debug", "core", options=("info", "debug", "trace"), advanced=True),
 )
 
 FIELDS_BY_KEY = {f.key: f for f in FIELDS}

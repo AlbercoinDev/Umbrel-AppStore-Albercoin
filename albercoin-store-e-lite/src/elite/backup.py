@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -172,19 +173,87 @@ def _bundle_files(destination: Path) -> list[dict]:
     return items
 
 
-def core_facts(network: str, metrics_port: int) -> dict:
-    """Read the live Core tip/prune facts from e-lite before stopping it."""
+FACTS_FILE = "core-facts.json"
+_TIP_RE = re.compile(r"UpdateTip: new best=([0-9a-f]{64})\s+height=(\d+)")
+_VERSION_RE = re.compile(r"Bitcoin Core version v([0-9][0-9A-Za-z.\-]*)")
+
+
+def facts_path(paths: AppPaths, network: str) -> Path:
+    return paths.network_config_dir(network) / FACTS_FILE
+
+
+def load_facts(paths: AppPaths, network: str) -> dict:
+    try:
+        data = json.loads(facts_path(paths, network).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_facts(paths: AppPaths, network: str, facts: dict) -> None:
+    if not facts.get("tip_height"):
+        return
+    payload = dict(facts)
+    payload["updated_at"] = int(time.time())
+    try:
+        facts_path(paths, network).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def parse_debug_log(path: Path) -> dict:
+    """Best-effort tip/version from Core's debug.log (fallback when stopped)."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - 4 * 1024 * 1024))
+            text = handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return {}
+    tip = None
+    for match in _TIP_RE.finditer(text):
+        tip = match
+    result: dict = {}
+    if tip:
+        result["tip_hash"] = tip.group(1)
+        result["tip_height"] = int(tip.group(2))
+    version = _VERSION_RE.search(text)
+    if version:
+        result["core_version"] = version.group(1)
+    return result
+
+
+def core_facts(paths: AppPaths, network: str, metrics_port: int) -> dict:
+    """Read live Core facts from /status, else persisted facts/debug.log."""
+    facts: dict = {}
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{metrics_port}/status", timeout=3) as response:
             data = json.load(response)
+        core = data.get("core") or {}
+        facts = {
+            "tip_height": int(data.get("core_height") or 0),
+            "pruned": bool(core.get("pruned")),
+            "prune_height": int(core.get("pruneheight") or 0),
+            "source": "live",
+        }
     except Exception:
-        return {}
-    core = data.get("core") or {}
-    return {
-        "tip_height": int(data.get("core_height") or 0),
-        "pruned": bool(core.get("pruned")),
-        "prune_height": int(core.get("pruneheight") or 0),
-    }
+        facts = {}
+    if facts.get("tip_height"):
+        parsed = parse_debug_log(paths.network_core_log(network))
+        if parsed.get("core_version"):
+            facts["core_version"] = parsed["core_version"]
+        save_facts(paths, network, facts)
+        return facts
+    persisted = load_facts(paths, network)
+    if persisted.get("tip_height"):
+        persisted["source"] = "persisted"
+        return persisted
+    parsed = parse_debug_log(paths.network_core_log(network)) or parse_debug_log(paths.network_core_data(network) / "debug.log")
+    if parsed.get("tip_height"):
+        parsed["source"] = "debug-log"
+        return parsed
+    return {}
 
 
 def _snapshot_files(destination: Path, scan_limit: int = 1) -> list[dict]:
@@ -404,8 +473,8 @@ class BackupManager:
             return bool(self._state.get("active"))
 
     # -------------------------------------------------------------------- start
-    def start_export(self, network: str, destination: str, compress: str = "3", mode: str = "fast") -> tuple[bool, str]:
-        return self._start("export", network, destination, {"compress": compress, "mode": mode})
+    def start_export(self, network: str, destination: str, compress: str = "3") -> tuple[bool, str]:
+        return self._start("export", network, destination, {"compress": compress})
 
     def start_import(self, network: str, destination: str, filename: str, verify: str = "basic", delete_previous: bool = False) -> tuple[bool, str]:
         return self._start("import", network, destination, {"filename": filename, "verify": verify, "delete_previous": delete_previous})
@@ -456,7 +525,14 @@ class BackupManager:
                 if self._state.get("finished_at") is None:
                     self._state["finished_at"] = time.time()
 
+    def _facts(self, network: str) -> dict:
+        from .config_writer import network_metrics_port
+        return core_facts(self.paths, network, network_metrics_port(network))
+
     def _stop(self, network: str) -> None:
+        # Persist live Core facts before stopping so an export from a stopped
+        # network can still check coherence without starting anything.
+        self._facts(network)
         self._phase("stopping", "Parando la red (Core puede tardar hasta 2 min en vaciar su caché)")
         self.supervisor.suspend(network)
         node = self.supervisor.nodes[network]
@@ -472,84 +548,7 @@ class BackupManager:
             self.supervisor.resume(network)
 
     def _run_export(self, args: dict, enabled: bool) -> None:
-        if str(args.get("mode") or "fast") == "verified":
-            return self._run_export_verified(args, enabled)
         return self._run_export_fast(args, enabled)
-
-    def _run_export_verified(self, args: dict, enabled: bool) -> None:
-        network = args["network"]
-        destination: Path = args["destination"]
-        config_file = self.paths.network_config_file(network)
-        if not config_file.is_file():
-            raise RuntimeError("la red aún no tiene configuración; iníciala primero")
-        index_dir = self.paths.network_e_lite_data(network)
-        core_dir = self.paths.network_core_data(network)
-        index_bytes = _du(index_dir, EXCLUDE_INDEX)
-        core_bytes = _du(core_dir, EXCLUDE_CORE)
-        if index_bytes == 0:
-            raise RuntimeError("el índice está vacío; no hay nada que exportar")
-        ratios = load_ratios(self.paths)
-        index_ratio = float(ratios.get(network) or 0.55)
-        estimate = int(index_bytes * index_ratio + core_bytes * 0.95) + SPACE_MARGIN_BYTES
-        warnings: list[str] = []
-        if same_device(destination, self.paths.data):
-            warnings.append("el destino está en el mismo disco que los datos: no sirve como backup")
-        free = free_bytes(destination)
-        if free < estimate:
-            raise RuntimeError(
-                f"espacio insuficiente en el destino: hay {free // (1024**3)} GiB libres y se necesitan unos {estimate // (1024**3)} GiB"
-            )
-        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-        output = destination / f"e-lite-{network}-{stamp}.tar.gz"
-        self._update(total=estimate, path=str(output), warnings=warnings)
-        self._stop(network)
-        self._phase("exporting", "Sondeando Core…")
-        compress = str(args.get("compress") or "3")
-        if compress not in ("0", "3", "6"):
-            compress = "3"
-        command = [
-            str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
-            "export-snapshot",
-            "--config", str(config_file),
-            "--with-core",
-            "--hash-files",
-            "--compress-level", compress,
-            "--output", str(output),
-        ]
-        try:
-            self._run_process(command, self._progress_export, output, EXPORT_TIMEOUT_SECONDS)
-        finally:
-            pass
-        manifest = read_manifest(output)
-        if manifest.get("network") != network:
-            raise RuntimeError(f"la copia generada pertenece a {manifest.get('network')}")
-        height = int(manifest.get("height") or 0)
-        renamed = destination / f"e-lite-{network}-h{height}-{stamp}.tar.gz"
-        if not renamed.exists():
-            try:
-                os.replace(output, renamed)
-            except OSError:
-                renamed = output
-        size = renamed.stat().st_size
-        index_ratio = min(1.0, max(0.05, (size - core_bytes * 0.95) / max(1, index_bytes)))
-        save_ratio(self.paths, network, index_ratio)
-        write_sidecar(renamed, manifest)
-        with self._lock:
-            self._listing.clear()
-        cleanup_tmp_files(renamed)
-        self._append_job_log(f"exported {renamed.name} ({size} bytes, height {height})")
-        self._update(
-            ok=True,
-            phase="done",
-            message=f"Copia completada · altura {height}",
-            done=size,
-            total=size,
-            eta_seconds=0,
-            path=str(renamed),
-            finished_at=time.time(),
-        )
-        self.log(f"backup: exported {renamed} ({size} bytes)")
-        self._restart(network, enabled)
 
     def _run_export_fast(self, args: dict, enabled: bool) -> None:
         """Index snapshot + a plain tar of the Core datadir, without the probe.
@@ -572,7 +571,7 @@ class BackupManager:
         core_bytes = _du(core_dir, EXCLUDE_CORE)
         if index_bytes == 0:
             raise RuntimeError("el índice está vacío; no hay nada que exportar")
-        facts = core_facts(network, network_metrics_port(network))
+        facts = self._facts(network)
         ratios = load_ratios(self.paths)
         index_ratio = float(ratios.get(network) or 0.55)
         index_est = int(index_bytes * index_ratio)

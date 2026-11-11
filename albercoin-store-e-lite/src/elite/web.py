@@ -482,11 +482,10 @@ class Handler(BaseHTTPRequestHandler):
             network = (form.get("network") or [""])[0]
             destination = (form.get("destination") or [""])[0]
             compress = (form.get("compress") or ["3"])[0]
-            mode = (form.get("mode") or ["fast"])[0]
             if app.backup is None:
                 self._redirect("/?lang=" + lang)
                 return
-            ok, message = app.backup.start_export(network, destination, compress, mode)
+            ok, message = app.backup.start_export(network, destination, compress)
             query = f"network={network}&lang={lang}" + ("&started=1" if ok else "&error=" + quote(message))
             self._redirect("/backup?" + query)
             return
@@ -1379,10 +1378,6 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
   <form method="post" action="/backup/export">
     <input type="hidden" name="network" value="{h(network)}">
     <input type="hidden" name="destination" class="dest-mirror" value="{h(selected)}">
-    <p><label>{h(L("Modo", "Mode"))}</label><select name="mode">
-      <option value="fast" selected>{h(L("Rápida · sin sonda de Core (recomendada)", "Fast · no Core probe (recommended)"))}</option>
-      <option value="verified">{h(L("Verificada · sonda de Core, más lenta", "Verified · Core probe, slower"))}</option>
-    </select></p>
     <p><label>{h(L("Compresión gzip", "gzip compression"))}</label><select name="compress">
       <option value="0">0 · {h(L("sin comprimir, la más rápida y barra exacta", "stored, fastest and exact bar"))}</option>
       <option value="3" selected>3 · {h(L("equilibrada (recomendada)", "balanced (recommended)"))}</option>

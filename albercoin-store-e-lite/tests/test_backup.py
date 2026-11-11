@@ -100,6 +100,25 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(second["index"], 5)
             self.assertEqual(second["core"], 0)
 
+    def test_debug_log_parsing_and_facts_persistence(self) -> None:
+        from elite.backup import load_facts, parse_debug_log, save_facts
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "bitcoind.log"
+            log.write_text(
+                "Bitcoin Core version v32.1.0\n"
+                "UpdateTip: new best=" + "a" * 64 + " height=100 version=0x20000000\n"
+                "UpdateTip: new best=" + "b" * 64 + " height=123 version=0x20000000\n"
+            )
+            parsed = parse_debug_log(log)
+            self.assertEqual(parsed["tip_height"], 123)
+            self.assertEqual(parsed["tip_hash"], "b" * 64)
+            self.assertEqual(parsed["core_version"], "32.1.0")
+            paths = AppPaths.from_root(Path(directory) / "data")
+            paths.ensure()
+            save_facts(paths, "signet", {"tip_height": 123, "prune_height": 0})
+            self.assertEqual(load_facts(paths, "signet")["tip_height"], 123)
+
     def test_bundle_listing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory)

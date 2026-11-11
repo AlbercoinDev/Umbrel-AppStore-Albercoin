@@ -49,7 +49,7 @@ jobs:
           context: ./albercoin-store-e-lite
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-07
+          tags: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.10.0-08
           labels: |
             org.opencontainers.image.source=https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
             org.opencontainers.image.revision=${{ github.sha }}

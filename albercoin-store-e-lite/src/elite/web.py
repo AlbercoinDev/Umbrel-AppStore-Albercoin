@@ -456,6 +456,16 @@ class Handler(BaseHTTPRequestHandler):
             self._redirect(f"/?network={network}&lang={lang}")
             return
 
+        if parsed.path == "/backup/cleanup":
+            network = (form.get("network") or [""])[0]
+            confirm = (form.get("confirm") or [""])[0]
+            if app.backup is None or confirm.strip() != network:
+                self._redirect(f"/backup?network={network}&lang={lang}&error=" + quote("confirmación incorrecta"))
+                return
+            removed = app.backup.cleanup_previous(network)
+            self._redirect(f"/backup?network={network}&lang={lang}" + ("&error=" + quote(f"eliminados {removed} directorios") if removed else ""))
+            return
+
         if parsed.path == "/runtime/retry":
             app.runtime.retry()
             self._redirect("/setup?lang=" + lang)
@@ -464,10 +474,11 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/backup/export":
             network = (form.get("network") or [""])[0]
             destination = (form.get("destination") or [""])[0]
+            compress = (form.get("compress") or ["3"])[0]
             if app.backup is None:
                 self._redirect("/?lang=" + lang)
                 return
-            ok, message = app.backup.start_export(network, destination)
+            ok, message = app.backup.start_export(network, destination, compress)
             query = f"network={network}&lang={lang}" + ("&started=1" if ok else "&error=" + quote(message))
             self._redirect("/backup?" + query)
             return
@@ -478,14 +489,14 @@ class Handler(BaseHTTPRequestHandler):
             filename = (form.get("filename") or [""])[0]
             confirm = (form.get("confirm") or [""])[0]
             verify = (form.get("verify") or ["basic"])[0]
-            keep_previous = (form.get("keep_previous") or ["0"])[0] in ("1", "on", "true", "yes")
+            delete_previous = (form.get("delete_previous") or ["0"])[0] in ("1", "on", "true", "yes")
             if app.backup is None:
                 self._redirect("/?lang=" + lang)
                 return
             if confirm.strip() != network:
                 self._redirect(f"/backup?network={network}&lang={lang}&error=" + quote("confirmación incorrecta"))
                 return
-            ok, message = app.backup.start_import(network, destination, filename, verify, keep_previous)
+            ok, message = app.backup.start_import(network, destination, filename, verify, delete_previous)
             query = f"network={network}&lang={lang}" + ("&started=1" if ok else "&error=" + quote(message))
             self._redirect("/backup?" + query)
             return
@@ -1273,7 +1284,9 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     files = app.backup.files(selected) if app.backup else []
     network_files = [f for f in files if f.get("network") == network]
     job = app.backup.status() if app.backup else {"active": False, "phase": "idle"}
-    net = snapshot.networks[network]
+    leftovers = app.backup.leftovers(network) if app.backup else []
+    index_bytes, core_bytes = _network_data_split(app, network)
+    estimate = int(index_bytes * 0.55 + core_bytes * 0.95)
     busy_hint = (
         f'<p class="help">{h(L("Hay una copia en curso para la red " + job.get("network", ""), "A backup is running for network " + job.get("network", "")) + ".</p>")}'
         if job.get("active") and job.get("network") and job.get("network") != network else ""
@@ -1284,7 +1297,9 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
         for n in NETWORKS
     )
     options = "".join(
-        f'<option value="{h(d["path"])}" {"selected" if d["path"] == selected else ""} {"disabled" if not d["writable"] else ""}>{h(d["path"])}{"" if d["writable"] else " (no escribible)"}</option>'
+        f'<option value="{h(d["path"])}" {"selected" if d["path"] == selected else ""} {"disabled" if not d["writable"] else ""}>'
+        f'{h(d["path"])} · {h(fmt_bytes(d["free"]))} libres{"" if d["writable"] else " · no escribible"}'
+        f'{" · mismo disco" if d.get("same_device") else ""}</option>'
         for d in destinations
     )
     if not destinations:
@@ -1294,9 +1309,24 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
         f'<p class="help">{h(L("Para escribir directamente en un disco externo, concede una carpeta a la app en Ajustes de la app → Almacenamiento. Mientras tanto se usa data/exports; podrás moverlo desde Files → Apps → e-lite.", "To write directly to an external drive, grant the app a folder in App Settings → Storage. Until then data/exports is used; move it from Files → Apps → e-lite."))}</p>'
     )
     file_options = "".join(
-        f'<option value="{h(f["name"])}">{h(f["name"])} · {f["height"]:,} · {fmt_bytes(f["bytes"])} · {h(f["network"])}</option>'
+        f'<option value="{h(f["name"])}" data-has-core="{str(f.get("has_core")).lower()}">{h(f["name"])} · {f["height"]:,} · {fmt_bytes(f["bytes"])} · {h(f["network"])}</option>'
         for f in network_files
     ) or f'<option value="">{h(L("no hay copias para esta red", "no backups for this network"))}</option>'
+    no_core_hint = (
+        f'<p class="help" id="no-core-hint" style="display:none">{h(L("Esta copia no incluye Core. Tras restaurarla, el índice no debe superar la punta de Core.", "This backup does not include Core. After restoring it, the index must not be ahead of Core tip."))}</p>'
+    )
+    cleanup_card = ""
+    if leftovers:
+        cleanup_card = f"""<div class="card">
+  <h2>{h(L("Datos previos sin borrar", "Previous data not removed"))}</h2>
+  <p class="help">{h(L("Quedan directorios .pre-import de una importación anterior. Solo bórralos si la red funciona bien.", "There are .pre-import directories from a previous import. Only delete them if the network works fine."))}</p>
+  <ul>{"".join(f"<li><code>{h(x['name'])}</code></li>" for x in leftovers)}</ul>
+  <form method="post" action="/backup/cleanup" onsubmit="return confirm({json.dumps(L('Se borrarán permanentemente. ¿Continuar?', 'They will be deleted permanently. Continue?'))})">
+    <input type="hidden" name="network" value="{h(network)}">
+    <p><input type="text" name="confirm" placeholder="{h(network)}" autocomplete="off"></p>
+    <button type="submit" class="danger">{h(L("Eliminar datos previos", "Delete previous data"))}</button>
+  </form>
+</div>"""
     progress = ""
     if job.get("active") or job.get("phase") in ("done", "error"):
         done = int(job.get("done") or 0)
@@ -1306,25 +1336,43 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
         detail = f"{fmt_bytes(done)} / {fmt_bytes(total)}"
         if eta and job.get("active"):
             detail += f" · ~{fmt_duration(eta)}"
+        phases = "".join(
+            f'<span class="badge">{h(x.get("phase", ""))} {x.get("seconds", 0):g}s</span>'
+            for x in reversed(list(job.get("phases") or []))
+        )
+        warnings = "".join(f'<p class="help">{h(w)}</p>' for w in list(job.get("warnings") or []))
         progress = f"""<div class="card" id="backup-progress">
   <h2>{h(L("Progreso", "Progress"))}</h2>
   <div class="inline" style="justify-content:space-between"><span id="backup-phase">{h(job.get("message", ""))}</span><strong id="backup-percent">{pct:.1f}%</strong></div>
   <div class="progress"><span id="backup-bar" style="width:{pct:.1f}%"></span></div>
-  <p class="help" id="backup-detail">{h(detail)}</p><p class="error" id="backup-error">{h(job.get("error", ""))}</p>
+  <p class="help" id="backup-detail">{h(detail)}</p>
+  <div class="inline" id="backup-phases">{phases}</div>
+  <pre id="backup-tail">{h(chr(10).join(list(job.get("tail") or [])[-5:]))}</pre>
+  {warnings}
+  <p class="error" id="backup-error">{h(job.get("error", ""))}</p>
 </div>"""
     content = f"""
 {notice}
 <div class="card"><div class="tabbar">{tabs}</div>
   {busy_hint}
   <p class="help">{h(L("Las copias incluyen el índice de e-lite y el datadir de Bitcoin Core en un solo archivo verificado. La red se detiene durante el proceso y se reactiva al terminar si estaba activa.", "Backups include the e-lite index and the Bitcoin Core datadir in one verified archive. The network stops during the process and is restarted afterwards if it was active."))}</p>
+  <p class="help">{h(L("Tamaños actuales:", "Current sizes:"))} {h(L("índice", "index"))} {fmt_bytes(index_bytes)} · Core {fmt_bytes(core_bytes)} · {h(L("estimado comprimido", "estimated compressed"))} ~{fmt_bytes(estimate)}</p>
+</div>
+<div class="card">
+  <h2>{h(L("Destino", "Destination"))}</h2>
+  <select id="backup-dest" name="destination" style="max-width:100%">{options}</select>
+  {destination_hint}
 </div>
 <div class="card">
   <h2>{h(L("Exportar", "Export"))}</h2>
   <form method="post" action="/backup/export">
     <input type="hidden" name="network" value="{h(network)}">
-    <p><label>{h(L("Destino", "Destination"))}</label><select name="destination">{options}</select></p>
-    {destination_hint}
-    <p class="help">{h(L("Tamaño actual aproximado:", "Approximate current size:"))} {h(fmt_bytes(_network_data_bytes(app, network)))}</p>
+    <input type="hidden" name="destination" class="dest-mirror" value="{h(selected)}">
+    <p><label>{h(L("Compresión gzip", "gzip compression"))}</label><select name="compress">
+      <option value="0">0 · {h(L("sin comprimir, la más rápida y barra exacta", "stored, fastest and exact bar"))}</option>
+      <option value="3" selected>3 · {h(L("equilibrada (recomendada)", "balanced (recommended)"))}</option>
+      <option value="6">6 · {h(L("archivo más pequeño, más lenta", "smaller archive, slower"))}</option>
+    </select></p>
     <button type="submit" {"disabled" if job.get("active") or not destinations else ""}>{h(L("Exportar red", "Export network"))}</button>
   </form>
 </div>
@@ -1333,15 +1381,17 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
   <h2>{h(L("Importar", "Import"))}</h2>
   <form method="post" action="/backup/import" onsubmit="return confirm({json.dumps(L('Se reemplazarán los datos de esta red. ¿Continuar?', 'This network data will be replaced. Continue?'))})">
     <input type="hidden" name="network" value="{h(network)}">
-    <p><label>{h(L("Destino", "Destination"))}</label><select name="destination">{options}</select></p>
+    <input type="hidden" name="destination" class="dest-mirror" value="{h(selected)}">
     <p><label>{h(L("Copia", "Backup"))}</label><select name="filename">{file_options}</select></p>
+    {no_core_hint}
     <p><label>{h(L("Verificación", "Verification"))}</label><select name="verify"><option value="basic" selected>basic</option><option value="full">full (verifychain)</option></select></p>
-    <label class="checkline"><input type="checkbox" name="keep_previous" value="1"> {h(L("Conservar los datos anteriores (ocupa el doble)", "Keep previous data (uses twice the space)"))}</label>
+    <label class="checkline"><input type="checkbox" name="delete_previous" value="1"> {h(L("Borrar los datos anteriores cuando termine", "Delete previous data when finished"))}</label>
     <p><label>{h(L("Escribe el nombre de la red para confirmar", "Type the network name to confirm"))}</label><input type="text" name="confirm" placeholder="{h(network)}" autocomplete="off"></p>
     <button type="submit" class="danger" {"disabled" if job.get("active") or not network_files else ""}>{h(L("Importar red", "Import network"))}</button>
   </form>
 </div>
 {progress if job.get("action") == "import" else ""}
+{cleanup_card}
 <script>
 function fmtBytes(n) {{
   const units = ['B','KiB','MiB','GiB','TiB']; let v = Number(n)||0; let i = 0;
@@ -1353,6 +1403,16 @@ function fmtTime(s) {{
   const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
   if (d) return d + 'd ' + h + 'h'; if (h) return h + 'h ' + m + 'm'; if (m) return m + 'm'; return s + 's';
 }}
+document.querySelectorAll('.dest-mirror').forEach(el => {{ el.value = document.getElementById('backup-dest') ? document.getElementById('backup-dest').value : ''; }});
+const destSelect = document.getElementById('backup-dest');
+if (destSelect) destSelect.addEventListener('change', () => document.querySelectorAll('.dest-mirror').forEach(el => el.value = destSelect.value));
+const fileSelect = document.querySelector('select[name="filename"]');
+const coreHint = document.getElementById('no-core-hint');
+if (fileSelect && coreHint) fileSelect.addEventListener('change', () => {{
+  const option = fileSelect.options[fileSelect.selectedIndex];
+  coreHint.style.display = option && option.dataset.hasCore === 'false' ? 'block' : 'none';
+}});
+fileSelect && fileSelect.dispatchEvent(new Event('change'));
 let wasActive = {str(bool(job.get("active"))).lower()};
 async function pollBackup() {{
   if (!wasActive) return;
@@ -1372,6 +1432,8 @@ async function pollBackup() {{
       document.getElementById('backup-detail').textContent = fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.eta_seconds ? ' · ~' + fmtTime(s.eta_seconds) : '');
     }}
     document.getElementById('backup-phase').textContent = s.message || s.phase || '';
+    document.getElementById('backup-phases').innerHTML = (s.phases || []).slice().reverse().map(x => '<span class="badge">' + x.phase + ' ' + x.seconds + 's</span>').join(' ');
+    document.getElementById('backup-tail').textContent = (s.tail || []).slice(-5).join(String.fromCharCode(10));
     document.getElementById('backup-error').textContent = s.error || '';
     if (s.active) {{ setTimeout(pollBackup, 1000); }} else {{ wasActive = false; setTimeout(() => location.reload(), 1200); }}
   }} catch (e) {{ setTimeout(pollBackup, 2000); }}
@@ -1383,8 +1445,15 @@ pollBackup();
 
 
 def _network_data_bytes(app: WebApp, network: str) -> int:
+    index, core = _network_data_split(app, network)
+    return index + core
+
+
+def _network_data_split(app: WebApp, network: str) -> tuple[int, int]:
     from .backup import EXCLUDE_CORE, EXCLUDE_INDEX, _du
-    return _du(app.paths.network_e_lite_data(network), EXCLUDE_INDEX) + _du(app.paths.network_core_data(network), EXCLUDE_CORE)
+    index = _du(app.paths.network_e_lite_data(network), EXCLUDE_INDEX)
+    core = _du(app.paths.network_core_data(network), EXCLUDE_CORE)
+    return index, core
 
 
 def config_page(

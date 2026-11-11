@@ -1,3 +1,3 @@
 """e-lite Umbrel wrapper."""
 
-__version__ = "0.1.0-alpha.29.10.0-02"
+__version__ = "0.1.0-alpha.29.10.0-03"

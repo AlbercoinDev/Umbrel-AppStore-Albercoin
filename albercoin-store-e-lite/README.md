@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.10.0-02`
+- Versión: `0.1.0-alpha.29.10.0-03`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -230,8 +230,14 @@ la reactiva al terminar.
 - **Destino**: `/exports` si has concedido una carpeta del disco externo en
   Ajustes de la app → Almacenamiento; si no, `data/exports` (muévelo desde
   Files → Apps → e-lite).
-- **Exportar**: `e-lite export-snapshot --with-core --hash-files
-  --compress-level 3`.
+- **Exportar**: comprueba espacio libre y elige compresión gzip (0, 3 o 6).
+  Usa `e-lite export-snapshot --with-core --hash-files`.
+- **Importar**: comprueba el espacio necesario en el disco de datos. Los datos
+  anteriores se conservan por defecto (`.pre-import-*`) y se pueden eliminar
+  desde el panel cuando la red funciona.
+- Los trabajos tienen límite de tiempo y cancelación segura (mata el grupo de
+  procesos). Los `.tmp` parciales se limpian al terminar o al arrancar la app.
+- El progreso muestra la salida del proceso en vivo y la duración de cada fase.
 - **Importar**: restaura en un directorio vacío, verifica el snapshot y mueve
   el Core restaurado a `data/networks/<red>/core`. Si falla, recupera los
   datos anteriores.

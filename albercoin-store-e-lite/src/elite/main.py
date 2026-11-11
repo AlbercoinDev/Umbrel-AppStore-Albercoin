@@ -76,6 +76,8 @@ def main() -> int:
         log=LOG.info,
     )
     backup = BackupManager(paths, supervisor, lambda: load_settings(paths.settings_file), log=LOG.info)
+    if not demo:
+        backup.cleanup_stale()
     app = WebApp(
         paths,
         runtime,

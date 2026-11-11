@@ -384,6 +384,9 @@ class SupervisorManager:
     def status(self) -> dict[str, dict[str, object]]:
         return {network: node.status() for network, node in self.nodes.items()}
 
+    def is_running(self, network: str) -> bool:
+        return bool(self.nodes[network].status().get("running"))
+
     def tail_log(self, network: str, limit: int = 80) -> list[str]:
         return self.nodes[network].tail_log(limit=limit)
 

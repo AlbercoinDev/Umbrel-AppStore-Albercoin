@@ -297,6 +297,62 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(index_command[index_command.index("--expect-digest") + 1], digest)
             self.assertEqual(manager.status()["phase"], "done")
 
+    def test_export_end_to_end_keeps_chain_data_only(self) -> None:
+        import tarfile
+
+        from elite.config_writer import AppPaths
+        from elite.backup import _elite_version
+
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            manager._stop = lambda network: None
+            manager._restart = lambda network, enabled: None
+            manager._facts = lambda network: {"tip_height": 10, "prune_height": 0, "tip_hash": "f" * 64}
+            index_dir = paths.network_e_lite_data("signet")
+            (index_dir / "CURRENT").write_bytes(b"0123456789")
+            core_dir = paths.network_core_data("signet")
+            blocks = core_dir / "signet" / "blocks"
+            blocks.mkdir(parents=True)
+            (blocks / "blk00000.dat").write_bytes(b"chaindata")
+            (core_dir / "wallets").mkdir()
+            (core_dir / "wallets" / "wallet.dat").write_bytes(b"secret")
+            (core_dir / "settings.json").write_text("{}")
+            paths.network_config_file("signet").parent.mkdir(parents=True, exist_ok=True)
+            paths.network_config_file("signet").write_text("[network]\n", encoding="utf-8")
+            binary = paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"
+            binary.parent.mkdir(parents=True)
+            digest = "b" * 64
+            binary.write_text(
+                "#!/bin/sh\n"
+                'prev=""; out=""\n'
+                'for a in "$@"; do if [ "$prev" = "--output" ]; then out="$a"; fi; prev="$a"; done\n'
+                'printf index > "$out"\n'
+                'echo "network: signet"\n'
+                'echo "tip: 7 ' + "c" * 64 + '"\n'
+                'echo "txnum: 1"\n'
+                'echo "logical_snapshot_hash: ' + digest + '"\n',
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+            destination = Path(directory) / "backups"
+            destination.mkdir()
+            manager._run_export({"network": "signet", "destination": destination, "compress": "3"}, False)
+            bundles = list(destination.glob("*.umbrel.json"))
+            self.assertEqual(len(bundles), 1)
+            bundle = json.loads(bundles[0].read_text(encoding="utf-8"))
+            self.assertEqual(bundle["index_digest"], digest)
+            self.assertEqual(bundle["index_height"], 7)
+            core_file = destination / bundle["core_file"]
+            with tarfile.open(core_file, "r") as tar:
+                names = tar.getnames()
+            cleaned = [name.removeprefix("./") for name in names]
+            self.assertTrue(any(name.startswith("signet/blocks") for name in cleaned), cleaned)
+            self.assertFalse(any("wallet" in name or "settings.json" in name for name in names), names)
+            self.assertEqual(manager.status()["phase"], "done")
+            self.assertEqual(manager.status()["digest"], digest)
+
     def test_bundle_import_end_to_end_with_staged_e_lite(self) -> None:
         import os
         import tarfile

@@ -70,6 +70,26 @@ class WebTests(unittest.TestCase):
         _, _, body = self.get("/backup?network=signet")
         self.assertIn('href="/backup?lang=es"', body)
 
+    def test_backup_page_shows_digest_and_keeps_elapsed_badge(self) -> None:
+        from elite.backup import BackupManager
+
+        self.app.backup = BackupManager(
+            self.paths, supervisor=None, settings_loader=lambda: load_settings(self.paths.settings_file)
+        )
+        self.app.backup._update(
+            active=False, phase="done", action="export", message="Copia completada",
+            done=10, total=10, phase_done=10, phase_total=10, phase_percent=100.0,
+            digest="d" * 64,
+        )
+        _, _, body = self.get("/backup?network=signet")
+        self.assertIn('name="expect_digest"', body)
+        self.assertIn('id="digest-row"', body)
+        self.assertIn('id="backup-phase-text"', body)
+        self.assertIn("d" * 64, body)
+        # The polling code must update the inner node, never the span that holds the badge.
+        self.assertIn("backup-phase-text", body)
+        self.assertNotIn("document.getElementById('backup-phase').textContent", body)
+
     def test_tabs_connections_and_visible_logs(self) -> None:
         _, _, body = self.get('/?network=signet')
         self.assertLess(body.index('href="/?network=mainnet'), body.index('href="/?network=testnet4'))

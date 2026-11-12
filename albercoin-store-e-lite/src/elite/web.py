@@ -484,6 +484,9 @@ class Handler(BaseHTTPRequestHandler):
             if app.backup is None or confirm.strip() != network:
                 self._redirect(f"/backup?network={network}&lang={lang}&error=" + quote("confirmación incorrecta"))
                 return
+            if app.backup.status().get("active"):
+                self._redirect(f"/backup?network={network}&lang={lang}&error=" + quote("hay una copia en curso; espera a que termine"))
+                return
             removed = app.backup.cleanup_previous(network)
             self._redirect(f"/backup?network={network}&lang={lang}" + ("&error=" + quote(f"eliminados {removed} directorios") if removed else ""))
             return
@@ -512,13 +515,16 @@ class Handler(BaseHTTPRequestHandler):
             confirm = (form.get("confirm") or [""])[0]
             verify = (form.get("verify") or ["basic"])[0]
             delete_previous = (form.get("delete_previous") or ["0"])[0] in ("1", "on", "true", "yes")
+            expect_digest = (form.get("expect_digest") or [""])[0]
             if app.backup is None:
                 self._redirect("/?lang=" + lang)
                 return
             if confirm.strip() != network:
                 self._redirect(f"/backup?network={network}&lang={lang}&error=" + quote("confirmación incorrecta"))
                 return
-            ok, message = app.backup.start_import(network, destination, filename, verify, delete_previous)
+            ok, message = app.backup.start_import(
+                network, destination, filename, verify, delete_previous, expect_digest
+            )
             query = f"network={network}&lang={lang}" + ("&started=1" if ok else "&error=" + quote(message))
             self._redirect("/backup?" + query)
             return
@@ -1329,17 +1335,31 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     leftovers = app.backup.leftovers(network) if app.backup else []
     sizes = app.backup.sizes(network) if app.backup else {"index": 0, "core": 0, "computing": False, "ready": False}
     index_bytes, core_bytes = int(sizes.get("index") or 0), int(sizes.get("core") or 0)
-    estimate = int(index_bytes * 0.55 + core_bytes * 0.95)
+    estimate = int(index_bytes * 0.55 + core_bytes)
     sizes_text = (
-        "calculando…"
+        L("calculando…", "calculating…")
         if sizes.get("computing") and not (index_bytes or core_bytes)
-        else f"{L('índice', 'index')} {fmt_bytes(index_bytes)} · Core {fmt_bytes(core_bytes)} · {L('estimado comprimido', 'estimated compressed')} ~{fmt_bytes(estimate)}"
+        else f"{L('índice', 'index')} {fmt_bytes(index_bytes)} · Core {fmt_bytes(core_bytes)} · {L('estimado', 'estimated')} ~{fmt_bytes(estimate)}"
     )
     busy_hint = (
         f'<p class="help">{h(L("Hay una copia en curso para la red " + job.get("network", ""), "A backup is running for network " + job.get("network", "")) + ".</p>")}'
         if job.get("active") and job.get("network") and job.get("network") != network else ""
     )
     notice = f'<div class="card error"><p>{h(error)}</p></div>' if error else ""
+    recovery = app.backup.recovery_notice() if app.backup else None
+    if recovery and not job.get("active"):
+        name = recovery.get("network", "")
+        if recovery.get("recovered"):
+            text = L(
+                f"Importación interrumpida en {name}: se han recuperado los datos anteriores.",
+                f"Interrupted import on {name}: previous data recovered.",
+            )
+        else:
+            text = L(
+                f"Importación interrumpida en {name}: se ha limpiado la restauración incompleta.",
+                f"Interrupted import on {name}: incomplete restore cleaned up.",
+            )
+        notice += f'<div class="card warning"><p>{h(text)}</p></div>'
     tabs = "".join(
         f'<a class="{"active" if n == network else ""}" href="/backup?network={n}&lang={lang}">{h(t(lang, f"network_{n}"))}</a>'
         for n in NETWORKS
@@ -1365,7 +1385,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
         f'<p class="help" id="no-core-hint" style="display:none">{h(L("Esta copia no incluye Core. Tras restaurarla, el índice no debe superar la punta de Core.", "This backup does not include Core. After restoring it, the index must not be ahead of Core tip."))}</p>'
     )
     cleanup_card = ""
-    if leftovers:
+    if leftovers and not job.get("active"):
         cleanup_card = f"""<div class="card">
   <h2>{h(L("Datos previos sin borrar", "Previous data not removed"))}</h2>
   <p class="help">{h(L("Quedan directorios .pre-import de una importación anterior. Solo bórralos si la red funciona bien.", "There are .pre-import directories from a previous import. Only delete them if the network works fine."))}</p>
@@ -1396,6 +1416,11 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
         elapsed = int(max(0, time.time() - float(job.get("phase_started_at") or time.time()))) if job.get("active") else 0
         elapsed_text = f"{'lleva' if lang == 'es' else 'elapsed'} {fmt_duration(elapsed)}" if job.get("active") else ""
         warnings = "".join(f'<p class="help">{h(w)}</p>' for w in list(job.get("warnings") or []))
+        digest = str(job.get("digest") or "")
+        digest_line = (
+            f'<p class="help">{h(L("Digest del índice", "Index digest"))}: <code title="{h(digest)}" style="word-break:break-all">{h(digest)}</code></p>'
+            if digest else ""
+        )
         cancel = ""
         if job.get("active"):
             cancel = f"""<form method="post" action="/backup/cancel" style="margin-top:10px">
@@ -1404,13 +1429,14 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
 </form>"""
         progress = f"""<div class="card" id="backup-progress">
   <h2>{h(L("Progreso", "Progress"))}</h2>
-  <div class="inline" style="justify-content:space-between"><span id="backup-phase">{h(job.get("message", ""))} <span class="badge" id="backup-elapsed">{h(elapsed_text)}</span></span><strong id="backup-percent">{pct:.1f}%</strong></div>
+  <div class="inline" style="justify-content:space-between"><span id="backup-phase"><span id="backup-phase-text">{h(job.get("message", ""))}</span> <span class="badge" id="backup-elapsed">{h(elapsed_text)}</span></span><strong id="backup-percent">{pct:.1f}%</strong></div>
   <div class="progress"><span id="backup-bar" style="width:{pct:.1f}%"></span></div>
   <p class="help" id="backup-detail">{h(detail)}</p>
   <p class="help" id="backup-global">{h(L("Total", "Overall"))}: {h(global_detail)}</p>
   <div class="inline" id="backup-phases">{phases}</div>
   <pre id="backup-tail">{h(chr(10).join(list(job.get("tail") or [])[-5:]))}</pre>
   {warnings}
+  {digest_line}
   <p class="error" id="backup-error">{h(job.get("error", ""))}</p>
   <p class="help"><a href="/backup/log?lang={lang}" target="_blank">{h(L("Ver log completo", "View full log"))}</a></p>
   {cancel}
@@ -1419,7 +1445,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
 {notice}
 <div class="card"><div class="tabbar">{tabs}</div>
   {busy_hint}
-  <p class="help">{h(L("Las copias incluyen el índice de e-lite y el datadir de Bitcoin Core en un solo archivo verificado. La red se detiene durante el proceso y se reactiva al terminar si estaba activa.", "Backups include the e-lite index and the Bitcoin Core datadir in one verified archive. The network stops during the process and is restarted afterwards if it was active."))}</p>
+  <p class="help">{h(L("Las copias incluyen el índice de e-lite y los datos de cadena de Bitcoin Core (blocks, chainstate, indexes) en un solo conjunto verificado. Las wallets y la configuración de Core no se copian: guárdalas aparte. La red se detiene durante el proceso y se reactiva al terminar si estaba activa.", "Backups include the e-lite index and Bitcoin Core chain data (blocks, chainstate, indexes) in one verified set. Core wallets and configuration are not copied: keep them separately. The network stops during the process and is restarted afterwards if it was active."))}</p>
   <p class="help">{h(L("Tamaños actuales:", "Current sizes:"))} <span id="backup-sizes">{h(sizes_text)}</span></p>
 </div>
 <div class="card">
@@ -1449,6 +1475,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     <p><label>{h(L("Copia", "Backup"))}</label><select name="filename">{file_options}</select></p>
     {no_core_hint}
     <p id="verify-row"><label>{h(L("Verificación", "Verification"))}</label><select name="verify"><option value="basic" selected>basic</option><option value="full">full (verifychain)</option></select></p>
+    <p id="digest-row"><label>{h(L("Digest esperado (opcional)", "Expected digest (optional)"))}</label><input type="text" name="expect_digest" maxlength="64" pattern="[0-9a-fA-F]{64}" placeholder="{h(L("64 caracteres hexadecimales", "64 hex characters"))}" autocomplete="off"></p>
     <label class="checkline"><input type="checkbox" name="delete_previous" value="1"> {h(L("Borrar los datos anteriores cuando termine", "Delete previous data when finished"))}</label>
     <p><label>{h(L("Escribe el nombre de la red para confirmar", "Type the network name to confirm"))}</label><input type="text" name="confirm" placeholder="{h(network)}" autocomplete="off"></p>
     <button type="submit" class="danger" {"disabled" if job.get("active") or not network_files else ""}>{h(L("Importar red", "Import network"))}</button>
@@ -1473,14 +1500,18 @@ if (destSelect) destSelect.addEventListener('change', () => document.querySelect
 const fileSelect = document.querySelector('select[name="filename"]');
 const coreHint = document.getElementById('no-core-hint');
 const verifyRow = document.getElementById('verify-row');
+const digestRow = document.getElementById('digest-row');
 if (fileSelect && coreHint) fileSelect.addEventListener('change', () => {{
   const option = fileSelect.options[fileSelect.selectedIndex];
   coreHint.style.display = option && option.dataset.hasCore === 'false' ? 'block' : 'none';
-  if (verifyRow) verifyRow.style.display = option && option.dataset.kind === 'bundle' ? 'none' : 'block';
+  const isBundle = option && option.dataset.kind === 'bundle';
+  if (verifyRow) verifyRow.style.display = isBundle ? 'none' : 'block';
+  if (digestRow) digestRow.style.display = isBundle ? 'none' : 'block';
 }});
 fileSelect && fileSelect.dispatchEvent(new Event('change'));
 const PHASE_LABELS = {json.dumps({k: (v[0] if lang == "es" else v[1]) for k, v in PHASE_LABELS.items()}, ensure_ascii=False)};
 const ELAPSED_LABEL = {json.dumps("lleva" if lang == "es" else "elapsed")};
+const PENDING_DETAIL = {json.dumps("tamaño y tiempo estimados cuando empiece la escritura" if lang == "es" else "size and time estimated once writing starts")};
 let wasActive = {str(bool(job.get("active"))).lower()};
 let sizesComputing = {str(bool(sizes.get("computing"))).lower()};
 async function pollSizes() {{
@@ -1506,7 +1537,7 @@ async function pollBackup() {{
     if (!s.phase_total) {{
       bar.classList.add('indeterminate'); bar.style.width = '34%';
       document.getElementById('backup-percent').textContent = '';
-      document.getElementById('backup-detail').textContent = 'tamaño y tiempo estimados cuando empiece la escritura';
+      document.getElementById('backup-detail').textContent = PENDING_DETAIL;
     }} else {{
       bar.classList.remove('indeterminate');
       const pct = Math.min(100, s.phase_percent || 0);
@@ -1516,7 +1547,8 @@ async function pollBackup() {{
     }}
     const globalNode = document.getElementById('backup-global');
     if (globalNode) globalNode.textContent = 'Total: ' + fmtBytes(s.done) + ' / ' + fmtBytes(s.total) + (s.total ? ' · ' + (100 * s.done / s.total).toFixed(1) + '%' : '');
-    document.getElementById('backup-phase').textContent = s.message || s.phase || '';
+    const phaseText = document.getElementById('backup-phase-text');
+    if (phaseText) phaseText.textContent = s.message || s.phase || '';
     document.getElementById('backup-phases').innerHTML = (s.phases || []).slice().reverse().map(x => '<span class="badge">✓ ' + (PHASE_LABELS[x.phase] || x.phase) + ' ' + x.seconds + 's</span>').join(' ');
     const elapsedNode = document.getElementById('backup-elapsed');
     if (elapsedNode) {{

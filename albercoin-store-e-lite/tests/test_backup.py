@@ -24,6 +24,14 @@ from elite.backup import (
     parse_export_output,
     restored_estimate,
     write_sidecar,
+    core_chain_paths,
+    core_complete,
+    core_packed_bytes,
+    core_tar_members,
+    import_marker,
+    import_staging,
+    index_complete,
+    valid_digest,
 )
 
 
@@ -200,6 +208,259 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(items[0]["height"], 42)
             self.assertTrue(items[0]["has_core"])
             self.assertEqual(items[0]["kind"], "bundle")
+
+    def test_core_chain_paths_follow_network_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            core = Path(directory) / "core"
+            (core / "blocks").mkdir(parents=True)
+            (core / "chainstate").mkdir()
+            (core / "blocks" / "blk00000.dat").write_bytes(b"x" * 30)
+            (core / "chainstate" / "000001.ldb").write_bytes(b"y" * 20)
+            (core / "wallets").mkdir()
+            (core / "wallets" / "wallet.dat").write_bytes(b"secret")
+            (core / "settings.json").write_text("{}")
+            self.assertEqual([p.name for p in core_chain_paths(core, "mainnet")], ["blocks", "chainstate"])
+            self.assertEqual(core_tar_members(core, "mainnet"), ["./blocks", "./chainstate"])
+            self.assertEqual(core_packed_bytes(core, "mainnet"), 50)
+            self.assertTrue(core_complete(core, "mainnet"))
+
+            signet = Path(directory) / "signet"
+            (signet / "signet" / "blocks").mkdir(parents=True)
+            (signet / "signet" / "chainstate").mkdir()
+            (signet / "signet" / "blocks" / "blk00000.dat").write_bytes(b"z" * 7)
+            (signet / "blocks").mkdir()
+            self.assertEqual(core_tar_members(signet, "signet"), ["./signet/blocks", "./signet/chainstate"])
+            self.assertEqual(core_packed_bytes(signet, "signet"), 7)
+            self.assertTrue(core_complete(signet, "signet"))
+            self.assertEqual(core_tar_members(signet, "testnet4"), [])
+
+    def test_valid_digest(self) -> None:
+        digest = "a" * 64
+        self.assertEqual(valid_digest(digest.upper()), digest)
+        self.assertEqual(valid_digest("  " + digest + "\n"), digest)
+        self.assertEqual(valid_digest("abc"), "")
+        self.assertEqual(valid_digest(""), "")
+
+    def test_import_progress_uses_staging_and_detects_stall(self) -> None:
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            target = paths.network_e_lite_data("signet")
+            staging = import_staging(paths, "signet")
+            staging.mkdir()
+            (staging / "000001.sst").write_bytes(b"x" * (2 * 1024 * 1024))
+            manager._phase("extracting-index", "Restaurando el índice…")
+            manager._progress_import_index(target, 0, 4 * 1024 * 1024, "signet")
+            status = manager.status()
+            self.assertEqual(status["phase"], "extracting-index")
+            self.assertEqual(status["phase_done"], 2 * 1024 * 1024)
+            self.assertEqual(status["phase_total"], 4 * 1024 * 1024)
+            self.assertEqual(status["phase_percent"], 50.0)
+            # No growth for PROGRESS_STALL_SECONDS means extraction finished and
+            # e-lite is recomputing the digest.
+            manager._last_bytes_at = time.monotonic() - 60
+            manager._progress_import_index(target, 0, 4 * 1024 * 1024, "signet")
+            self.assertEqual(manager.status()["phase"], "verifying-index")
+            self.assertEqual(manager.status()["phase_total"], 0)
+
+    def test_bundle_import_passes_expected_digest(self) -> None:
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            index_file = paths.exports_dir / "b.index.tar.gz"
+            index_file.write_bytes(b"index")
+            digest = "c" * 64
+            bundle = {
+                "format": BUNDLE_FORMAT,
+                "network": "signet",
+                "index_file": index_file.name,
+                "core_file": "",
+                "index_bytes": len(b"index"),
+                "index_raw_bytes": 100,
+                "core_bytes": 0,
+                "index_height": 42,
+                "index_digest": digest,
+            }
+            bundle_file = paths.exports_dir / "b.umbrel.json"
+            bundle_file.write_text(json.dumps(bundle), encoding="utf-8")
+            commands: list[list[str]] = []
+            manager._run_process = lambda command, progress, timeout: commands.append(command) or []
+            manager._stop = lambda network: None
+            manager._restart = lambda network, enabled: None
+            manager._import_bundle({"network": "signet", "delete_previous": False}, False, bundle_file)
+            index_command = [c for c in commands if "import-snapshot" in c][0]
+            self.assertIn("--expect-digest", index_command)
+            self.assertEqual(index_command[index_command.index("--expect-digest") + 1], digest)
+            self.assertEqual(manager.status()["phase"], "done")
+
+    def test_bundle_import_end_to_end_with_staged_e_lite(self) -> None:
+        import os
+        import tarfile
+        from unittest import mock
+
+        from elite.config_writer import AppPaths
+        from elite.backup import _elite_version
+
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            manager._stop = lambda network: None
+            manager._restart = lambda network, enabled: None
+            # A fake e-lite 29.11: extracts into .<name>.import-partial and
+            # renames only at the end.
+            binary = paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"
+            binary.parent.mkdir(parents=True)
+            binary.write_text(
+                "#!/bin/sh\n"
+                'root="$E_LITE_TEST_ROOT"\n'
+                'target="$root/networks/signet/e-lite"\n'
+                'staging="$(dirname "$target")/.$(basename "$target").import-partial"\n'
+                'rm -rf "$staging"; mkdir -p "$staging"\n'
+                'echo ok > "$staging/CURRENT"\n'
+                'sleep 0.2\n'
+                'mv "$staging" "$target"\n',
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+            core_file = paths.exports_dir / "x.core.tar"
+            source = Path(directory) / "core-src" / "signet" / "blocks"
+            source.mkdir(parents=True)
+            (source / "blk00000.dat").write_bytes(b"chain")
+            with tarfile.open(core_file, "w") as tar:
+                tar.add(source, arcname="signet/blocks")
+            index_file = paths.exports_dir / "x.index.tar.gz"
+            index_file.write_bytes(b"index")
+            bundle = {
+                "format": BUNDLE_FORMAT,
+                "network": "signet",
+                "index_file": index_file.name,
+                "core_file": core_file.name,
+                "index_bytes": len(b"index"),
+                "index_raw_bytes": 1024,
+                "core_bytes": core_file.stat().st_size,
+                "index_height": 7,
+                "index_digest": "a" * 64,
+            }
+            bundle_file = paths.exports_dir / "x.umbrel.json"
+            bundle_file.write_text(json.dumps(bundle), encoding="utf-8")
+            with mock.patch.dict(os.environ, {"E_LITE_TEST_ROOT": str(paths.data)}):
+                manager._import_bundle({"network": "signet", "delete_previous": True}, False, bundle_file)
+            self.assertEqual(manager.status()["phase"], "done")
+            self.assertTrue((paths.network_e_lite_data("signet") / "CURRENT").is_file())
+            self.assertTrue((paths.network_core_data("signet") / "signet" / "blocks" / "blk00000.dat").is_file())
+            self.assertFalse(import_staging(paths, "signet").exists())
+            self.assertFalse(import_marker(paths, "signet").exists())
+
+    def test_failed_bundle_import_rolls_back_and_cleans_staging(self) -> None:
+        import os
+        from unittest import mock
+
+        from elite.config_writer import AppPaths
+        from elite.backup import _elite_version
+
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            manager._stop = lambda network: None
+            manager._restart = lambda network, enabled: None
+            target = paths.network_e_lite_data("signet")
+            (target / "CURRENT").write_text("old")
+            binary = paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"
+            binary.parent.mkdir(parents=True)
+            binary.write_text(
+                "#!/bin/sh\n"
+                'root="$E_LITE_TEST_ROOT"\n'
+                'target="$root/networks/signet/e-lite"\n'
+                'staging="$(dirname "$target")/.$(basename "$target").import-partial"\n'
+                'mkdir -p "$staging"; echo partial > "$staging/CURRENT"\n'
+                'echo boom >&2; exit 1\n',
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+            index_file = paths.exports_dir / "y.index.tar.gz"
+            index_file.write_bytes(b"index")
+            bundle = {
+                "format": BUNDLE_FORMAT,
+                "network": "signet",
+                "index_file": index_file.name,
+                "core_file": "",
+                "index_bytes": len(b"index"),
+                "index_raw_bytes": 1024,
+                "core_bytes": 0,
+                "index_height": 7,
+            }
+            bundle_file = paths.exports_dir / "y.umbrel.json"
+            bundle_file.write_text(json.dumps(bundle), encoding="utf-8")
+            with mock.patch.dict(os.environ, {"E_LITE_TEST_ROOT": str(paths.data)}):
+                with self.assertRaises(RuntimeError):
+                    manager._import_bundle({"network": "signet", "delete_previous": False}, False, bundle_file)
+            self.assertEqual((target / "CURRENT").read_text(), "old")
+            self.assertFalse(import_staging(paths, "signet").exists())
+            self.assertFalse(import_marker(paths, "signet").exists())
+
+    def test_recovery_restores_previous_after_interrupted_import(self) -> None:
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            target = paths.network_e_lite_data("signet")
+            core_target = paths.network_core_data("signet")
+            previous_index = target.with_name(f"{target.name}.pre-import-1")
+            previous_core = core_target.with_name(f"{core_target.name}.pre-import-1")
+            previous_index.mkdir()
+            (previous_index / "CURRENT").write_text("ok")
+            (previous_core / "signet" / "blocks").mkdir(parents=True)
+            if target.exists():
+                target.rmdir()
+            if core_target.exists():
+                core_target.rmdir()
+            import_staging(paths, "signet").mkdir()
+            import_marker(paths, "signet").write_text("{}", encoding="utf-8")
+            self.assertEqual(manager.recover_interrupted(), 2)
+            self.assertTrue(index_complete(target))
+            self.assertTrue(core_complete(core_target, "signet"))
+            self.assertFalse(import_staging(paths, "signet").exists())
+            self.assertFalse(import_marker(paths, "signet").exists())
+            notice = manager.recovery_notice()
+            self.assertIsNotNone(notice)
+            self.assertEqual(notice["network"], "signet")
+            self.assertTrue(notice["recovered"])
+
+    def test_recovery_keeps_a_complete_target(self) -> None:
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            target = paths.network_e_lite_data("signet")
+            (target / "CURRENT").write_text("new")
+            previous = target.with_name(f"{target.name}.pre-import-1")
+            previous.mkdir()
+            (previous / "CURRENT").write_text("old")
+            import_marker(paths, "signet").write_text(json.dumps({"has_core": False}), encoding="utf-8")
+            manager.recover_interrupted()
+            self.assertEqual((target / "CURRENT").read_text(), "new")
+            self.assertTrue(previous.exists())
+            self.assertFalse(import_marker(paths, "signet").exists())
+
+    def test_cleanup_previous_refuses_while_active(self) -> None:
+        from elite.config_writer import AppPaths
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.from_root(Path(directory))
+            paths.ensure()
+            manager = BackupManager(paths, supervisor=None, settings_loader=None)
+            leftover = paths.network_root("signet") / "e-lite.pre-import-1"
+            leftover.mkdir()
+            manager._state["active"] = True
+            self.assertEqual(manager.cleanup_previous("signet"), 0)
+            self.assertTrue(leftover.exists())
 
     def test_leftovers_detection(self) -> None:
         from elite.config_writer import AppPaths

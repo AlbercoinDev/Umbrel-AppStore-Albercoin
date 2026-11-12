@@ -21,8 +21,18 @@ from .supervisor import SupervisorManager
 ALLOWED_EXTRA_ROOT = Path("/exports")
 MANIFEST_NAME = "e-lite-snapshot.json"
 BUNDLE_FORMAT = "umbrel-1"
-EXCLUDE_INDEX = {"rawtx-cache", "tor", "tls", "LOG", "LOCK", "e-lite.log", "e-lite.log.1", "banner.txt", "core-paused-by-e-lite"}
-EXCLUDE_CORE = {"debug.log", ".cookie", "bitcoind.pid", "mempool.dat", "peers.dat", "banlist.dat", "anchors.dat"}
+EXCLUDE_INDEX = {
+    "rawtx-cache", "tor", "tls", "LOG", "LOCK", "e-lite.log", "e-lite.log.1",
+    "banner.txt", "core-paused-by-e-lite", "core-child.pid", "bitcoind.log", "bitcoin",
+}
+# e-lite packs only chain data in --with-core (AUD-126). The wrapper mirrors that
+# allowlist: wallets, keys, bitcoin.conf and settings.json never enter a bundle.
+CORE_CHAIN_DIRS = ("blocks", "chainstate", "indexes")
+IMPORT_MARKER = ".import-in-progress.json"
+IMPORT_STAGING_SUFFIX = ".import-partial"
+DIGEST_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+PROGRESS_STALL_SECONDS = 20
+PROGRESS_SAMPLE_SECONDS = 5
 EXPORT_TIMEOUT_SECONDS = 6 * 3600
 IMPORT_TIMEOUT_SECONDS = 4 * 3600
 BASE_MARGIN_BYTES = 256 * 1024 * 1024
@@ -52,6 +62,55 @@ def _du(path: Path, exclude: set[str] | None = None) -> int:
             except OSError:
                 pass
     return total
+
+
+def core_chain_subdir(network: str) -> str:
+    """Chain data lives at the datadir root on mainnet and in `<chain>/` elsewhere."""
+    return "" if network == "mainnet" else network
+
+
+def core_chain_paths(core_dir: Path, network: str) -> list[Path]:
+    """Existing chain-data directories of a Core datadir, never wallets or config."""
+    sub = core_chain_subdir(network)
+    base = core_dir / sub if sub else core_dir
+    return [base / name for name in CORE_CHAIN_DIRS if (base / name).is_dir()]
+
+
+def core_packed_bytes(core_dir: Path, network: str) -> int:
+    return sum(_du(path) for path in core_chain_paths(core_dir, network))
+
+
+def core_tar_members(core_dir: Path, network: str) -> list[str]:
+    return [f"./{path.relative_to(core_dir).as_posix()}" for path in core_chain_paths(core_dir, network)]
+
+
+def core_blocks_path(core_dir: Path, network: str) -> Path:
+    sub = core_chain_subdir(network)
+    return core_dir / sub / "blocks" if sub else core_dir / "blocks"
+
+
+def import_staging(paths: AppPaths, network: str) -> Path:
+    """Sibling staging directory e-lite uses for an atomic import (AUD-141)."""
+    target = paths.network_e_lite_data(network)
+    return target.with_name(f".{target.name}{IMPORT_STAGING_SUFFIX}")
+
+
+def import_marker(paths: AppPaths, network: str) -> Path:
+    return paths.network_root(network) / IMPORT_MARKER
+
+
+def valid_digest(value: str) -> str:
+    """Normalise an expected index digest, or return an empty string."""
+    text = (value or "").strip().lower()
+    return text if DIGEST_RE.fullmatch(text) else ""
+
+
+def index_complete(path: Path) -> bool:
+    return (path / "CURRENT").is_file()
+
+
+def core_complete(core_dir: Path, network: str) -> bool:
+    return core_blocks_path(core_dir, network).is_dir()
 
 
 def free_bytes(path: Path) -> int:
@@ -221,7 +280,11 @@ def core_facts(paths: AppPaths, network: str, metrics_port: int) -> dict:
     if persisted.get("tip_height"):
         persisted["source"] = "persisted"
         return persisted
-    parsed = parse_debug_log(paths.network_core_log(network)) or parse_debug_log(paths.network_core_data(network) / "debug.log")
+    fallback_log = paths.network_core_data(network) / "debug.log"
+    sub = core_chain_subdir(network)
+    if sub:
+        fallback_log = paths.network_core_data(network) / sub / "debug.log"
+    parsed = parse_debug_log(paths.network_core_log(network)) or parse_debug_log(fallback_log)
     if parsed.get("tip_height"):
         parsed["source"] = "debug-log"
         return parsed
@@ -241,6 +304,13 @@ def write_sidecar(archive: Path, manifest: dict) -> None:
         _sidecar_path(archive).write_text(json.dumps(manifest), encoding="utf-8")
     except OSError:
         pass
+
+
+def _latest_previous(root: Path, prefix: str) -> Path | None:
+    if not root.is_dir():
+        return None
+    items = [entry for entry in root.iterdir() if entry.name.startswith(prefix)]
+    return max(items, key=lambda entry: entry.name) if items else None
 
 
 def network_leftovers(paths: AppPaths, network: str) -> list[Path]:
@@ -383,6 +453,11 @@ class BackupManager:
         self._state: dict = self._idle()
         self._sizes: dict[str, dict] = {}
         self._listing: dict[str, tuple[tuple, list[dict]]] = {}
+        self._pid: int | None = None
+        self._du_cache: dict[str, tuple[float, int]] = {}
+        self._last_bytes = 0
+        self._last_bytes_at = 0.0
+        self._recovery_notice: dict | None = None
 
     @staticmethod
     def _idle() -> dict:
@@ -412,6 +487,7 @@ class BackupManager:
             "phase_started_at": None,
             "warnings": [],
             "no_core": False,
+            "digest": "",
         }
 
     # ------------------------------------------------------------------ helpers
@@ -473,7 +549,7 @@ class BackupManager:
     def _compute_sizes(self, network: str) -> None:
         try:
             index = _du(self.paths.network_e_lite_data(network), EXCLUDE_INDEX)
-            core = _du(self.paths.network_core_data(network), EXCLUDE_CORE)
+            core = core_packed_bytes(self.paths.network_core_data(network), network)
         except OSError:
             index = core = 0
         with self._lock:
@@ -517,6 +593,8 @@ class BackupManager:
         return [{"name": entry.name, "path": str(entry)} for entry in network_leftovers(self.paths, network)]
 
     def cleanup_previous(self, network: str) -> int:
+        if self._active():
+            return 0
         removed = 0
         for entry in network_leftovers(self.paths, network):
             try:
@@ -527,6 +605,9 @@ class BackupManager:
         return removed
 
     def cleanup_stale(self) -> None:
+        self.recover_interrupted()
+        for network in NETWORKS:
+            shutil.rmtree(import_staging(self.paths, network), ignore_errors=True)
         for destination in (ALLOWED_EXTRA_ROOT, self.paths.exports_dir):
             if not destination.is_dir():
                 continue
@@ -536,6 +617,72 @@ class BackupManager:
                         entry.unlink()
                 except OSError:
                     pass
+
+    def recovery_notice(self) -> dict | None:
+        return dict(self._recovery_notice) if self._recovery_notice else None
+
+    def recover_interrupted(self) -> int:
+        """Undo the leftovers of an import interrupted by a crash or power loss.
+
+        e-lite extracts into a staging directory and only renames it into place
+        at the end (AUD-141), so a crash leaves the previous data in
+        `.pre-import-*` and no target. Without this the next start would open an
+        empty index instead of the previous one.
+        """
+        recovered = 0
+        for network in NETWORKS:
+            marker = import_marker(self.paths, network)
+            if not marker.is_file():
+                continue
+            try:
+                recovered += self._recover_network(network, marker)
+            except OSError as exc:
+                # Never block start-up: keep the marker so the next boot retries.
+                self.log(f"backup: could not recover interrupted import on {network}: {exc}")
+        return recovered
+
+    def _recover_network(self, network: str, marker: Path) -> int:
+        recovered = 0
+        target = self.paths.network_e_lite_data(network)
+        core_target = self.paths.network_core_data(network)
+        shutil.rmtree(import_staging(self.paths, network), ignore_errors=True)
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            payload = {}
+        has_core = bool(payload.get("has_core", True))
+        target_ok = index_complete(target)
+        core_ok = not has_core or core_complete(core_target, network)
+        if not (target_ok and core_ok):
+            # Half a restore is worse than none: put both previous halves back
+            # (or drop the partial data of a first install).
+            root = self.paths.network_root(network)
+            previous_index = _latest_previous(root, f"{target.name}.pre-import-")
+            previous_core = _latest_previous(root, f"{core_target.name}.pre-import-")
+            if previous_index is not None:
+                if target.exists():
+                    shutil.rmtree(target, ignore_errors=True)
+                os.replace(previous_index, target)
+                recovered += 1
+            elif target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            if has_core:
+                if previous_core is not None:
+                    if core_target.exists():
+                        shutil.rmtree(core_target, ignore_errors=True)
+                    os.replace(previous_core, core_target)
+                    recovered += 1
+                elif core_target.exists():
+                    shutil.rmtree(core_target, ignore_errors=True)
+        try:
+            marker.unlink()
+        except OSError:
+            pass
+        clear_facts(self.paths, network)
+        self._invalidate_sizes(network)
+        self._recovery_notice = {"network": network, "recovered": recovered > 0}
+        self.log(f"backup: recovered interrupted import on {network}")
+        return recovered
 
     def _update(self, **values) -> None:
         with self._lock:
@@ -559,12 +706,49 @@ class BackupManager:
         with self._lock:
             return bool(self._state.get("active"))
 
+    # ----------------------------------------------------------------- progress
+    def _written_bytes(self) -> int | None:
+        """Bytes written by the running child (`wchar`), O(1) instead of walking the tree."""
+        with self._lock:
+            pid = self._pid
+        if not pid:
+            return None
+        try:
+            for line in Path(f"/proc/{pid}/io").read_text(encoding="utf-8").splitlines():
+                if line.startswith("wchar:"):
+                    return int(line.split(":", 1)[1].strip())
+        except (OSError, ValueError):
+            return None
+        return None
+
+    def _sampled_du(self, path: Path) -> int:
+        key = str(path)
+        now = time.monotonic()
+        with self._lock:
+            cached = self._du_cache.get(key)
+        if cached and now - cached[0] < PROGRESS_SAMPLE_SECONDS:
+            return cached[1]
+        value = _du(path) if path.exists() else 0
+        with self._lock:
+            self._du_cache[key] = (now, value)
+        return value
+
+    def _import_bytes(self, path: Path) -> int:
+        written = self._written_bytes()
+        return written if written is not None else self._sampled_du(path)
+
     # -------------------------------------------------------------------- start
     def start_export(self, network: str, destination: str, compress: str = "3") -> tuple[bool, str]:
         return self._start("export", network, destination, {"compress": compress})
 
-    def start_import(self, network: str, destination: str, filename: str, verify: str = "basic", delete_previous: bool = False) -> tuple[bool, str]:
-        return self._start("import", network, destination, {"filename": filename, "verify": verify, "delete_previous": delete_previous})
+    def start_import(self, network: str, destination: str, filename: str, verify: str = "basic", delete_previous: bool = False, expect_digest: str = "") -> tuple[bool, str]:
+        digest = (expect_digest or "").strip()
+        if digest and not valid_digest(digest):
+            return False, "el digest esperado debe ser de 64 caracteres hexadecimales"
+        return self._start(
+            "import", network, destination,
+            {"filename": filename, "verify": verify, "delete_previous": delete_previous, "expect_digest": valid_digest(digest)},
+        )
 
     def cancel(self) -> bool:
         if not self._active():
@@ -663,7 +847,7 @@ class BackupManager:
         else:
             self._phase("measuring", "Calculando tamaños (puede tardar)…")
             index_raw = _du(index_dir, EXCLUDE_INDEX)
-            core_raw = _du(core_dir, EXCLUDE_CORE)
+            core_raw = core_packed_bytes(core_dir, network)
         if index_raw == 0:
             raise RuntimeError("el índice está vacío; no hay nada que exportar")
         facts = self._facts(network)
@@ -679,6 +863,10 @@ class BackupManager:
             warnings.append("los datos de Core tienen más de 24 h; podrían estar desactualizados")
         if same_device(destination, self.paths.data):
             warnings.append("el destino está en el mismo disco que los datos: no sirve como backup")
+        members = core_tar_members(core_dir, network)
+        if not members:
+            raise RuntimeError("Core no tiene datos de cadena (blocks/); no hay nada que copiar")
+        warnings.append("solo se copian los datos de cadena de Core; las wallets y bitcoin.conf se guardan aparte")
         free = free_bytes(destination)
         if free < needed:
             raise RuntimeError(
@@ -693,12 +881,7 @@ class BackupManager:
         self._stop(network)
         try:
             self._phase("packing-core", "Empaquetando Core…")
-            tar_command = [
-                "tar", "-C", str(core_dir), "-cf", str(core_file),
-                "--exclude=./debug.log", "--exclude=./.cookie", "--exclude=./bitcoind.pid",
-                "--exclude=./mempool.dat", "--exclude=./peers.dat", "--exclude=./banlist.dat",
-                "--exclude=./anchors.dat", ".",
-            ]
+            tar_command = ["tar", "-C", str(core_dir), "-cf", str(core_file), *members]
             self._run_process(tar_command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
             self._check_cancel()
             self._phase("preparing-index", "Preparando índice (apertura + digest)…")
@@ -720,6 +903,7 @@ class BackupManager:
                     "network": fallback.get("network") or "",
                     "tip_height": int(fallback.get("height") or 0),
                     "index_hash": fallback.get("hash", ""),
+                    "digest": fallback.get("digest", ""),
                 }
             if parsed.get("network") not in ("", network):
                 raise RuntimeError(f"la copia generada pertenece a {parsed.get('network')}")
@@ -746,6 +930,7 @@ class BackupManager:
                 "core_bytes": core_bytes,
                 "index_height": height,
                 "index_hash": parsed.get("index_hash", ""),
+                "index_digest": parsed.get("digest", ""),
                 "core_tip_height": tip,
                 "core_tip_hash": facts.get("tip_hash", ""),
                 "core_pruned": bool(facts.get("pruned")),
@@ -759,8 +944,8 @@ class BackupManager:
             with self._lock:
                 self._listing.clear()
             size = index_bytes + core_bytes
-            self._update(ok=True, phase="done", message=f"Copia completada · altura {height}", phase_detail="", done=size, total=size, phase_done=size, phase_total=size, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, path=str(bundle_file), warnings=warnings, finished_at=time.time())
-            self._append_job_log(f"export {bundle_file.name} (height {height}, {size} bytes)")
+            self._update(ok=True, phase="done", message=f"Copia completada · altura {height}", phase_detail="", done=size, total=size, phase_done=size, phase_total=size, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, path=str(bundle_file), warnings=warnings, digest=bundle["index_digest"], finished_at=time.time())
+            self._append_job_log(f"export {bundle_file.name} (height {height}, {size} bytes, digest {bundle['index_digest'] or 'n/d'})")
             self._restart(network, enabled)
         except BaseException:
             cleanup_tmp_files(index_file)
@@ -826,20 +1011,62 @@ class BackupManager:
     def _prepare_targets(self, network: str) -> tuple[Path, Path, Path, Path]:
         target = self.paths.network_e_lite_data(network)
         core_target = self.paths.network_core_data(network)
-        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        # Unique even if two imports land in the same second.
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime()) + f"-{time.time_ns() % 1_000_000:06d}"
         previous_index = target.with_name(f"{target.name}.pre-import-{stamp}")
         previous_core = core_target.with_name(f"{core_target.name}.pre-import-{stamp}")
         return target, core_target, previous_index, previous_core
 
-    def _rollback(self, target: Path, core_target: Path, previous_index: Path, previous_core: Path) -> None:
+    def _write_marker(self, network: str, has_core: bool) -> None:
+        marker = import_marker(self.paths, network)
+        try:
+            marker.write_text(
+                json.dumps({"network": network, "started": int(time.time()), "has_core": bool(has_core)}),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def _clear_marker(self, network: str) -> None:
+        try:
+            import_marker(self.paths, network).unlink()
+        except OSError:
+            pass
+
+    def _rollback(self, target: Path, core_target: Path, previous_index: Path, previous_core: Path, core_touched: bool) -> bool:
+        """Put the previous data back. Returns False when it could not be restored."""
+        ok = True
         if previous_index.exists():
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            os.replace(previous_index, target)
-        if previous_core.exists():
-            if core_target.exists():
+            try:
+                if target.exists():
+                    shutil.rmtree(target, ignore_errors=True)
+                os.replace(previous_index, target)
+            except OSError:
+                ok = False
+        elif target.exists():
+            # First install: there is nothing to restore, drop the partial data.
+            shutil.rmtree(target, ignore_errors=True)
+        if core_touched:
+            if previous_core.exists():
+                try:
+                    if core_target.exists():
+                        shutil.rmtree(core_target, ignore_errors=True)
+                    os.replace(previous_core, core_target)
+                except OSError:
+                    ok = False
+            elif core_target.exists():
                 shutil.rmtree(core_target, ignore_errors=True)
-            os.replace(previous_core, core_target)
+        return ok
+
+    def _import_command(self, network: str, archive: Path, expect_digest: str = "") -> list[str]:
+        command = [
+            str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
+            "import-snapshot", "--config", str(self.paths.network_config_file(network)), "--input", str(archive),
+        ]
+        digest = valid_digest(expect_digest)
+        if digest:
+            command += ["--expect-digest", digest]
+        return command
 
     def _import_bundle(self, args: dict, enabled: bool, bundle_file: Path) -> None:
         network = args["network"]
@@ -863,9 +1090,12 @@ class BackupManager:
         warnings: list[str] = []
         if not has_core:
             warnings.append("esta copia no incluye Core; el índice no debe superar la punta actual de Core")
+        if valid_digest(str(bundle.get("index_digest") or "")):
+            warnings.append("se comprobará el digest del índice guardado en la copia")
         self._update(total=total, space_needed=needed, path=str(bundle_file), warnings=warnings, no_core=not has_core)
         self._stop(network)
         target, core_target, previous_index, previous_core = self._prepare_targets(network)
+        self._write_marker(network, has_core)
         if target.exists():
             os.replace(target, previous_index)
         if has_core and core_target.exists():
@@ -878,27 +1108,27 @@ class BackupManager:
                 self._run_process(command, lambda: self._progress_import_core(core_target, core_bytes, total), IMPORT_TIMEOUT_SECONDS)
                 self._check_cancel()
             self._phase("extracting-index", "Restaurando el índice…")
-            command = [
-                str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
-                "import-snapshot", "--config", str(self.paths.network_config_file(network)), "--input", str(index_file),
-            ]
-            self._run_process(command, lambda: self._progress_import_index(target, core_bytes, total), IMPORT_TIMEOUT_SECONDS)
+            command = self._import_command(network, index_file, str(bundle.get("index_digest") or ""))
+            self._run_process(command, lambda: self._progress_import_index(target, core_bytes, total, network), IMPORT_TIMEOUT_SECONDS)
             self._check_cancel()
             self._phase("finalizing", "Validando datos restaurados…")
-            if has_core and not (core_target / "blocks").is_dir():
+            if has_core and not core_complete(core_target, network):
                 raise RuntimeError("el Core restaurado no contiene blocks/")
-            if args.get("delete_previous"):
-                shutil.rmtree(previous_index, ignore_errors=True)
-                shutil.rmtree(previous_core, ignore_errors=True)
         except BaseException:
-            self._rollback(target, core_target, previous_index, previous_core)
+            shutil.rmtree(import_staging(self.paths, network), ignore_errors=True)
+            if self._rollback(target, core_target, previous_index, previous_core, has_core):
+                self._clear_marker(network)
             raise
+        self._clear_marker(network)
         clear_facts(self.paths, network)
         self._invalidate_sizes(network)
         with self._lock:
             self._listing.clear()
-        self._update(ok=True, phase="done", message=f"Restaurado a altura {bundle.get('index_height', 0)}", phase_detail="", done=total, total=total, phase_done=total, phase_total=total, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, finished_at=time.time())
-        self._append_job_log(f"import {bundle_file.name} (height {bundle.get('index_height')})")
+        if args.get("delete_previous"):
+            shutil.rmtree(previous_index, ignore_errors=True)
+            shutil.rmtree(previous_core, ignore_errors=True)
+        self._update(ok=True, phase="done", message=f"Restaurado a altura {bundle.get('index_height', 0)}", phase_detail="", done=total, total=total, phase_done=total, phase_total=total, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, digest=str(bundle.get("index_digest") or ""), finished_at=time.time())
+        self._append_job_log(f"import {bundle_file.name} (height {bundle.get('index_height')}, digest {bundle.get('index_digest') or 'n/d'})")
         self._restart(network, enabled)
 
     def _import_snapshot(self, args: dict, enabled: bool, archive: Path) -> None:
@@ -917,24 +1147,25 @@ class BackupManager:
         warnings: list[str] = []
         if not core_section:
             warnings.append("esta copia no incluye Core; el índice no debe superar la punta actual de Core")
+        expected = valid_digest(str(args.get("expect_digest") or ""))
+        if expected:
+            warnings.append("se comprobará el digest esperado indicado")
         self._update(total=total, space_needed=needed, path=str(archive), warnings=warnings, no_core=not core_section)
         self._stop(network)
         target, core_target, previous_index, previous_core = self._prepare_targets(network)
+        self._write_marker(network, bool(core_section))
         if target.exists():
             os.replace(target, previous_index)
         if core_section and core_target.exists():
             os.replace(core_target, previous_core)
-        command = [
-            str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
-            "import-snapshot", "--config", str(self.paths.network_config_file(network)), "--input", str(archive),
-        ]
+        command = self._import_command(network, archive, expected)
         if args.get("verify") == "basic":
             command += ["--verify", "basic"]
         elif args.get("verify") == "full":
             command += ["--verify", "full"]
         try:
             self._phase("extracting-index", "Restaurando el snapshot…")
-            self._run_process(command, lambda: self._progress_import_index(target, 0, total), IMPORT_TIMEOUT_SECONDS)
+            self._run_process(command, lambda: self._progress_import_index(target, 0, total, network), IMPORT_TIMEOUT_SECONDS)
             self._check_cancel()
             restored_core = target / "bitcoin"
             if core_section:
@@ -943,31 +1174,42 @@ class BackupManager:
                 if core_target.exists():
                     shutil.rmtree(core_target, ignore_errors=True)
                 os.replace(restored_core, core_target)
-            if args.get("delete_previous"):
-                shutil.rmtree(previous_index, ignore_errors=True)
-                shutil.rmtree(previous_core, ignore_errors=True)
         except BaseException:
-            self._rollback(target, core_target, previous_index, previous_core)
+            shutil.rmtree(import_staging(self.paths, network), ignore_errors=True)
+            if self._rollback(target, core_target, previous_index, previous_core, bool(core_section)):
+                self._clear_marker(network)
             raise
+        self._clear_marker(network)
         clear_facts(self.paths, network)
         self._invalidate_sizes(network)
         with self._lock:
             self._listing.clear()
-        self._update(ok=True, phase="done", message=f"Restaurado a altura {manifest.get('height', 0)}", phase_detail="", done=total, total=total, phase_done=total, phase_total=total, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, finished_at=time.time())
+        if args.get("delete_previous"):
+            shutil.rmtree(previous_index, ignore_errors=True)
+            shutil.rmtree(previous_core, ignore_errors=True)
+        self._update(ok=True, phase="done", message=f"Restaurado a altura {manifest.get('height', 0)}", phase_detail="", done=total, total=total, phase_done=total, phase_total=total, phase_percent=100.0, phase_eta_seconds=0, eta_seconds=0, digest=expected, finished_at=time.time())
         self._append_job_log(f"import {archive.name} (height {manifest.get('height')})")
         self._restart(network, enabled)
 
     def _progress_import_core(self, core_target: Path, core_bytes: int, total: int) -> None:
-        done = _du(core_target) if core_target.exists() else 0
+        done = self._import_bytes(core_target)
         self._update(phase_detail=f"Core {_fmt(done)} / {_fmt(core_bytes)}")
         self._set_progress(done, total, done, core_bytes)
 
-    def _progress_import_index(self, target: Path, core_bytes: int, total: int) -> None:
-        done = _du(target) if target.exists() else 0
+    def _progress_import_index(self, target: Path, core_bytes: int, total: int, network: str) -> None:
+        staging = import_staging(self.paths, network)
+        done = self._import_bytes(staging if staging.exists() else target)
         index_total = max(0, total - core_bytes)
+        now = time.monotonic()
+        if done > self._last_bytes:
+            self._last_bytes = done
+            self._last_bytes_at = now
         with self._lock:
             phase = self._state.get("phase")
-        if phase == "extracting-index" and index_total and done >= index_total * 0.999:
+        # Ignore the first bytes of start-up logging: only a writer that has
+        # already produced real data can be "stalled" by the digest pass.
+        stalled = done > 1024 * 1024 and bool(self._last_bytes_at) and (now - self._last_bytes_at) >= PROGRESS_STALL_SECONDS
+        if phase == "extracting-index" and done > 0 and ((index_total and done >= index_total * 0.999) or stalled):
             self._phase("verifying-index", "Verificando el índice restaurado…")
             self._set_progress(core_bytes + done, total, 0, 0)
             return
@@ -975,8 +1217,12 @@ class BackupManager:
             self._update(phase_detail="Comprobando digest del índice restaurado…")
             self._set_progress(core_bytes + done, total, 0, 0)
             return
-        self._update(phase_detail=f"Índice {_fmt(done)} / {_fmt(index_total)}")
-        self._set_progress(core_bytes + done, total, done, index_total)
+        if index_total:
+            self._update(phase_detail=f"Índice {_fmt(done)} / {_fmt(index_total)}")
+            self._set_progress(core_bytes + done, total, done, index_total)
+        else:
+            self._update(phase_detail=f"Índice restaurado: {_fmt(done)}")
+            self._set_progress(core_bytes + done, max(total, core_bytes + done), 0, 0)
 
     # ------------------------------------------------------------------ process
     def _run_process(self, command: list[str], progress, timeout: int) -> list[str]:
@@ -990,6 +1236,11 @@ class BackupManager:
         reader = threading.Thread(target=lambda: self._drain(process, lines), daemon=True)
         reader.start()
         deadline = time.time() + timeout
+        with self._lock:
+            self._pid = process.pid
+            self._last_bytes = 0
+            self._last_bytes_at = time.monotonic()
+            self._du_cache.clear()
         try:
             while process.poll() is None:
                 if self._cancel.is_set():
@@ -1011,6 +1262,9 @@ class BackupManager:
                 except OSError:
                     pass
             raise
+        finally:
+            with self._lock:
+                self._pid = None
         reader.join(timeout=5)
         self._update(log=lines[-40:])
         if process.returncode != 0:

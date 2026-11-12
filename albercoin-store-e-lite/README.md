@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.10.0-11`
+- Versión: `0.1.0-alpha.29.11.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.10.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.11.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,7 +72,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.10.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.11.0 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -224,28 +224,32 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 
 La pestaña **Copias** de la navegación centraliza todo el panel: pestañas por
 red, destino, exportación, importación, progreso y limpieza. La copia incluye el
-índice de e-lite y el datadir de Bitcoin Core en un único `.tar.gz` verificado
-(formato 2). El proceso detiene la red si estaba activa, ejecuta el trabajo y
-la reactiva al terminar.
+índice de e-lite y los **datos de cadena** de Bitcoin Core (`blocks/`,
+`chainstate/`, `indexes/`) en tres archivos verificables. El proceso detiene la
+red si estaba activa, ejecuta el trabajo y la reactiva al terminar.
 
 - **Destino**: `/exports` si has concedido una carpeta del disco externo en
   Ajustes de la app → Almacenamiento; si no, `data/exports` (muévelo desde
   Files → Apps → e-lite).
 - **Exportar**: elige solo la compresión gzip. Hace el snapshot del índice y
-  empaqueta el datadir de Core con `tar` tras parar la red, **sin arrancar
-  ninguna sonda de Core**.
+  empaqueta los datos de cadena de Core con `tar` tras parar la red, **sin
+  arrancar ninguna sonda de Core**. Nunca copia wallets, claves onion/I2P,
+  `bitcoin.conf` ni `settings.json`: guárdalos aparte si los usas.
 - La punta, altura de poda y versión de Core se leen de `/status` antes de
   parar y se guardan en `core-facts.json` por red. Si la red ya está parada se
   usan esos datos; si no existen, se extraen de `debug.log`. La sonda de Core
   se ha eliminado por completo.
 - La copia son tres archivos: `.index.tar.gz`, `.core.tar` y `.umbrel.json`
-  (con tamaños exactos, altura, punta/poda de Core y versión). La importación
-  valida red, tamaños y coherencia antes de restaurar.
+  (con tamaños exactos, altura, punta/poda de Core, versión y digest del
+  índice). La importación valida red, tamaños y coherencia antes de restaurar,
+  y pasa ese digest a e-lite con `--expect-digest`.
 - El espacio necesario usa el tamaño real del manifiesto más un margen del
   10 % (mínimo 256 MiB).
-- El progreso es **por fase**: medir, parar, empaquetar Core, preparar índice
-  (apertura + digest), empaquetar índice, validar y reactivar; cada fase con su
-  barra, contador y tiempo. El total del trabajo se muestra aparte.
+- El progreso es **por fase**. Exportar: medir, parar, empaquetar Core,
+  preparar índice (apertura + digest), empaquetar índice, validar y reactivar.
+  Importar: parar, restaurar Core, restaurar índice, verificar el digest,
+  validar y reactivar. Cada fase tiene su barra, contador y tiempo; el total
+  del trabajo se muestra aparte.
 - La exportación lee altura y hash de la salida de e-lite, sin descomprimir el
   archivo recién creado (el manifiesto va al final del tar).
 - Se puede **cancelar** un trabajo; se mata el grupo de procesos, se limpian
@@ -253,17 +257,25 @@ la reactiva al terminar.
 - Tras importar se invalidan `core-facts.json` y la caché de tamaños.
 - **Importar**: comprueba el espacio necesario en el disco de datos. Los datos
   anteriores se conservan por defecto (`.pre-import-*`) y se pueden eliminar
-  desde el panel cuando la red funciona.
+  desde el panel cuando la red funciona. El botón de limpieza se bloquea
+  mientras hay una copia en curso.
+- e-lite 29.11 extrae en un directorio oculto `.e-lite.import-partial` y lo
+  renombra al final; el panel mide los bytes escritos por el proceso, muestra
+  la fase de verificación del digest y limpia el staging si se cancela.
+- Si un corte de luz interrumpe una importación, al arrancar se recuperan
+  automáticamente los datos anteriores y se avisa en el panel.
 - Los trabajos tienen límite de tiempo y cancelación segura (mata el grupo de
-  procesos). Los `.tmp` parciales se limpian al terminar o al arrancar la app.
+  procesos). Los `.tmp` y el staging parcial se limpian al terminar o al
+  arrancar la app.
 - El progreso muestra la salida del proceso en vivo y la duración de cada fase.
-- **Importar**: restaura en un directorio vacío, verifica el snapshot y mueve
-  el Core restaurado a `data/networks/<red>/core`. Si falla, recupera los
-  datos anteriores.
+- Los snapshots de e-lite se pueden importar con un digest esperado opcional;
+  los bundles usan el que guardaron al exportar. Los bundles antiguos siguen
+  siendo válidos.
 - La barra muestra fase, bytes copiados, total estimado y tiempo restante.
 - Las bases de datos y las copias quedan **excluidas** del backup de Umbrel
   (`data/networks`, `data/exports`); la configuración, CA, TLS y onion sí se
-  incluyen.
+  incluyen. Al restaurar no se toca `data/config`, así que se conservan la CA,
+  los certificados y la identidad onion.
 - La red se para durante la copia: el índice abre RocksDB en exclusiva y Core
   debe estar detenido para que el datadir sea consistente.
 
@@ -282,6 +294,7 @@ data/
   networks/<red>/
     e-lite/                         # índice, logs y pid de Core
     core/                           # datadir de Bitcoin Core
+  exports/                          # copias exportadas (excluidas del backup de Umbrel)
   runtime/                          # e-lite, Core y Tor verificados
   logs/                             # logs del controlador y consolas
 ```

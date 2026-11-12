@@ -410,7 +410,7 @@ FIELD_HELP: dict[str, tuple[str, str]] = {
     "server.rate_limit": ("Peticiones por segundo y por cliente. Auto usa 200 para todos los clientes; las peticiones esperan al agotarse la ráfaga. 0 desactiva el límite.", "Requests per second per client. Auto uses 200 for all clients; requests wait when the burst is exhausted. 0 disables the limit."),
     "server.rate_burst": ("Tokens iniciales de ráfaga por cliente. Auto usa 5000. Mínimo 1.", "Initial burst tokens per client. Auto uses 5000. Minimum 1."),
     "rawtx.enabled": ("Resuelve transacciones antiguas podadas desde fuentes externas verificadas.", "Resolves old pruned transactions from verified external sources."),
-    "rawtx.cache_mib": ("Caché LRU de transacciones validadas. 0 la desactiva.", "LRU cache of validated transactions. 0 disables it."),
+    "rawtx.cache_mib": ("Presupuesto total de la caché de transacciones verificadas; una cuarta parte (máx. 64 MiB) se reserva para bloques de reparación. 0 la desactiva.", "Total budget of the verified transaction cache; a quarter (max 64 MiB) is kept for repair blocks. 0 disables it."),
     "rawtx.decoys": ("Bloques extra por búsqueda para reducir correlación.", "Extra blocks per fetch to reduce correlation."),
     "rawtx.use_p2p": ("Cliente P2P mínimo para reparar huecos de poda.", "Minimal P2P client used to repair pruning gaps."),
     "rawtx.use_esplora": ("Fuentes Esplora para reparar huecos de poda.", "Esplora sources used to repair pruning gaps."),

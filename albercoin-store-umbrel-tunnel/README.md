@@ -51,14 +51,14 @@ un puerto público personalizable. Los servicios del sistema (SSH/panel de
 umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir un
 servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.4.1
+## Actualizar a 1.4.2
 
 Actualiza primero el VPS y después esta app desde la tienda de Umbrel.
 
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
 sudo umbrel-tunnel update
-umbrel-tunnel version   # 1.4.1
+umbrel-tunnel version   # 1.4.2
 sudo umbrel-tunnel doctor
 ```
 
@@ -76,9 +76,16 @@ sudo umbrel-tunnel update \
   --from "https://github.com/AlbercoinDev/umbrel-tunnel/releases/latest/download/umbrel-tunnel-linux-$(dpkg --print-architecture)"
 ```
 
-La revisión 1.4.1 coordina la rotación WireGuard por el túnel anterior y confirma
+La revisión 1.4.2 refuerza la seguridad: el panel rechaza (403) las peticiones
+que llegan por el túnel WireGuard, el instalador del VPS está fijado al tag de la
+release y verifica el SHA256 del binario, un `config.json` corrupto se recupera
+de la última copia válida en lugar de sustituirse por valores por defecto, y una
+rotación interrumpida por un reinicio se confirma o se revierte al arrancar.
+Actualiza **primero el VPS a 1.4.2**.
+
+Desde 1.4.1 la app coordina la rotación WireGuard por el túnel anterior y confirma
 el nuevo; si no se confirma, el VPS restaura la clave anterior en aproximadamente
-un minuto. Requiere actualizar **primero el VPS a 1.4.1**. Desvincular limpia las
+un minuto. Desvincular limpia las
 publicaciones antes de retirar el peer y conserva la conexión si falla. Si el
 VPS es irrecuperable, la segunda confirmación permite olvidar la conexión solo
 en Umbrel; debes comprobar y retirar las reglas/peer remotos por SSH.

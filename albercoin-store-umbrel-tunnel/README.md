@@ -51,14 +51,45 @@ un puerto público personalizable. Los servicios del sistema (SSH/panel de
 umbrelOS) se detectan aparte. Si una app no aparece, puedes añadir un
 servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
-## Actualizar a 1.4.2
+## VPS compartido: varios Umbrel, cada uno con su dominio
+
+Desde 1.5.0 un mismo VPS puede dar servicio a varios Umbrel. Cada uno tiene su
+propio dominio público, su token y su IP en el túnel. Dos Umbrel pueden
+publicar la misma app en el mismo puerto y el VPS decide por el dominio:
+
+| Publicación | ¿Mismo puerto en dos Umbrel? |
+| --- | --- |
+| HTTPS (443) y HTTP | Sí, con dominios distintos (`Host`/SNI) |
+| TLS añadido (p. ej. Electrs 50002) | Sí, con dominios distintos (SNI) |
+| TCP o UDP directo | No: cada puerto es de un solo Umbrel |
+
+Cada Umbrel solo ve y cambia sus propias publicaciones, solo usa su dominio y
+no puede alcanzar a los demás por el túnel. Crea para cada dominio un registro A
+(o wildcard) hacia la IP del VPS.
+
+Añadir otro Umbrel: en su app escribe la IP del VPS y rellena **VPS compartido:
+dominio de este Umbrel**; ejecuta en el VPS el comando `umbrel-tunnel peer add …`
+que genera y pega el bloque `ut1` resultante.
+
+Convertir el Umbrel que ya usaba el VPS (para que deje de tener el token de
+administración):
+
+```sh
+umbrel-tunnel peer list
+sudo umbrel-tunnel peer claim <ID> --domain casa.example.com   # pega el ut1 en su app
+sudo umbrel-tunnel token rotate
+```
+
+Detalles en el [README del proyecto](https://github.com/AlbercoinDev/umbrel-tunnel#vps-compartido-varios-umbrel-con-dominio-propio).
+
+## Actualizar a 1.5.0
 
 Actualiza primero el VPS y después esta app desde la tienda de Umbrel.
 
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
 sudo umbrel-tunnel update
-umbrel-tunnel version   # 1.4.2
+umbrel-tunnel version   # 1.5.0
 sudo umbrel-tunnel doctor
 ```
 
@@ -76,12 +107,14 @@ sudo umbrel-tunnel update \
   --from "https://github.com/AlbercoinDev/umbrel-tunnel/releases/latest/download/umbrel-tunnel-linux-$(dpkg --print-architecture)"
 ```
 
-La revisión 1.4.2 refuerza la seguridad: el panel rechaza (403) las peticiones
+La revisión 1.5.0 permite compartir un VPS entre varios Umbrel (sección anterior).
+Actualiza **primero el VPS a 1.5.0**.
+
+Desde 1.4.2 se refuerza la seguridad: el panel rechaza (403) las peticiones
 que llegan por el túnel WireGuard, el instalador del VPS está fijado al tag de la
 release y verifica el SHA256 del binario, un `config.json` corrupto se recupera
 de la última copia válida en lugar de sustituirse por valores por defecto, y una
 rotación interrumpida por un reinicio se confirma o se revierte al arrancar.
-Actualiza **primero el VPS a 1.4.2**.
 
 Desde 1.4.1 la app coordina la rotación WireGuard por el túnel anterior y confirma
 el nuevo; si no se confirma, el VPS restaura la clave anterior en aproximadamente

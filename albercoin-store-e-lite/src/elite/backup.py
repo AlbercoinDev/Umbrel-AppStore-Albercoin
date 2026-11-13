@@ -175,7 +175,9 @@ def read_head_manifest(archive: Path) -> dict | None:
     a whole archive just to read metadata.
     """
     try:
-        with tarfile.open(archive, "r:gz") as tar:
+        # Streaming mode: reading the head must not decompress the whole
+        # archive just to discover metadata.
+        with tarfile.open(archive, "r|gz") as tar:
             member = tar.next()
             if member is None or member.name != HEAD_NAME:
                 return None

@@ -164,7 +164,15 @@ class ConfigWriterTests(unittest.TestCase):
             # The wrapper states its privacy posture explicitly so it does not
             # drift with upstream defaults.
             self.assertEqual(data["core"]["network"], "auto")
-            self.assertEqual(data["rawtx"], {"tor_fallback_clearnet": False, "prefetch": False})
+            self.assertEqual(
+                data["rawtx"],
+                {
+                    "tor_fallback_clearnet": False,
+                    "prefetch": False,
+                    "tor_request_timeout_seconds": 20,
+                    "max_parallel_fetches": 4,
+                },
+            )
 
     def test_plain_listener_and_privacy_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -186,6 +194,23 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertTrue(data["rawtx"]["tor_fallback_clearnet"])
             self.assertTrue(data["rawtx"]["prefetch"])
             self.assertEqual(data["core"]["network"], "private")
+
+    def test_sparrow_first_load_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths)
+            self.assertTrue(data["server"]["advertise_electrumx_compat"])
+            self.assertEqual(data["rawtx"]["tor_request_timeout_seconds"], 20)
+            self.assertEqual(data["rawtx"]["max_parallel_fetches"], 4)
+            config = NetworkConfig(overrides={
+                "server.advertise_electrumx_compat": False,
+                "rawtx.tor_request_timeout_seconds": 35,
+                "rawtx.max_parallel_fetches": 8,
+            })
+            _, data = self._build("signet", config, paths)
+            self.assertFalse(data["server"]["advertise_electrumx_compat"])
+            self.assertEqual(data["rawtx"]["tor_request_timeout_seconds"], 35)
+            self.assertEqual(data["rawtx"]["max_parallel_fetches"], 8)
 
     def test_overrides_are_written(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

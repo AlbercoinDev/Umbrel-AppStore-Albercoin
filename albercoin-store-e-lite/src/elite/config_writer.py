@@ -268,6 +268,9 @@ def build_config(
         ("tls_listen", f"0.0.0.0:{tls_port}"),
         ("tls_cert", str(paths.network_certificate_chain(network))),
         ("tls_key", str(paths.network_certificate_key(network))),
+        # Sparrow only batches JSON-RPC for banners it recognises; the banner
+        # still names e-lite. On by default for a fast first wallet load.
+        ("advertise_electrumx_compat", value("server.advertise_electrumx_compat")),
     ]
     if present("server.max_clients"):
         server_values.append(("max_clients", value("server.max_clients")))
@@ -288,6 +291,8 @@ def build_config(
     rawtx_values: list[tuple[str, Any]] = [
         ("tor_fallback_clearnet", value("rawtx.tor_fallback_clearnet")),
         ("prefetch", value("rawtx.prefetch")),
+        ("tor_request_timeout_seconds", value("rawtx.tor_request_timeout_seconds")),
+        ("max_parallel_fetches", value("rawtx.max_parallel_fetches")),
     ]
     for key in (
         "rawtx.enabled",

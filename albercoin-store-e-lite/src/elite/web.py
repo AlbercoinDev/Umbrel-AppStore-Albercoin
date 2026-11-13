@@ -1124,6 +1124,16 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
         ("Dirección Tor disponible", "Tor address available", bool(network.onion)),
         ("Versiones e-lite / Core / Tor", "Versions e-lite / Core / Tor", f"{E_LITE_VERSION} / {BITCOIN_VERSION} / {TOR_VERSION}"),
     ]
+    rawtx = live.get("rawtx") or {}
+    failures = rawtx.get("tx_get_failures") or {}
+    if isinstance(failures, dict):
+        active = {str(k): int(v) for k, v in failures.items() if isinstance(v, (int, float)) and v}
+        if active:
+            rows.append((
+                "Fallos tx.get",
+                "tx.get failures",
+                ", ".join(f"{key} {value}" for key, value in active.items()),
+            ))
     for key, es, en in (
         ("index_bytes", "Índice en disco", "Index on disk"),
         ("txids_bytes", "TXIDs en disco", "TXIDs on disk"),

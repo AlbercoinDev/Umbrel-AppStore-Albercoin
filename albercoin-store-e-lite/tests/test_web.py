@@ -61,6 +61,9 @@ class WebTests(unittest.TestCase):
         self.assertIn('name="value__rawtx.tor_fallback_clearnet"', body)
         self.assertIn('name="value__rawtx.prefetch"', body)
         self.assertIn('name="value__core.network"', body)
+        self.assertIn('name="value__server.advertise_electrumx_compat"', body)
+        self.assertIn('name="value__rawtx.tor_request_timeout_seconds"', body)
+        self.assertIn('name="value__rawtx.max_parallel_fetches"', body)
         self.assertNotIn('name="enabled_mainnet"', body)
         self.assertNotIn('action="/networks?', body)
         self.assertIn('Auto usa 200', body)
@@ -95,6 +98,23 @@ class WebTests(unittest.TestCase):
         # The polling code must update the inner node, never the span that holds the badge.
         self.assertIn("backup-phase-text", body)
         self.assertNotIn("document.getElementById('backup-phase').textContent", body)
+
+    def test_tx_get_failure_row(self) -> None:
+        from types import SimpleNamespace
+        from elite.web import _detail_rows
+
+        network = SimpleNamespace(
+            live={"rawtx": {"tx_get_failures": {"no_source": 3, "external_failed": 1, "not_found": 0}}},
+            core_height=100,
+            headers=100,
+            tls={},
+            onion="",
+        )
+        body = _detail_rows(network, "es")
+        self.assertIn("Fallos tx.get", body)
+        self.assertIn("no_source 3", body)
+        self.assertIn("external_failed 1", body)
+        self.assertNotIn("not_found 0", body)
 
     def test_tabs_connections_and_visible_logs(self) -> None:
         _, _, body = self.get('/?network=signet')

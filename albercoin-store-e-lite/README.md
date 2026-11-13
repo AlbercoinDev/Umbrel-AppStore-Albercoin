@@ -199,9 +199,10 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   `core.cgroup_io_weight` (io.weight 1–10000, requiere delegación),
   `index.adaptive_memtables`, `index.prefetch_deadline_ms` (50–60000 ms),
   `core.network` (`auto`/`private`/`clearnet`),
-  `rawtx.tor_fallback_clearnet`, `rawtx.prefetch` y `server.plain_lan`. Las
-  opciones de privacidad siguen los valores seguros de e-lite 29.12 por
-  defecto (Tor-only, sin precarga, plano en LAN para compatibilidad).
+  `rawtx.tor_fallback_clearnet`, `rawtx.prefetch` y `server.plain_lan`. Se
+  mantienen los valores privados de e-lite 29.12 (Tor-only y sin precarga);
+  el listener plano sigue en la LAN por compatibilidad y se puede mover a
+  localhost.
 - La poda normal reserva 20 GiB libres y avanza cada 5.000 bloques; la poda de
   emergencia por poco disco sigue saltándose ambos límites.
 - Discos ZFS y overlay se detectan como clase propia y usan el perfil SSD.
@@ -350,7 +351,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.12.1-01@sha256:9545678437be1a4caac1180a4c95fa54ff7bd4d2836e9f51ed6dbdcc5d5b224f
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.12.1-01@sha256:178a3fca934a5b671069cede6f631fe0d10e2cc02378013528c09f5b864495c4
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -360,7 +361,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.12.1-01@sha256:9545678437be1a4caac1180a4c95fa54ff7bd4d2836e9f51ed6dbdcc5d5b224f
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.12.1-01@sha256:178a3fca934a5b671069cede6f631fe0d10e2cc02378013528c09f5b864495c4
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.

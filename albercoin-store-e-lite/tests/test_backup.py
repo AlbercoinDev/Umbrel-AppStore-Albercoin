@@ -10,6 +10,7 @@ from pathlib import Path
 
 from elite.backup import (
     BUNDLE_FORMAT,
+    HEAD_NAME,
     bundle_space_needed,
     space_margin,
     validate_bundle,
@@ -19,8 +20,10 @@ from elite.backup import (
     cleanup_tmp_files,
     export_tmp_candidates,
     network_leftovers,
+    read_head_manifest,
     read_manifest,
     _bundle_files,
+    _snapshot_files,
     parse_export_output,
     restored_estimate,
     write_sidecar,
@@ -67,6 +70,74 @@ class BackupTests(unittest.TestCase):
             tmp.write_bytes(b"partial")
             cleanup_tmp_files(output)
             self.assertFalse(tmp.exists())
+
+    def _format3_archive(self, directory: Path, head: dict, full: dict) -> Path:
+        import gzip
+        from io import BytesIO
+
+        buffer = BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as tar:
+            for name, payload in (
+                (HEAD_NAME, json.dumps(head).encode()),
+                ("000001.sst", b"x" * 5000),
+                ("e-lite-snapshot.json", json.dumps(full).encode()),
+            ):
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                tar.addfile(info, BytesIO(payload))
+        raw = buffer.getvalue()
+        archive = directory / "format3.tar.gz"
+        cut = len(raw) // 2
+        # Same layout e-lite 29.12 writes: one tar stream split into one gzip
+        # member for the stored index and another for the Core section.
+        with archive.open("wb") as handle:
+            with gzip.GzipFile(fileobj=handle, mode="wb", compresslevel=0) as gz:
+                gz.write(raw[:cut])
+            with gzip.GzipFile(fileobj=handle, mode="wb", compresslevel=3) as gz:
+                gz.write(raw[cut:])
+        return archive
+
+    def test_format3_manifest_and_head_are_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            head = {"format": 3, "network": "signet", "height": 42, "hash": "a" * 64}
+            full = {"format": 3, "network": "signet", "height": 42, "hash": "a" * 64, "core": {"bytes": 0}}
+            archive = self._format3_archive(root, head, full)
+            self.assertEqual(read_head_manifest(archive), head)
+            self.assertEqual(read_manifest(archive), full)
+
+    def test_listing_uses_format3_head(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            head = {"format": 3, "network": "signet", "height": 42, "hash": "a" * 64, "core": {"tip_height": 40}}
+            full = dict(head, core={"bytes": 10})
+            archive = self._format3_archive(root, head, full)
+            items = _snapshot_files(root)
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["network"], "signet")
+            self.assertEqual(items[0]["height"], 42)
+            self.assertEqual(items[0]["format"], 3)
+            self.assertTrue(items[0]["has_core"])
+            self.assertTrue(archive.with_name("format3.manifest.json").is_file())
+
+    def test_head_manifest_absent_in_old_formats(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "old.tar.gz"
+            payload = json.dumps({"format": 2, "network": "signet"}).encode()
+            with tarfile.open(archive, "w:gz") as tar:
+                info = tarfile.TarInfo("e-lite-snapshot.json")
+                info.size = len(payload)
+                tar.addfile(info, io.BytesIO(payload))
+            self.assertIsNone(read_head_manifest(archive))
+            self.assertEqual(read_manifest(archive)["format"], 2)
+
+    def test_restored_estimate_format3(self) -> None:
+        core = {"bytes": 120}
+        self.assertEqual(restored_estimate({"format": 3, "core": core}, 1300), 1300)
+        self.assertEqual(restored_estimate({"format": 3}, 1200), 1200)
+        self.assertEqual(restored_estimate({"format": 2, "core": core}, 1300), 2480)
+        self.assertEqual(restored_estimate({"format": 2}, 1200), 2400)
 
     def test_restored_estimate(self) -> None:
         self.assertEqual(restored_estimate({"core": {"bytes": 1000}}, 1500), 2000)
@@ -338,7 +409,18 @@ class BackupTests(unittest.TestCase):
             binary.chmod(0o755)
             destination = Path(directory) / "backups"
             destination.mkdir()
-            manager._run_export({"network": "signet", "destination": destination, "compress": "3"}, False)
+            commands: list[list[str]] = []
+            original = manager._run_process
+
+            def capture(command, progress, timeout):
+                commands.append(command)
+                return original(command, progress, timeout)
+
+            manager._run_process = capture
+            manager._run_export({"network": "signet", "destination": destination}, False)
+            export_command = [c for c in commands if "export-snapshot" in c][0]
+            self.assertNotIn("--hash-files", export_command)
+            self.assertNotIn("--compress-level", export_command)
             bundles = list(destination.glob("*.umbrel.json"))
             self.assertEqual(len(bundles), 1)
             bundle = json.loads(bundles[0].read_text(encoding="utf-8"))
@@ -352,6 +434,12 @@ class BackupTests(unittest.TestCase):
             self.assertFalse(any("wallet" in name or "settings.json" in name for name in names), names)
             self.assertEqual(manager.status()["phase"], "done")
             self.assertEqual(manager.status()["digest"], digest)
+            # An explicit level is passed only when the operator selects it.
+            second = Path(directory) / "backups6"
+            second.mkdir()
+            manager._run_export({"network": "signet", "destination": second, "compress": "6"}, False)
+            compressed = [c for c in commands if "export-snapshot" in c and "--compress-level" in c][0]
+            self.assertEqual(compressed[compressed.index("--compress-level") + 1], "6")
 
     def test_bundle_import_end_to_end_with_staged_e_lite(self) -> None:
         import os

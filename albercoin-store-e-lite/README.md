@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.11.0-01`
+- Versión: `0.1.0-alpha.29.12.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.11.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.12.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -42,6 +42,12 @@ Además:
 
 Los seis puertos Electrum se publican en el host. TCP no cifra la conexión y
 ninguno de los dos autentica clientes.
+
+e-lite 29.12 pone el listener plano en `127.0.0.1` por defecto; esta app lo
+mantiene en `0.0.0.0` para no romper wallets de la LAN. Si quieres que el
+puerto plano solo escuche en localhost, desactiva **Electrum sin TLS en la
+LAN** en Configuración → Avanzado (`server.plain_lan`); desde otros equipos
+deberás usar TLS.
 
 ## Primer inicio
 
@@ -72,7 +78,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.11.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.12.1 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -123,8 +129,11 @@ Tor lo gestiona e-lite dentro del mismo contenedor, una instancia por red:
   - signet `55211/55222`;
 - las claves onion viven en `data/config/networks/<red>/tor` y se incluyen en el
   backup;
-- si Tor falla, el resto de la red sigue funcionando sin onion y el panel muestra
-  el error.
+- si Tor falla, el panel muestra el error. Las peticiones externas ya **no**
+  caen a clearnet por defecto (AUD-128): con Core podado, las transacciones de
+  bloques podados no están disponibles hasta que Tor funcione. Se puede
+  reactivar el fallback en Configuración → Avanzado (`rawtx.tor_fallback_clearnet`),
+  sabiendo que expone tu IP a los proveedores.
 
 No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 
@@ -177,14 +186,22 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - `index.zfs_arc_dynamic` (activado) gestiona el tope del ARC por fase:
   `zfs_arc_max_mib` durante la descarga (0 = mitad de RAM) y
   `zfs_arc_min_mib` (1024) una vez sincronizado. Solo actúa si puede escribir
-  el parámetro de ZFS; sin permiso queda en modo aviso.
+  el parámetro de ZFS; sin permiso queda en modo aviso y lo reintenta cada
+  10 minutos. **Dentro del contenedor de Umbrel no puede escribir
+  `zfs_arc_max`**: limita el ARC en el host (por ejemplo, 25 % de la RAM) para
+  que `MemAvailable` y la caché de e-lite no se confundan. `e-lite arc-setup`
+  es para instalaciones nativas, no para Umbrel. El panel avisa si detecta
+  ZFS sin permisos.
 - Presupuesto desde `MemAvailable` (no RAM instalada) y `-dbcache` de Core
   ajustado a la memoria libre; con varias redes el wrapper sigue fijando su
   propio tope de `-dbcache`.
 - Opciones en **Avanzado**: `core.io_priority` (ionice 0–7),
   `core.cgroup_io_weight` (io.weight 1–10000, requiere delegación),
-  `index.adaptive_memtables` y `index.prefetch_deadline_ms` (50–60000 ms).
-  Todas están desactivadas por defecto.
+  `index.adaptive_memtables`, `index.prefetch_deadline_ms` (50–60000 ms),
+  `core.network` (`auto`/`private`/`clearnet`),
+  `rawtx.tor_fallback_clearnet`, `rawtx.prefetch` y `server.plain_lan`. Las
+  opciones de privacidad siguen los valores seguros de e-lite 29.12 por
+  defecto (Tor-only, sin precarga, plano en LAN para compatibilidad).
 - La poda normal reserva 20 GiB libres y avanza cada 5.000 bloques; la poda de
   emergencia por poco disco sigue saltándose ambos límites.
 - Discos ZFS y overlay se detectan como clase propia y usan el perfil SSD.
@@ -192,10 +209,13 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   ejecutan en los límites de commit en vez de reiniciar lectores cada 10 s.
   La poda solo hace `SyncWAL` antes de `pruneblockchain`, y `/status.pipeline`
   permite ver bloques preparados, aplicados y descartados.
-- Core se arranca con `-listenonion=0`. El Tor gestionado no tiene
-  `ControlPort`, así que Core ya no reintenta `127.0.0.1:9051` cada minuto.
-  Solo se gestiona el onion de Electrum; el de Core queda desactivado.
-  El panel muestra el SOCKS por red y que el ControlPort no está gestionado.
+- Core se arranca con `-listenonion=0`: no publica un onion propio. El Tor
+  gestionado no tiene `ControlPort`, así que Core no reintenta
+  `127.0.0.1:9051` cada minuto. Con `core.network = "auto"` (por defecto),
+  e-lite añade `-onion=<SOCKS de la red>` para que Core alcance pares `.onion`
+  a través de su Tor; el modo `private` usa solo redes privadas y es más
+  lento. El panel muestra el SOCKS por red y que el ControlPort no está
+  gestionado.
 - El Compose fija `nofile = 8192`. e-lite reserva descriptores para sockets,
   RPC, proveedores y logs, y publica el valor efectivo en
   `/status.file_descriptors`. Con el límite por defecto de Docker (1024) se
@@ -231,27 +251,36 @@ red si estaba activa, ejecuta el trabajo y la reactiva al terminar.
 - **Destino**: `/exports` si has concedido una carpeta del disco externo en
   Ajustes de la app → Almacenamiento; si no, `data/exports` (muévelo desde
   Files → Apps → e-lite).
-- **Exportar**: elige solo la compresión gzip. Hace el snapshot del índice y
-  empaqueta los datos de cadena de Core con `tar` tras parar la red, **sin
-  arrancar ninguna sonda de Core**. Nunca copia wallets, claves onion/I2P,
-  `bitcoin.conf` ni `settings.json`: guárdalos aparte si los usas.
+- **Exportar**: hace el snapshot del índice y empaqueta los datos de cadena de
+  Core con `tar` tras parar la red, **sin arrancar ninguna sonda de Core**.
+  Nunca copia wallets, claves onion/I2P, `bitcoin.conf` ni `settings.json`:
+  guárdalos aparte si los usas. Por defecto el índice se guarda **sin
+  comprimir** (formato 3, más rápido); la copia ocupa casi el tamaño del
+  índice. Puedes elegir gzip 3/6, que tarda más y apenas reduce un índice ya
+  comprimido.
 - La punta, altura de poda y versión de Core se leen de `/status` antes de
   parar y se guardan en `core-facts.json` por red. Si la red ya está parada se
   usan esos datos; si no existen, se extraen de `debug.log`. La sonda de Core
   se ha eliminado por completo.
 - La copia son tres archivos: `.index.tar.gz`, `.core.tar` y `.umbrel.json`
   (con tamaños exactos, altura, punta/poda de Core, versión y digest del
-  índice). La importación valida red, tamaños y coherencia antes de restaurar,
-  y pasa ese digest a e-lite con `--expect-digest`.
-- El espacio necesario usa el tamaño real del manifiesto más un margen del
-  10 % (mínimo 256 MiB).
+  índice). El snapshot del índice usa el **formato 3** de e-lite (manifiesto
+  al principio y al final, índice almacenado); el Core va en un `.core.tar`
+  sin comprimir, solo con datos de cadena. La importación valida red, tamaños
+  y coherencia antes de restaurar, y pasa ese digest a e-lite con
+  `--expect-digest`. Los bundles nuevos necesitan e-lite 29.12 o posterior;
+  los antiguos (formato 2) se siguen importando.
+- El espacio necesario usa el tamaño real del índice y de Core más un margen
+  del 10 % (mínimo 256 MiB). Con el índice sin comprimir, reserva
+  aproximadamente el tamaño del índice + Core.
 - El progreso es **por fase**. Exportar: medir, parar, empaquetar Core,
   preparar índice (apertura + digest), empaquetar índice, validar y reactivar.
   Importar: parar, restaurar Core, restaurar índice, verificar el digest,
   validar y reactivar. Cada fase tiene su barra, contador y tiempo; el total
   del trabajo se muestra aparte.
 - La exportación lee altura y hash de la salida de e-lite, sin descomprimir el
-  archivo recién creado (el manifiesto va al final del tar).
+  archivo recién creado. Para listar snapshots de formato 3, el panel lee el
+  manifiesto inicial y no recorre el archivo completo.
 - Se puede **cancelar** un trabajo; se mata el grupo de procesos, se limpian
   parciales y se reactiva la red.
 - Tras importar se invalidan `core-facts.json` y la caché de tamaños.
@@ -259,7 +288,7 @@ red si estaba activa, ejecuta el trabajo y la reactiva al terminar.
   anteriores se conservan por defecto (`.pre-import-*`) y se pueden eliminar
   desde el panel cuando la red funciona. El botón de limpieza se bloquea
   mientras hay una copia en curso.
-- e-lite 29.11 extrae en un directorio oculto `.e-lite.import-partial` y lo
+- e-lite extrae en un directorio oculto `.e-lite.import-partial` y lo
   renombra al final; el panel mide los bytes escritos por el proceso, muestra
   la fase de verificación del digest y limpia el staging si se cancela.
 - Si un corte de luz interrumpe una importación, al arrancar se recuperan

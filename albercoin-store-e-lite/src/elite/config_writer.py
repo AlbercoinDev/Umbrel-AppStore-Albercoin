@@ -212,6 +212,8 @@ def build_config(
         ("bitcoind", str(bitcoin_binary)),
         ("core_datadir", str(paths.network_core_data(network))),
         ("require_loopback_rpc", True),
+        # Explicit: the app's privacy posture does not drift with upstream defaults.
+        ("network", value("core.network")),
     ]
     for key in ("core.timeout_seconds", "core.prune_mib", "core.restart", "core.io_priority", "core.cgroup_io_weight"):
         if present(key):
@@ -256,10 +258,13 @@ def build_config(
         index_values.append(("memory_fraction", round(0.60 / active_networks, 2)))
     _section(lines, "index", index_values)
 
+    # Keep the plain listener on the LAN by default (Umbrel publishes the port
+    # and existing wallets use it). The advanced switch moves it to loopback.
+    plain_host = "0.0.0.0" if value("server.plain_lan") else "127.0.0.1"
     server_values: list[tuple[str, Any]] = [
         ("tls", True),
         ("tls_auto_cert", False),
-        ("listen", f"0.0.0.0:{plain_port}"),
+        ("listen", f"{plain_host}:{plain_port}"),
         ("tls_listen", f"0.0.0.0:{tls_port}"),
         ("tls_cert", str(paths.network_certificate_chain(network))),
         ("tls_key", str(paths.network_certificate_key(network))),
@@ -280,7 +285,10 @@ def build_config(
         ],
     )
 
-    rawtx_values: list[tuple[str, Any]] = []
+    rawtx_values: list[tuple[str, Any]] = [
+        ("tor_fallback_clearnet", value("rawtx.tor_fallback_clearnet")),
+        ("prefetch", value("rawtx.prefetch")),
+    ]
     for key in (
         "rawtx.enabled",
         "rawtx.cache_mib",

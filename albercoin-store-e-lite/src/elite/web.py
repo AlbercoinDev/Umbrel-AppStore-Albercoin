@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -499,7 +500,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/backup/export":
             network = (form.get("network") or [""])[0]
             destination = (form.get("destination") or [""])[0]
-            compress = (form.get("compress") or ["3"])[0]
+            compress = (form.get("compress") or ["stored"])[0]
             if app.backup is None:
                 self._redirect("/?lang=" + lang)
                 return
@@ -923,8 +924,13 @@ def _logs_block(network: NetworkSnapshot, lang: str) -> str:
 
 def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str) -> str:
     plain, tls_port = network.ports
+    try:
+        plain_lan = bool(app.settings().network(network.network).overrides.get("server.plain_lan", True))
+    except Exception:
+        plain_lan = True
+    plain_label = str(plain) if plain_lan else f"{plain} ({'solo local' if lang == 'es' else 'localhost only'})"
     net_name = t(lang, f"network_{network.network}")
-    ports = f'<div class="ports"><span class="port">TCP <code>{plain}</code></span><span class="port">TLS <code>{tls_port}</code></span></div>'
+    ports = f'<div class="ports"><span class="port">TCP <code>{plain_label}</code></span><span class="port">TLS <code>{tls_port}</code></span></div>'
     if network.phase == "disabled":
         body = f"""
 <div class="network-head">
@@ -981,10 +987,10 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
   <div class="grid" style="margin-top:12px">
     <div class="stat"><div class="k">{h(t(lang, "clearnet"))}</div>
       <div class="endpoint"><code>{h(clearnet_tcp)}</code><button class="secondary" onclick="copyValue(this.dataset.value, this)" data-value="{h(clearnet_tcp)}">{h(t(lang, "copy"))}</button></div>
-      <div class="ports">Plain: <code>{plain}</code> TLS: <code>{tls_port}</code></div>
+      <div class="ports">Plain: <code>{plain_label}</code> TLS: <code>{tls_port}</code></div>
       <p class="help">{h(t(lang, "clearnet_help"))}</p>
     </div>
-    <div class="stat"><div class="k">{h(t(lang, "tor"))}</div>{onion_html}<div class="ports">Plain: <code>{plain}</code> TLS: <code>{tls_port}</code></div><p class="help">{h(t(lang, "tor_help"))}</p></div>
+    <div class="stat"><div class="k">{h(t(lang, "tor"))}</div>{onion_html}<div class="ports">Plain: <code>{plain_label}</code> TLS: <code>{tls_port}</code></div><p class="help">{h(t(lang, "tor_help"))}</p></div>
   </div>
   <div class="grid three" style="margin-top:12px">
     <div class="stat"><div class="k">{h(t(lang, "height"))}</div><div class="v">{network.indexed:,}</div></div>
@@ -1205,12 +1211,36 @@ def _error_text(lang: str, error: str) -> str:
     return error
 
 
+def _zfs_arc_warning(lang: str) -> str:
+    """Warn when the host uses ZFS but the container cannot manage the ARC cap."""
+    if not Path("/proc/spl/kstat/zfs/arcstats").is_file():
+        return ""
+    try:
+        if os.access("/sys/module/zfs/parameters/zfs_arc_max", os.W_OK):
+            return ""
+    except OSError:
+        pass
+    text = (
+        "ZFS detectado y el contenedor no puede escribir zfs_arc_max. Limita el ARC "
+        "en el host (por ejemplo, 25 % de la RAM) para que MemAvailable y la caché "
+        "de e-lite no se confundan; e-lite reduce su caché si el ARC ocupa la memoria. "
+        "`e-lite arc-setup` es para instalaciones nativas, no para Umbrel."
+        if lang == "es" else
+        "ZFS detected and the container cannot write zfs_arc_max. Cap the ARC on the "
+        "host (for example, 25 % of RAM) so MemAvailable and the e-lite cache agree; "
+        "e-lite shrinks its cache when the ARC holds the memory. `e-lite arc-setup` "
+        "is for native installs, not Umbrel."
+    )
+    return f'<div class="card warning"><p>{h(text)}</p></div>'
+
+
 def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error: str = "") -> str:
     notice = ""
     if error:
         notice = f'<div class="card error"><p>{h(error)}</p></div>'
     if "saved=1" in (query or ""):
         notice += f'<div class="card warning"><p>{h(t(lang, "saved"))}</p></div>'
+    notice += _zfs_arc_warning(lang)
     runtime = _runtime_card(snapshot, lang)
     enabled = snapshot.enabled_networks
     if enabled:
@@ -1335,7 +1365,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
     leftovers = app.backup.leftovers(network) if app.backup else []
     sizes = app.backup.sizes(network) if app.backup else {"index": 0, "core": 0, "computing": False, "ready": False}
     index_bytes, core_bytes = int(sizes.get("index") or 0), int(sizes.get("core") or 0)
-    estimate = int(index_bytes * 0.55 + core_bytes)
+    estimate = int(index_bytes + core_bytes)
     sizes_text = (
         L("calculando…", "calculating…")
         if sizes.get("computing") and not (index_bytes or core_bytes)
@@ -1458,11 +1488,12 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
   <form method="post" action="/backup/export">
     <input type="hidden" name="network" value="{h(network)}">
     <input type="hidden" name="destination" class="dest-mirror" value="{h(selected)}">
-    <p><label>{h(L("Compresión gzip", "gzip compression"))}</label><select name="compress">
-      <option value="0">0 · {h(L("sin comprimir, la más rápida y barra exacta", "stored, fastest and exact bar"))}</option>
-      <option value="3" selected>3 · {h(L("equilibrada (recomendada)", "balanced (recommended)"))}</option>
-      <option value="6">6 · {h(L("archivo más pequeño, más lenta", "smaller archive, slower"))}</option>
+    <p><label>{h(L("Compresión del índice", "Index compression"))}</label><select name="compress">
+      <option value="stored" selected>{h(L("sin comprimir, la más rápida (recomendada)", "stored, fastest (recommended)"))}</option>
+      <option value="3">gzip 3 · {h(L("más lenta, reduce poco", "slower, little gain"))}</option>
+      <option value="6">gzip 6 · {h(L("la más lenta", "slowest"))}</option>
     </select></p>
+    <p class="help">{h(L("El índice y el Core se guardan por separado; sin comprimir la copia ocupa casi el tamaño del índice, pero termina antes. La compresión gzip apenas reduce un índice ya comprimido.", "The index and Core are stored separately; uncompressed the backup is almost the index size but finishes sooner. gzip barely shrinks an already-compressed index."))}</p>
     <button type="submit" {"disabled" if job.get("active") or not destinations else ""}>{h(L("Exportar red", "Export network"))}</button>
   </form>
 </div>
@@ -1521,8 +1552,8 @@ async function pollSizes() {{
     const s = await response.json();
     if (s.computing) {{ setTimeout(pollSizes, 3000); return; }}
     sizesComputing = false;
-    const estimate = Math.round((s.index * 0.55 + s.core * 0.95));
-    const label = '{h(L("índice", "index"))} ' + fmtBytes(s.index) + ' · Core ' + fmtBytes(s.core) + ' · {h(L("estimado comprimido", "estimated compressed"))} ~' + fmtBytes(estimate);
+    const estimate = Math.round(s.index + s.core);
+    const label = '{h(L("índice", "index"))} ' + fmtBytes(s.index) + ' · Core ' + fmtBytes(s.core) + ' · {h(L("estimado", "estimated"))} ~' + fmtBytes(estimate);
     const node = document.getElementById('backup-sizes');
     if (node) node.textContent = label;
   }} catch (e) {{ setTimeout(pollSizes, 4000); }}

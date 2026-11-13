@@ -20,10 +20,12 @@ from .supervisor import SupervisorManager
 
 ALLOWED_EXTRA_ROOT = Path("/exports")
 MANIFEST_NAME = "e-lite-snapshot.json"
+HEAD_NAME = "e-lite-snapshot.head.json"
 BUNDLE_FORMAT = "umbrel-1"
 EXCLUDE_INDEX = {
     "rawtx-cache", "tor", "tls", "LOG", "LOCK", "e-lite.log", "e-lite.log.1",
     "banner.txt", "core-paused-by-e-lite", "core-child.pid", "bitcoind.log", "bitcoin",
+    "e-lite-snapshot.json", "e-lite-snapshot.head.json",
 }
 # e-lite packs only chain data in --with-core (AUD-126). The wrapper mirrors that
 # allowlist: wallets, keys, bitcoin.conf and settings.json never enter a bundle.
@@ -38,7 +40,6 @@ IMPORT_TIMEOUT_SECONDS = 4 * 3600
 BASE_MARGIN_BYTES = 256 * 1024 * 1024
 FACTS_MAX_AGE_SECONDS = 24 * 3600
 FACTS_FILE = "core-facts.json"
-DEFAULT_INDEX_RATIO = 0.55
 _TIP_RE = re.compile(r"UpdateTip: new best=([0-9a-f]{64})\s+height=(\d+)")
 _VERSION_RE = re.compile(r"Bitcoin Core version v([0-9][0-9A-Za-z.\-]*)")
 
@@ -145,19 +146,61 @@ def cleanup_tmp_files(output: Path) -> None:
             pass
 
 
-def read_manifest(archive: Path) -> dict:
+def _manifest_member(archive: Path, name: str) -> dict:
+    """Read one tar member as JSON.
+
+    Format 3 splits the archive into several gzip members (index stored, Core
+    gzip 3); Python's tarfile+gzip reads the concatenated stream as one tar.
+    """
     with tarfile.open(archive, "r:gz") as tar:
-        member = tar.getmember(MANIFEST_NAME)
+        member = tar.getmember(name)
         handle = tar.extractfile(member)
         if handle is None:
             raise ValueError("snapshot manifest is not readable")
-        return json.loads(handle.read().decode("utf-8", errors="replace"))
+        data = json.loads(handle.read().decode("utf-8", errors="replace"))
+        if not isinstance(data, dict):
+            raise ValueError("snapshot manifest is not an object")
+        return data
+
+
+def read_manifest(archive: Path) -> dict:
+    """Full manifest (last entry in formats 1/2; also last in format 3)."""
+    return _manifest_member(archive, MANIFEST_NAME)
+
+
+def read_head_manifest(archive: Path) -> dict | None:
+    """Format-3 early manifest (first entry), or None for formats 1/2.
+
+    It lets the snapshot list and the early network check avoid decompressing
+    a whole archive just to read metadata.
+    """
+    try:
+        with tarfile.open(archive, "r:gz") as tar:
+            member = tar.next()
+            if member is None or member.name != HEAD_NAME:
+                return None
+            handle = tar.extractfile(member)
+            if handle is None:
+                return None
+            data = json.loads(handle.read().decode("utf-8", errors="replace"))
+            return data if isinstance(data, dict) else None
+    except (OSError, ValueError, tarfile.TarError):
+        return None
 
 
 def restored_estimate(manifest: dict, archive_bytes: int) -> int:
     """Bytes the restore of an upstream snapshot needs on the data disk."""
     core = manifest.get("core") or {}
     core_bytes = int(core.get("bytes") or 0)
+    try:
+        fmt = int(manifest.get("format") or 1)
+    except (TypeError, ValueError):
+        fmt = 1
+    if fmt >= 3:
+        # The index section is stored uncompressed; the archive is index plus
+        # the compressed Core section. The 10 % margin covers the difference
+        # between raw and gzip-3 Core bytes.
+        return archive_bytes
     if core_bytes:
         return core_bytes + max(0, archive_bytes - core_bytes) * 2
     return archive_bytes * 2
@@ -325,27 +368,6 @@ def network_leftovers(paths: AppPaths, network: str) -> list[Path]:
     return sorted((entry for entry in root.iterdir() if entry.name.startswith(prefixes)), key=lambda p: p.name)
 
 
-def _ratio_file(paths: AppPaths) -> Path:
-    return paths.config / "backup-stats.json"
-
-
-def load_ratios(paths: AppPaths) -> dict:
-    try:
-        data = json.loads(_ratio_file(paths).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def save_ratio(paths: AppPaths, network: str, index_ratio: float) -> None:
-    try:
-        data = load_ratios(paths)
-        data[network] = round(min(1.0, max(0.05, index_ratio)), 3)
-        _ratio_file(paths).write_text(json.dumps(data), encoding="utf-8")
-    except OSError:
-        pass
-
-
 def validate_bundle(bundle: dict, index_file: Path, core_file: Path) -> list[str]:
     """Return blocking errors for a bundle before restoring it."""
     if bundle.get("format") != BUNDLE_FORMAT:
@@ -383,7 +405,9 @@ def _snapshot_files(destination: Path, scan_limit: int = 1) -> list[dict]:
             if sidecar.is_file():
                 manifest = json.loads(sidecar.read_text(encoding="utf-8"))
             elif scan_limit > 0:
-                manifest = read_manifest(entry)
+                # Format 3 has an early manifest: listing never decompresses
+                # the whole archive. Formats 1/2 still need the full scan.
+                manifest = read_head_manifest(entry) or read_manifest(entry)
                 scan_limit -= 1
                 write_sidecar(entry, manifest)
         except Exception:
@@ -738,7 +762,7 @@ class BackupManager:
         return written if written is not None else self._sampled_du(path)
 
     # -------------------------------------------------------------------- start
-    def start_export(self, network: str, destination: str, compress: str = "3") -> tuple[bool, str]:
+    def start_export(self, network: str, destination: str, compress: str = "stored") -> tuple[bool, str]:
         return self._start("export", network, destination, {"compress": compress})
 
     def start_import(self, network: str, destination: str, filename: str, verify: str = "basic", delete_previous: bool = False, expect_digest: str = "") -> tuple[bool, str]:
@@ -851,9 +875,9 @@ class BackupManager:
         if index_raw == 0:
             raise RuntimeError("el índice está vacío; no hay nada que exportar")
         facts = self._facts(network)
-        ratios = load_ratios(self.paths)
-        index_ratio = float(ratios.get(network) or DEFAULT_INDEX_RATIO)
-        index_est = int(index_raw * index_ratio)
+        # Format 3 stores the index uncompressed and gzip saves little on
+        # already-LZ4 SSTs; the raw size is the honest estimate for every mode.
+        index_est = index_raw
         total = core_raw + index_est
         needed = total + space_margin(total)
         warnings: list[str] = []
@@ -885,14 +909,18 @@ class BackupManager:
             self._run_process(tar_command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
             self._check_cancel()
             self._phase("preparing-index", "Preparando índice (apertura + digest)…")
-            compress = str(args.get("compress") or "3")
-            if compress not in ("0", "3", "6"):
-                compress = "3"
+            compress = str(args.get("compress") or "stored")
+            if compress not in ("3", "6"):
+                compress = "stored"
             command = [
                 str(self.paths.runtime / f"e-lite-{_elite_version()}" / "e-lite"),
                 "export-snapshot", "--config", str(config_file),
-                "--hash-files", "--compress-level", compress, "--output", str(index_file),
             ]
+            if compress != "stored":
+                # e-lite applies an explicit level to both sections; this is
+                # index-only, so it only affects the index section.
+                command += ["--compress-level", compress]
+            command += ["--output", str(index_file)]
             lines = self._run_process(command, lambda: self._progress_export(core_file, index_file, core_raw, index_est), EXPORT_TIMEOUT_SECONDS)
             self._check_cancel()
             self._phase("finalizing", "Validando la copia…")
@@ -940,7 +968,6 @@ class BackupManager:
                 "facts_updated_at": int(facts.get("updated_at") or 0),
             }
             bundle_file.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
-            save_ratio(self.paths, network, bundle["index_ratio"])
             with self._lock:
                 self._listing.clear()
             size = index_bytes + core_bytes
@@ -1133,6 +1160,9 @@ class BackupManager:
 
     def _import_snapshot(self, args: dict, enabled: bool, archive: Path) -> None:
         network = args["network"]
+        head = read_head_manifest(archive)
+        if head is not None and head.get("network") not in (None, network):
+            raise RuntimeError(f"la copia pertenece a {head.get('network')}, no a {network}")
         manifest = read_manifest(archive)
         if manifest.get("network") != network:
             raise RuntimeError(f"la copia pertenece a {manifest.get('network')}, no a {network}")
@@ -1266,6 +1296,11 @@ class BackupManager:
             with self._lock:
                 self._pid = None
         reader.join(timeout=5)
+        if process.stdout is not None:
+            try:
+                process.stdout.close()
+            except OSError:
+                pass
         self._update(log=lines[-40:])
         if process.returncode != 0:
             raise RuntimeError(" | ".join(lines[-3:]) or f"el comando terminó con código {process.returncode}")

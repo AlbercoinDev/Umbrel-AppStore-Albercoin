@@ -57,6 +57,10 @@ class WebTests(unittest.TestCase):
         self.assertIn('name="public_hostnames"', body)
         self.assertIn('name="value__server.rate_limit"', body)
         self.assertIn('name="value__server.rate_burst"', body)
+        self.assertIn('name="value__server.plain_lan"', body)
+        self.assertIn('name="value__rawtx.tor_fallback_clearnet"', body)
+        self.assertIn('name="value__rawtx.prefetch"', body)
+        self.assertIn('name="value__core.network"', body)
         self.assertNotIn('name="enabled_mainnet"', body)
         self.assertNotIn('action="/networks?', body)
         self.assertIn('Auto usa 200', body)
@@ -69,6 +73,8 @@ class WebTests(unittest.TestCase):
         self.assertNotIn('action=export', body)
         _, _, body = self.get("/backup?network=signet")
         self.assertIn('href="/backup?lang=es"', body)
+        self.assertIn('<option value="stored" selected>', body)
+        self.assertNotIn('<option value="0">', body)
 
     def test_backup_page_shows_digest_and_keeps_elapsed_badge(self) -> None:
         from elite.backup import BackupManager

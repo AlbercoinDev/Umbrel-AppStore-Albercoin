@@ -161,7 +161,31 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertNotIn("pruning", data)
             self.assertNotIn("max_clients", data["server"])
             self.assertNotIn("prune_mib", data["core"])
-            self.assertNotIn("rawtx", data)
+            # The wrapper states its privacy posture explicitly so it does not
+            # drift with upstream defaults.
+            self.assertEqual(data["core"]["network"], "auto")
+            self.assertEqual(data["rawtx"], {"tor_fallback_clearnet": False, "prefetch": False})
+
+    def test_plain_listener_and_privacy_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths)
+            self.assertEqual(data["server"]["listen"], "0.0.0.0:55211")
+            self.assertEqual(data["rawtx"]["tor_fallback_clearnet"], False)
+            self.assertEqual(data["rawtx"]["prefetch"], False)
+            self.assertEqual(data["core"]["network"], "auto")
+            config = NetworkConfig(overrides={
+                "server.plain_lan": False,
+                "rawtx.tor_fallback_clearnet": True,
+                "rawtx.prefetch": True,
+                "core.network": "private",
+            })
+            _, data = self._build("signet", config, paths)
+            self.assertEqual(data["server"]["listen"], "127.0.0.1:55211")
+            self.assertEqual(data["server"]["tls_listen"], "0.0.0.0:55222")
+            self.assertTrue(data["rawtx"]["tor_fallback_clearnet"])
+            self.assertTrue(data["rawtx"]["prefetch"])
+            self.assertEqual(data["core"]["network"], "private")
 
     def test_overrides_are_written(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

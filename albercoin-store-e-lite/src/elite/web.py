@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import parse_qs, quote, urlsplit
 
 from . import APP_VERSION
+from .cache import CacheError, cache_clear, cache_status
 from .config_writer import AppPaths, network_metrics_port, network_ports
 from .i18n import field_help, field_label, select_language, t
 from .runtime import BITCOIN_VERSION, E_LITE_VERSION, TOR_VERSION, RuntimeManager
@@ -492,6 +493,42 @@ class Handler(BaseHTTPRequestHandler):
             self._redirect(f"/backup?network={network}&lang={lang}" + ("&error=" + quote(f"eliminados {removed} directorios") if removed else ""))
             return
 
+        if parsed.path == "/cache/clear":
+            network = (form.get("network") or [""])[0]
+            confirm = (form.get("confirm") or [""])[0]
+            restart = (form.get("restart") or ["0"])[0] in ("1", "on", "true", "yes")
+            if network not in NETWORKS:
+                self._redirect(f"/config?lang={lang}&cache_error=" + quote("red desconocida"))
+                return
+            if confirm.strip() != network:
+                self._redirect(f"/config?network={network}&lang={lang}&cache_error=" + quote("confirmación incorrecta"))
+                return
+            if app.backup is not None and app.backup.status().get("active"):
+                self._redirect(f"/config?network={network}&lang={lang}&cache_error=" + quote("hay una copia en curso; espera a que termine"))
+                return
+            try:
+                result = cache_clear(app.paths, network)
+            except CacheError as exc:
+                self._redirect(f"/config?network={network}&lang={lang}&cache_error=" + quote(str(exc)))
+                return
+            removed = result.get("removed") or {}
+            files = int(removed.get("files") or 0)
+            size = int(removed.get("bytes") or 0)
+            if lang == "es":
+                message = f"caché vaciada: {files} ficheros ({fmt_bytes(size)})"
+                if restart:
+                    message += "; red reiniciada"
+                message += ". La caché en RAM se libera al reiniciar la red."
+            else:
+                message = f"cache cleared: {files} files ({fmt_bytes(size)})"
+                if restart:
+                    message += "; network restarted"
+                message += ". The in-memory cache is released when the network restarts."
+            if restart:
+                app.supervisor.request_restart(network)
+            self._redirect(f"/config?network={network}&lang={lang}&cache=" + quote(message))
+            return
+
         if parsed.path == "/runtime/retry":
             app.runtime.retry()
             self._redirect("/setup?lang=" + lang)
@@ -902,7 +939,7 @@ def _toggle_form(app: WebApp, network: NetworkSnapshot, lang: str) -> str:
     if not network.enabled and network.network == "mainnet":
         ack = f'<label class="checkline"><input type="checkbox" name="mainnet_ack" value="1"> {h(t(lang, "setup_mainnet_ack"))}</label>'
     return f"""
-<form method="post" action="/networks/toggle" class="inline" onsubmit="return confirm({json.dumps(t(lang, "toggle_network_confirm"))})">
+<form method="post" action="/networks/toggle" class="inline" onsubmit="return confirm({h(json.dumps(t(lang, "toggle_network_confirm")))})">
   <input type="hidden" name="network" value="{network.network}">
   <input type="hidden" name="enabled" value="{enabled}">
   {ack}
@@ -1125,6 +1162,27 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
         ("Versiones e-lite / Core / Tor", "Versions e-lite / Core / Tor", f"{E_LITE_VERSION} / {BITCOIN_VERSION} / {TOR_VERSION}"),
     ]
     rawtx = live.get("rawtx") or {}
+    server = live.get("server") or {}
+    if server.get("banner"):
+        rows.append(("Banner Electrum", "Electrum banner", server["banner"]))
+    if "electrumx_compat" in server:
+        rows.append((
+            "Compatibilidad ElectrumX",
+            "ElectrumX compatibility",
+            ("Sí" if lang == "es" else "Yes") if server.get("electrumx_compat") else ("No" if lang == "es" else "No"),
+        ))
+    if server.get("batch_lines") is not None:
+        rows.append((
+            "Lotes JSON-RPC (líneas / items / máximo)",
+            "JSON-RPC batches (lines / items / max)",
+            f"{int(server.get('batch_lines') or 0)} / {int(server.get('batch_items') or 0)} / {int(server.get('batch_max_items') or 0)}",
+        ))
+    if rawtx.get("cache_blocks") is not None or rawtx.get("cache_txs") is not None:
+        rows.append((
+            "Caché rawtx (bloques / tx / bytes)",
+            "Rawtx cache (blocks / txs / bytes)",
+            f"{int(rawtx.get('cache_blocks') or 0):,} / {int(rawtx.get('cache_txs') or 0):,} / {fmt_bytes(int(rawtx.get('cache_bytes') or 0))}",
+        ))
     failures = rawtx.get("tx_get_failures") or {}
     if isinstance(failures, dict):
         active = {str(k): int(v) for k, v in failures.items() if isinstance(v, (int, float)) and v}
@@ -1430,7 +1488,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
   <h2>{h(L("Datos previos sin borrar", "Previous data not removed"))}</h2>
   <p class="help">{h(L("Quedan directorios .pre-import de una importación anterior. Solo bórralos si la red funciona bien.", "There are .pre-import directories from a previous import. Only delete them if the network works fine."))}</p>
   <ul>{"".join(f"<li><code>{h(x['name'])}</code></li>" for x in leftovers)}</ul>
-  <form method="post" action="/backup/cleanup" onsubmit="return confirm({json.dumps(L('Se borrarán permanentemente. ¿Continuar?', 'They will be deleted permanently. Continue?'))})">
+  <form method="post" action="/backup/cleanup" onsubmit="return confirm({h(json.dumps(L('Se borrarán permanentemente. ¿Continuar?', 'They will be deleted permanently. Continue?')))})">
     <input type="hidden" name="network" value="{h(network)}">
     <p><input type="text" name="confirm" placeholder="{h(network)}" autocomplete="off"></p>
     <button type="submit" class="danger">{h(L("Eliminar datos previos", "Delete previous data"))}</button>
@@ -1510,7 +1568,7 @@ def backup_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str) -> st
 {progress if job.get("action") == "export" else ""}
 <div class="card">
   <h2>{h(L("Importar", "Import"))}</h2>
-  <form method="post" action="/backup/import" onsubmit="return confirm({json.dumps(L('Se reemplazarán los datos de esta red. ¿Continuar?', 'This network data will be replaced. Continue?'))})">
+  <form method="post" action="/backup/import" onsubmit="return confirm({h(json.dumps(L('Se reemplazarán los datos de esta red. ¿Continuar?', 'This network data will be replaced. Continue?')))})">
     <input type="hidden" name="network" value="{h(network)}">
     <input type="hidden" name="destination" class="dest-mirror" value="{h(selected)}">
     <p><label>{h(L("Copia", "Backup"))}</label><select name="filename">{file_options}</select></p>
@@ -1627,6 +1685,78 @@ def config_page(
     notice = ""
     if "saved=1" in (query or ""):
         notice = f'<div class="card warning"><p>{h(t(lang, "saved"))}</p></div>'
+    tr = lambda es, en: es if lang == "es" else en
+    cache_notice = (params.get("cache") or [""])[0]
+    cache_error_query = (params.get("cache_error") or [""])[0]
+    if cache_error_query:
+        notice += f'<div class="card error"><p>{h(cache_error_query)}</p></div>'
+    elif cache_notice:
+        notice += f'<div class="card warning"><p>{h(cache_notice)}</p></div>'
+    cache: dict | None = None
+    cache_failure = ""
+    if app.demo:
+        cache_failure = tr("No disponible en modo demostración.", "Not available in demo mode.")
+    else:
+        try:
+            cache = cache_status(app.paths, selected)
+        except CacheError as exc:
+            cache_failure = str(exc)
+    if cache:
+        blocks = cache.get("blocks") or {}
+        txs = cache.get("txs") or {}
+        total = cache.get("total") or {}
+        rows = [
+            (tr("Directorio", "Directory"), str(cache.get("path") or "—")),
+            (
+                tr("Bloques (ficheros / tamaño / límite)", "Blocks (files / size / limit)"),
+                f"{int(blocks.get('files') or 0):,} / {fmt_bytes(int(blocks.get('bytes') or 0))} / {fmt_bytes(int(blocks.get('limit_bytes') or 0))}",
+            ),
+            (
+                tr("Transacciones (ficheros / tamaño / límite)", "Transactions (files / size / limit)"),
+                f"{int(txs.get('files') or 0):,} / {fmt_bytes(int(txs.get('bytes') or 0))} / {fmt_bytes(int(txs.get('limit_bytes') or 0))}",
+            ),
+            (
+                tr("Total (ficheros / tamaño / capacidad)", "Total (files / size / capacity)"),
+                f"{int(total.get('files') or 0):,} / {fmt_bytes(int(total.get('bytes') or 0))} / {fmt_bytes(int(cache.get('capacity_bytes') or 0))}",
+            ),
+            (
+                tr("Espacio libre en ese sistema de ficheros", "Free space on that filesystem"),
+                fmt_bytes(int(cache["free_bytes"])) if isinstance(cache.get("free_bytes"), (int, float)) else "—",
+            ),
+        ]
+        if int(cache.get("skipped") or 0):
+            rows.append((tr("Entradas ignoradas (nunca se tocan)", "Skipped entries (never touched)"), f"{int(cache.get('skipped') or 0):,}"))
+        rows_html = "".join(
+            f'<div class="row"><span class="k">{h(es)}</span><span class="v">{h(value)}</span></div>'
+            for es, value in rows
+        )
+        refused = str(cache.get("refused") or "")
+        enabled = bool(cache.get("enabled", True))
+        if refused:
+            state = f'<p class="error">{h(tr("Ruta rechazada: ", "Path refused: ") + refused)}</p>'
+        elif not enabled:
+            state = f'<p class="help">{h(tr("Caché desactivada (rawtx.cache_mib = 0).", "Cache disabled (rawtx.cache_mib = 0)."))}</p>'
+        else:
+            state = f"""
+<form method="post" action="/cache/clear" onsubmit="return confirm({h(json.dumps(tr('Se vaciará la caché de esta red. No toca índice, Core, TLS ni onion. ¿Continuar?', 'This network cache will be cleared. It never touches the index, Core, TLS or onion. Continue?')))})">
+  <input type="hidden" name="network" value="{h(selected)}">
+  <label class="checkline"><input type="checkbox" name="restart" value="1"> {h(tr("Reiniciar la red al terminar (libera la caché en RAM)", "Restart the network afterwards (releases the in-memory cache)"))}</label>
+  <p><input type="text" name="confirm" placeholder="{h(selected)}" autocomplete="off"></p>
+  <button type="submit" class="danger">{h(tr("Vaciar caché", "Clear cache"))}</button>
+</form>"""
+        cache_card = f"""<div class="card">
+  <h2>{h(tr("Caché rawtx", "Rawtx cache"))}</h2>
+  <p class="help">{h(tr("Solo se borran los ficheros de caché (bloques de reparación y transacciones verificadas). e-lite rechaza cualquier ruta que toque el índice, Core, TLS o Tor.", "Only cache files are deleted (repair blocks and verified transactions). e-lite refuses any path that touches the index, Core, TLS or Tor."))}</p>
+  <div>{rows_html}</div>
+  {state}
+  <p class="help">{h(tr("La caché en RAM no se libera al borrar los ficheros: reinicia la red para medir una primera carga en frío.", "The in-memory cache is not released by deleting files: restart the network to measure a cold first load."))}</p>
+</div>"""
+    else:
+        cache_card = f"""<div class="card">
+  <h2>{h(tr("Caché rawtx", "Rawtx cache"))}</h2>
+  <p class="error">{h(cache_failure or tr("No disponible.", "Unavailable."))}</p>
+  <p class="help">{h(tr("La caché se puede inspeccionar y vaciar cuando e-lite esté instalado y la red tenga configuración.", "The cache can be inspected and cleared once e-lite is installed and the network has a configuration."))}</p>
+</div>"""
 
     tabs = "".join(
         f'<a class="{"active" if n == selected else ""}" href="/config?network={n}&lang={lang}">{h(t(lang, f"network_{n}"))}</a>'
@@ -1671,6 +1801,7 @@ def config_page(
     </div>
   </div>
 </form>
+{cache_card}
 <script>
 function toggleDefault(box) {{
   const target = document.getElementById('value-' + box.dataset.key);

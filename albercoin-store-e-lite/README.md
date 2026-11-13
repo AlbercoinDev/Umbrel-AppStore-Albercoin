@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.12.2-01`
+- Versión: `0.1.0-alpha.29.12.3-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.12.2`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.12.3`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -72,10 +72,34 @@ más corta posible en los dos transportes:
   historial; más ancho de banda), `rawtx.decoys = 0` (menos señuelos, menos
   privacidad) y `rawtx.max_parallel_fetches` (más descargas simultáneas; puede
   saturar Tor). Los valores por defecto priorizan privacidad y estabilidad.
+- Para medir una primera carga **en frío**, vacía la caché rawtx desde
+  Configuración → **Caché rawtx** y reinicia la red (o marca la casilla al
+  vaciarla). Sin ese reinicio, los ficheros desaparecen pero el bloque en RAM
+  sigue caliente. Los detalles de red muestran el estado real de los lotes
+  (`Lotes JSON-RPC`) y la caché (`Caché rawtx`).
 
 Las fuentes externas de bloques siguen intentando **Tor primero**; permitir
 clearnet (`rawtx.allow_clearnet`) no hace que se prefiera directo mientras Tor
 funcione. La mejora para una wallet en LAN es el batching y la sonda paralela.
+
+## Caché rawtx
+
+e-lite mantiene una única caché en disco: bloques de reparación de poda y
+transacciones verificadas. Está limitada por `rawtx.cache_mib` (256 MiB por
+defecto: una cuarta parte para bloques, el resto para transacciones) y queda
+**excluida** de las copias de seguridad.
+
+En **Configuración → Caché rawtx** puedes ver:
+
+- directorio, ficheros y bytes de bloques y transacciones, con sus límites;
+- total frente a la capacidad y espacio libre del sistema de ficheros;
+- entradas ignoradas (nunca se tocan) y si la ruta fue rechazada.
+
+El botón **Vaciar caché** ejecuta `e-lite cache clear`, que solo borra `*.blk`
+de la raíz y `tx/<xx>/*.tx`; rechaza cualquier ruta que toque el índice, Core,
+TLS u onion. No borres `rawtx-cache` a mano: el comando es seguro e idempotente.
+La caché en RAM no se libera al borrar los ficheros; marca **Reiniciar la red
+al terminar** (o desactiva y activa la red desde Estado) para medir en frío.
 
 ## Primer inicio
 
@@ -106,7 +130,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.12.2 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.12.3 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus

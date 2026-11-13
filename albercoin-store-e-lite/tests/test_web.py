@@ -64,6 +64,7 @@ class WebTests(unittest.TestCase):
         self.assertIn('name="value__server.advertise_electrumx_compat"', body)
         self.assertIn('name="value__rawtx.tor_request_timeout_seconds"', body)
         self.assertIn('name="value__rawtx.max_parallel_fetches"', body)
+        self.assertIn("Caché rawtx", body)
         self.assertNotIn('name="enabled_mainnet"', body)
         self.assertNotIn('action="/networks?', body)
         self.assertIn('Auto usa 200', body)
@@ -104,7 +105,21 @@ class WebTests(unittest.TestCase):
         from elite.web import _detail_rows
 
         network = SimpleNamespace(
-            live={"rawtx": {"tx_get_failures": {"no_source": 3, "external_failed": 1, "not_found": 0}}},
+            live={
+                "server": {
+                    "banner": "e-lite test (electrumx-compatible)",
+                    "electrumx_compat": True,
+                    "batch_lines": 4,
+                    "batch_items": 120,
+                    "batch_max_items": 100,
+                },
+                "rawtx": {
+                    "tx_get_failures": {"no_source": 3, "external_failed": 1, "not_found": 0},
+                    "cache_blocks": 2,
+                    "cache_txs": 5,
+                    "cache_bytes": 6144,
+                },
+            },
             core_height=100,
             headers=100,
             tls={},
@@ -115,6 +130,9 @@ class WebTests(unittest.TestCase):
         self.assertIn("no_source 3", body)
         self.assertIn("external_failed 1", body)
         self.assertNotIn("not_found 0", body)
+        self.assertIn("Lotes JSON-RPC", body)
+        self.assertIn("Compatibilidad ElectrumX", body)
+        self.assertIn("Caché rawtx", body)
 
     def test_tabs_connections_and_visible_logs(self) -> None:
         _, _, body = self.get('/?network=signet')

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Custom Umbrel app store ("Albercoin Store"). Five apps live as sibling
+Custom Umbrel app store ("Albercoin Store"). Seven apps live as sibling
 `albercoin-store-*` directories at the repo root. Docs and most user-facing prose
 are Spanish; keep new documentation in Spanish unless an existing app's doc is
 English.
@@ -10,8 +10,10 @@ English.
 - App version: `albercoin-store-*/umbrel-app.yml`.
 - Runtime image/digest, volumes, ports and env: that app's `docker-compose.yml`.
 - Binary URL/hash and image labels: `Dockerfile`; publication: `.github/workflows/`.
-- README versions can lag. Example: `albercoin-store-simplex-chat-cli/README.md`
-  still says 1.0.4 while the manifest, Dockerfile and workflow are 1.0.5.
+- README versions can lag; trust the manifest. SimpleX Chat CLI 1.0.5 still
+  writes `"app": "1.0.4"` into `backup-info.json` (`src/runtime.py`), and
+  `scripts/restore.py` accepts only labels `1.0.0`-`1.0.4`; keep both in sync if
+  the label ever changes.
 - Directory names, app IDs, ports, `${APP_DATA_DIR}` paths and raw GitHub URLs
   are deployment contracts. Keep app directories at the root; do not restructure.
 - Editing sources here does not update an installed app. Umbrel consumes pinned
@@ -25,8 +27,9 @@ English.
 | e-lite | AMD64 only. The GHCR image contains the multi-network Python controller; e-lite, Bitcoin Core and Tor are downloaded and SHA256-verified on first start. Compose publishes six ports: mainnet 55011/55022, testnet4 55111/55122, signet 55211/55222. Tor is managed by e-lite per network; there is no Tor sidecar. Per-network ports, metrics, data dirs, TOML, `public-servers.toml` and rate-limit settings are generated/handled in code. The image is pinned by digest. |
 | Frigate | No Dockerfile. The Python web UI and the runtime shell script live inline in `docker-compose.yml`; `tests/test_frigate.py` extracts them from exact `- |` / `command: |` blocks. Keep the manifest revision, `FRIGATE_VERSION` and both arch SHA256 values aligned. Real use requires the `bitcoin` and `electrs` apps. |
 | Onion Rotator | Stdlib-only Python in `src/`. Its `Dockerfile` is unused by Compose, which runs `python:3.12-slim` and mounts `${APP_DATA_DIR}/src`. Compose needs the Docker socket and real Tor data; real rotation deletes `hs_ed25519_*` keys and restarts containers. |
-| Machine Doctor | FastAPI image pinned at `0.1.9`; no automated test suite. `src/modules/{disk,thermal,ram}` contain only future-scope READMEs, not implementations. Runs privileged with host `/proc`, `/sys`, `/dev`. |
+| Machine Doctor | FastAPI image `0.1.9` pinned by digest in Compose (the workflow republishes the tag on every push); no automated test suite. `src/modules/{disk,thermal,ram}` contain only future-scope READMEs, not implementations. Runs privileged with host `/proc`, `/sys`, `/dev`. |
 | SimpleX Chat CLI | `1.0.5`, image pinned by digest. Python `unittest` plus a separate JS DOM test. `tests/integration.py` is destructive and only run manually inside Docker with disposable identities. |
+| Umbrel Tunnel | Only manifest, Compose and icon live here; gateway and VPS code live in `AlbercoinDev/umbrel-tunnel` (image built there, AMD64/ARM64, pinned by digest). Keep `APP_HOST=albercoin-store-umbrel-tunnel_gateway_1`, internal port `8081`, manifest port `8642` and the hosted `icon.svg` URL. Needs `NET_ADMIN`, `SYS_MODULE`, `/lib/modules:ro` and read-only `${UMBREL_ROOT}/app-data`; never the Docker socket. Update the VPS before the app. |
 | SimpleX Server | Preview `0.1.0`, build `tor-check-1`; version is intentionally unchanged. Dockerfile composes official SMP plus a CLI binary copied from the chat-cli image. Most real tests need a locally built Docker image. |
 
 ## Commands
@@ -107,6 +110,8 @@ checks belong in a disposable container with `TEST_DURATION_SECONDS=30`.
 
 ## Safety
 
+- Frigate and Onion Rotator base images are pinned by digest; refresh the
+  digest deliberately (`docker buildx imagetools inspect <image:tag>`).
 - Never point tests or dev scripts at production Tor data, the real Docker socket,
   real SimpleX identities, or Umbrel app data. Use Onion Rotator's
   `ONION_ROTATOR_DRY_RUN=true` and ephemeral containers for SimpleX tests.

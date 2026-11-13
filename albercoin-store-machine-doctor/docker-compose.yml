@@ -7,7 +7,8 @@ services:
       APP_PORT: 2190
 
   server:
-    image: ghcr.io/albercoindev/machine-doctor:0.1.9
+    # Pinned by digest: the workflow republishes the 0.1.9 tag on every push.
+    image: ghcr.io/albercoindev/machine-doctor:0.1.9@sha256:3b287404777b82703d79da85a243b899350c0dae9745f2e5e274681bd3f7bc77
     hostname: machine-doctor-web
     init: true
     user: "0:0"

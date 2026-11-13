@@ -1,9 +1,13 @@
-# SimpleX Chat CLI · Albercoin · v1.0.4
+# SimpleX Chat CLI · Albercoin · v1.0.5
 
-**Actualización 1.0.4 publicada para AMD64 y ARM64 y fijada por digest en la tienda.**
-Las copias locales con más de 10 días se eliminan automáticamente al actualizar;
-descarga antes las que quieras conservar fuera del nodo.
-Consulta [cambios, retención de copias y restauración cifrada](docs/release-1.0.4.md).
+**Versión 1.0.5 publicada para AMD64 y ARM64 y fijada por digest en la tienda.**
+Detecta automáticamente servidores clearnet y onion, incluye Tor local para
+servidores propios onion y añade diagnóstico de red SMP/XFTP en el panel
+(detalle en las notas de la versión de `umbrel-app.yml` y en [red y Tor](docs/network.md)).
+
+Desde 1.0.4, las copias locales con más de 10 días se eliminan automáticamente
+al actualizar; descarga antes las que quieras conservar fuera del nodo.
+Consulta [cambios de 1.0.4, retención de copias y restauración cifrada](docs/release-1.0.4.md).
 
 [Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
 
@@ -103,7 +107,7 @@ sudo python3 ./albercoin-store-simplex-chat-cli/scripts/restore.py \
 ```
 
 Sustituye la ruta de archivo de ejemplo por la de tu copia. El asistente no comprueba mediante Docker si la app está detenida: debes detenerla antes.
-Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0` a `1.0.4` con SimpleX `v7.0.3`. Para `.tar.gz.age` requiere `age` instalado y `--identity /ruta/clave-privada`; consulta la guía enlazada al principio.
+Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0` a `1.0.5` con SimpleX `v7.0.3` (la 1.0.5 sigue etiquetando sus copias como `1.0.4` en `backup-info.json`). Para `.tar.gz.age` requiere `age` instalado y `--identity /ruta/clave-privada`; consulta la guía enlazada al principio.
 Arranca después la app desde Umbrel. Se recuperan también la contraseña y el token anteriores. Si eran distintos, actualiza los clientes y usa la contraseña del momento de la copia.
 Para deshacer la restauración, detén la app y recupera los directorios `simplex` y `manager` de `before-restore-FECHA`, conservando primero los restaurados en otra carpeta. No ejecutes dos instancias simultáneas con una misma identidad recuperada de una copia.
 

@@ -55,6 +55,10 @@ la app o en el propio workflow en `master`, y también manualmente.
 Construye y publica para AMD64 y ARM64. Las etiquetas están escritas en el
 workflow; deben revisarse junto al manifiesto, Dockerfile y Compose.
 Actualmente publica también `latest` y puede reemplazar etiquetas existentes.
+Por eso el Compose fija la imagen por digest: tras cada publicación, copia el
+digest que muestra el resumen del workflow en
+`albercoin-store-machine-doctor/docker-compose.yml`. Un commit que solo cambie
+ese digest vuelve a disparar el workflow; añade `[skip ci]` al mensaje.
 
 ### SimpleX Chat CLI
 

@@ -34,6 +34,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./albercoin-store-machine-doctor
@@ -44,3 +45,10 @@ jobs:
             ghcr.io/albercoindev/machine-doctor:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Record image digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "Digest: ${IMAGE_DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pin this digest in albercoin-store-machine-doctor/docker-compose.yml" >> "$GITHUB_STEP_SUMMARY"

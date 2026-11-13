@@ -5,7 +5,7 @@ services:
       APP_PORT: 80
 
   web:
-    image: python:3.12-alpine
+    image: python:3.12-alpine@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89
     restart: on-failure
     command:
       - python
@@ -607,7 +607,7 @@ services:
         ipv4_address: $APP_FRIGATE_WEB_IP
 
   frigate:
-    image: debian:bookworm-slim
+    image: debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
     restart: always
     stop_grace_period: 2m
     command: |

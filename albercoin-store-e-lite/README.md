@@ -493,7 +493,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.14.1-01@sha256:10283ee34ce91bf53c6997040990dbccea8ed683b33d867348422929bcdceb2f
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.15.0-01@sha256:4ecf8bc23735aa801d1a8f55433cad9325399db224f1cfb564235310536ef4f1
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -503,7 +503,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.14.1-01@sha256:10283ee34ce91bf53c6997040990dbccea8ed683b33d867348422929bcdceb2f
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.15.0-01@sha256:4ecf8bc23735aa801d1a8f55433cad9325399db224f1cfb564235310536ef4f1
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.

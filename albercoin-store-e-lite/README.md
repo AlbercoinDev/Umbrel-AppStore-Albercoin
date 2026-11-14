@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.14.0-01`
+- Versión: `0.1.0-alpha.29.14.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.14.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.14.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -95,6 +95,20 @@ funcione. La carrera puede enseñar el mismo bloque a **hasta 3 endpoints** a la
 vez (circuitos Tor distintos): es el precio de la velocidad, sin volver a
 clearnet. Los detalles de red muestran la fila **Carrera de bloques**.
 
+## Logs
+
+El panel de Estado muestra las **últimas 1.000 líneas** del log de e-lite y de
+Bitcoin Core. Cada bloque tiene:
+
+- **Copiar**: copia todo el texto visible al portapapeles.
+- **Descargar**: descarga el archivo completo (`e-lite-<red>.log` o
+  `bitcoin-core-<red>.log`), no solo el extracto.
+- **Ir al final**: vuelve al final del recuadro.
+
+El texto de los recuadros se puede seleccionar con el ratón. El refresco
+automático se pausa mientras el cursor está sobre los logs o hay una selección
+activa, para que no se pierda lo seleccionado.
+
 ## Caché rawtx
 
 e-lite mantiene una única caché en disco: bloques de reparación de poda y
@@ -143,7 +157,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.14.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.14.1 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -253,10 +267,19 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   `zfs_arc_min_mib` (1024) una vez sincronizado. Solo actúa si puede escribir
   el parámetro de ZFS; sin permiso queda en modo aviso y lo reintenta cada
   10 minutos. **Dentro del contenedor de Umbrel no puede escribir
-  `zfs_arc_max`**: limita el ARC en el host (por ejemplo, 25 % de la RAM) para
+  `zfs_arc_max`**: limita el ARC en el host (8 GiB para 32 GiB de RAM) para
   que `MemAvailable` y la caché de e-lite no se confundan. `e-lite arc-setup`
-  es para instalaciones nativas, no para Umbrel. El panel avisa si detecta
-  ZFS sin permisos.
+  es para instalaciones nativas, no para Umbrel. El panel muestra los comandos
+  copiables:
+
+  ```sh
+  echo 8589934592 | sudo tee /sys/module/zfs/parameters/zfs_arc_max
+  printf 'options zfs zfs_arc_max=8589934592\n' | sudo tee /etc/modprobe.d/zfs.conf
+  sudo update-initramfs -u
+  ```
+
+  Los dos últimos dejan el tope persistente; requieren reiniciar el host. No
+  se modifica e-lite.
 - Presupuesto desde `MemAvailable` (no RAM instalada) y `-dbcache` de Core
   ajustado a la memoria libre; con varias redes el wrapper sigue fijando su
   propio tope de `-dbcache`.

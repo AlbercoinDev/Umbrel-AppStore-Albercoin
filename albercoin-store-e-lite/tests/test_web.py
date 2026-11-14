@@ -142,6 +142,28 @@ class WebTests(unittest.TestCase):
         self.assertIn("Carrera de bloques", body)
         self.assertIn("9 / 2 / 6 / 1", body)
 
+    def test_logs_can_be_copied_and_downloaded(self) -> None:
+        _, _, body = self.get('/?network=signet')
+        self.assertIn('class="secondary log-copy"', body)
+        self.assertIn('data-log="elite-log"', body)
+        self.assertIn('data-log="core-log"', body)
+        self.assertIn("logsHover", body)
+        self.assertIn("getSelection", body)
+
+        self.paths.network_e_lite_log("signet").parent.mkdir(parents=True, exist_ok=True)
+        self.paths.network_e_lite_log("signet").write_text("e-lite log line\n", encoding="utf-8")
+        self.paths.network_core_log("signet").write_text("core log line\n", encoding="utf-8")
+        self.app.demo = False
+        for kind, expected in (("elite", "e-lite log line"), ("core", "core log line")):
+            with urllib.request.urlopen(f"{self.base}/logs/signet/{kind}", timeout=5) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn("attachment", response.headers.get("Content-Disposition", ""))
+                self.assertEqual(response.headers.get("Cache-Control"), "no-store")
+                self.assertIn(expected, response.read().decode())
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            urllib.request.urlopen(f"{self.base}/logs/invalid/elite", timeout=5)
+        self.assertEqual(raised.exception.code, 404)
+
     def test_tabs_connections_and_visible_logs(self) -> None:
         _, _, body = self.get('/?network=signet')
         self.assertLess(body.index('href="/?network=mainnet'), body.index('href="/?network=testnet4'))

@@ -344,6 +344,22 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_error(404)
             return
+        if parsed.path.startswith("/logs/"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) != 3 or parts[1] not in NETWORKS or parts[2] not in ("elite", "core"):
+                self.send_error(404)
+                return
+            network, kind = parts[1], parts[2]
+            if app.demo:
+                self.send_error(404)
+                return
+            path = app.paths.network_e_lite_log(network) if kind == "elite" else app.paths.network_core_log(network)
+            if not path.is_file():
+                self.send_error(404)
+                return
+            filename = f"e-lite-{network}.log" if kind == "elite" else f"bitcoin-core-{network}.log"
+            self._send_log_file(path, filename)
+            return
         if parsed.path == "/api/status":
             self._send_json(app.api_status())
             return
@@ -639,6 +655,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_log_file(self, path: Path, filename: str) -> None:
+        size = path.stat().st_size
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        with path.open("rb") as handle:
+            while True:
+                chunk = handle.read(64 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+
     def _redirect(self, location: str) -> None:
         self.send_response(303)
         self.send_header("Location", location)
@@ -834,9 +866,10 @@ button:disabled {{ opacity:.45; cursor:not-allowed; }}
 .help {{ color:var(--muted); font-size:13px; line-height:1.5; }}
 pre {{ margin:0; padding:16px; border-radius:14px; background:rgba(0,0,0,.32); border:1px solid var(--line); overflow:auto; max-height:360px; color:#cfeaff; font-size:12.5px; line-height:1.5; }}
 .logs {{ margin-top:24px; }}
-.logs pre {{ height:320px; max-height:320px; overflow:auto; overflow-anchor:none; }}
+.logs pre {{ height:320px; max-height:320px; overflow:auto; overflow-anchor:none; user-select:text; -webkit-user-select:text; cursor:text; }}
 .logs h3 {{ margin-top:18px; }}
-.log-end {{ margin-bottom:8px; }}
+.log-actions {{ margin-bottom:8px; }}
+.log-tail {{ color:var(--muted); font-size:12px; font-weight:400; }}
 details {{ margin-top:14px; }}
 summary {{ cursor:pointer; color:var(--muted); font-weight:650; }}
 label {{ font-weight:650; }}
@@ -949,13 +982,27 @@ def _toggle_form(app: WebApp, network: NetworkSnapshot, lang: str) -> str:
 
 def _logs_block(network: NetworkSnapshot, lang: str) -> str:
     end = "Ir al final" if lang == "es" else "Go to end"
+    copy = "Copiar" if lang == "es" else "Copy"
+    download = "Descargar" if lang == "es" else "Download"
+    tail = "últimas 1.000 líneas" if lang == "es" else "last 1,000 lines"
     result = '<section class="logs">'
-    for name, label, lines in (
-        ("elite-log", t(lang, "logs") + " · e-lite", network.logs),
-        ("core-log", "Bitcoin Core", network.core_logs),
+    for kind, name, label, lines in (
+        ("elite", "elite-log", t(lang, "logs") + " · e-lite", network.logs),
+        ("core", "core-log", "Bitcoin Core", network.core_logs),
     ):
         text = "\n".join(lines) if lines else t(lang, "no_logs")
-        result += f'<h3>{h(label)}</h3><button class="secondary log-end" type="button">{h(end)}</button><pre id="{name}" tabindex="0">{h(text)}</pre>'
+        link = ""
+        if not network.demo:
+            filename = f"e-lite-{network.network}.log" if kind == "elite" else f"bitcoin-core-{network.network}.log"
+            link = f'<a class="button secondary" href="/logs/{h(network.network)}/{kind}" download="{h(filename)}">{h(download)}</a>'
+        result += (
+            f'<h3>{h(label)} <span class="log-tail">{h(tail)}</span></h3>'
+            f'<div class="inline log-actions">'
+            f'<button class="secondary log-end" type="button">{h(end)}</button>'
+            f'<button class="secondary log-copy" type="button" data-log="{name}">{h(copy)}</button>'
+            f'{link}</div>'
+            f'<pre id="{name}" tabindex="0">{h(text)}</pre>'
+        )
     return result + '</section>'
 
 
@@ -1303,16 +1350,27 @@ def _zfs_arc_warning(lang: str) -> str:
         pass
     text = (
         "ZFS detectado y el contenedor no puede escribir zfs_arc_max. Limita el ARC "
-        "en el host (por ejemplo, 25 % de la RAM) para que MemAvailable y la caché "
-        "de e-lite no se confundan; e-lite reduce su caché si el ARC ocupa la memoria. "
-        "`e-lite arc-setup` es para instalaciones nativas, no para Umbrel."
+        "en el host a 8 GiB (25 % de 32 GiB; ajusta si tu RAM es distinta) para que "
+        "MemAvailable y la caché de e-lite no se confundan. Ejecuta los comandos en "
+        "el host, no dentro del contenedor; e-lite no se modifica."
         if lang == "es" else
         "ZFS detected and the container cannot write zfs_arc_max. Cap the ARC on the "
-        "host (for example, 25 % of RAM) so MemAvailable and the e-lite cache agree; "
-        "e-lite shrinks its cache when the ARC holds the memory. `e-lite arc-setup` "
-        "is for native installs, not Umbrel."
+        "host at 8 GiB (25 % of 32 GiB; adjust for other RAM sizes) so MemAvailable "
+        "and the e-lite cache agree. Run the commands on the host, not inside the "
+        "container; e-lite itself is not modified."
     )
-    return f'<div class="card warning"><p>{h(text)}</p></div>'
+    commands = "\n".join((
+        "echo 8589934592 | sudo tee /sys/module/zfs/parameters/zfs_arc_max",
+        "printf 'options zfs zfs_arc_max=8589934592\\n' | sudo tee /etc/modprobe.d/zfs.conf",
+        "sudo update-initramfs -u",
+    ))
+    button = "Copiar comandos" if lang == "es" else "Copy commands"
+    return (
+        f'<div class="card warning"><p>{h(text)}</p>'
+        f'<pre>{h(commands)}</pre>'
+        f'<button class="secondary" type="button" onclick="copyValue(this.dataset.value, this)" data-value="{h(commands)}">{h(button)}</button>'
+        f'</div>'
+    )
 
 
 def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error: str = "") -> str:
@@ -1361,10 +1419,22 @@ def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error
 <div class="tabbar" aria-label="{h(t(lang, 'networks'))}">{tabs}</div>
 <div id="network-panel">{cards}</div>
 <script>
+let logsHover = false;
 function bindLogs() {{
+  document.querySelectorAll('.logs').forEach(section => {{
+    section.addEventListener('mouseenter', () => {{ logsHover = true; }});
+    section.addEventListener('mouseleave', () => {{ logsHover = false; }});
+  }});
+  document.querySelectorAll('.log-copy').forEach(button => {{
+    button.onclick = () => {{
+      const el = document.getElementById(button.dataset.log);
+      if (el) copyValue(el.innerText, button);
+    }};
+  }});
   document.querySelectorAll('.logs pre').forEach(el => {{ el.scrollTop = el.scrollHeight; }});
   document.querySelectorAll('.log-end').forEach(button => {{
-    button.onclick = () => {{ const el = button.nextElementSibling; el.scrollTop = el.scrollHeight; }};
+    const el = button.closest('.logs').querySelector('pre');
+    button.onclick = () => {{ if (el) el.scrollTop = el.scrollHeight; }};
   }});
 }}
 bindLogs();
@@ -1379,6 +1449,8 @@ async function refreshPanel() {{
     const next = doc.getElementById('network-panel');
     const panel = document.getElementById('network-panel');
     if (!next || !panel || panel.querySelector('input[name="mainnet_ack"]:checked') || panel.contains(document.activeElement) && document.activeElement.matches('input,select,textarea')) return;
+    const selection = window.getSelection();
+    if (logsHover || (selection && !selection.isCollapsed && selection.anchorNode && panel.contains(selection.anchorNode)) || (document.activeElement && document.activeElement.closest && document.activeElement.closest('.logs'))) return;
     const summary = document.getElementById('network-summary');
     const nextSummary = doc.getElementById('network-summary');
     if (summary && nextSummary) summary.replaceChildren(...nextSummary.childNodes);

@@ -12,7 +12,7 @@ from collections import deque
 from pathlib import Path
 from typing import Callable
 
-from .config_writer import AppPaths, build_config, build_privacy, write_config
+from .config_writer import AppPaths, build_config, build_privacy, ensure_public_servers, write_config
 from .settings import NETWORKS, Settings
 from .tls import TLSManager
 
@@ -131,6 +131,7 @@ class NodeSupervisor:
                 if template.is_file() and not destination.is_file():
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(template, destination)
+                ensure_public_servers(destination, self.network, template if template.is_file() else None)
                 self.tls.ensure()
                 contents = build_config(
                     self.network,

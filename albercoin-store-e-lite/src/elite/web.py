@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from . import APP_VERSION
 from .cache import CacheError, cache_clear, cache_status
-from .config_writer import AppPaths, network_metrics_port, network_ports
+from .config_writer import AppPaths, network_metrics_port, network_ports, public_server_lists
 from .i18n import field_help, field_label, option_label, select_language, t
 from .runtime import BITCOIN_VERSION, E_LITE_VERSION, TOR_VERSION, RuntimeManager
 from .settings import (
@@ -911,6 +911,7 @@ summary {{ cursor:pointer; color:var(--muted); font-weight:650; }}
 .range {{ color:var(--muted); font-size:11.5px; margin:2px 0 0; }}
 .privacy-level {{ padding:13px 15px; border:1px solid rgba(92,200,255,.28); border-radius:12px; background:rgba(92,200,255,.06); margin:6px 0 4px; }}
 .privacy-level p {{ margin:6px 0 0; }}
+.server-warning {{ color:var(--warn); font-size:12.5px; line-height:1.5; margin:6px 0 0; }}
 label {{ font-weight:650; }}
 input[type=text], input[type=number], select, textarea {{ width:100%; background:rgba(0,0,0,.25); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:10px 12px; font:inherit; }}
 input:focus, select:focus, textarea:focus {{ outline:2px solid rgba(92,200,255,.35); border-color:rgba(92,200,255,.5); }}
@@ -1838,7 +1839,7 @@ def _range_text(lang: str, field_def: Any) -> str:
     return f'{t(lang, "range_label")}: {low} – {high}'
 
 
-def _privacy_summary(lang: str, config: NetworkConfig, path: Path) -> str:
+def _privacy_summary(lang: str, config: NetworkConfig, path: Path, network: str) -> str:
     level, _mode = privacy_level(config)
     wallets = int(effective_privacy_value(config, "privacy.decoys.wallets"))
     if level == "max":
@@ -1847,13 +1848,33 @@ def _privacy_summary(lang: str, config: NetworkConfig, path: Path) -> str:
         detail = t(lang, "obfuscation_tx_help", wallets=wallets, groups=wallets + 1)
     else:
         detail = t(lang, "obfuscation_off_help")
+    esplora, electrum, server_error = public_server_lists(
+        path.with_name("public-servers.toml"), network
+    )
+    if server_error:
+        servers = f'<p class="error">{h(t(lang, "servers_missing", error=server_error))}</p>'
+    else:
+        servers = (
+            f'<p class="help">{h(t(lang, "servers_label"))}: '
+            f'<strong>{len(esplora)}</strong> {h(t(lang, "servers_esplora_label"))} · '
+            f'<strong>{len(electrum)}</strong> {h(t(lang, "servers_electrum_label"))}</p>'
+        )
+        if not electrum:
+            servers += f'<p class="server-warning">{h(t(lang, "servers_none_electrum"))}</p>'
+        if esplora or electrum:
+            lines = [f'{t(lang, "servers_esplora_label")}:'] + [f'  {item}' for item in esplora]
+            lines += [f'{t(lang, "servers_electrum_label")}:'] + [f'  {item}' for item in electrum]
+            servers += (
+                f'<details class="subsection"><summary>{h(t(lang, "view_servers"))}</summary>'
+                f'<pre>{h(chr(10).join(lines))}</pre></details>'
+            )
     return (
         '<div class="privacy-level">'
         f'<div class="inline"><span class="badge">{h(t(lang, "obfuscation"))}</span>'
         f'<strong>{h(t(lang, "obfuscation_" + level))}</strong></div>'
         f'<p class="help">{h(detail)}</p>'
         f'<p class="help">{h(t(lang, "privacy_file"))}: <code>{h(str(path))}</code> · '
-        f'{h(t(lang, "privacy_file_help"))}</p></div>'
+        f'{h(t(lang, "privacy_file_help"))}</p>{servers}</div>'
     )
 
 
@@ -2003,7 +2024,7 @@ def config_page(
             continue
         extra = ""
         if group == "privacy":
-            extra = _privacy_summary(lang, config, app.paths.network_privacy_file(selected))
+            extra = _privacy_summary(lang, config, app.paths.network_privacy_file(selected), selected)
         sections.append(
             _settings_section(lang, config, group, groups[group], first=index == 0, extra=extra)
         )

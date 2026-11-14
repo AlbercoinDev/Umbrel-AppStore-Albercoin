@@ -92,6 +92,26 @@ class WebTests(unittest.TestCase):
         self.assertIn("Ofuscación activa", body)
         self.assertIn("privacy.toml", body)
 
+    def test_privacy_servers_summary(self) -> None:
+        path = self.paths.network_public_servers("signet")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            '[signet]\n'
+            'esplora = ["https://mempool.space/signet/api", "https://blockstream.info/signet/api"]\n'
+            'electrum = ["mempool.space:60602:s", "electrum.emzy.de:53002:s"]\n'
+        )
+        _, _, body = self.get("/config?network=signet")
+        self.assertIn("<strong>2</strong> Esplora", body)
+        self.assertIn("<strong>2</strong> Electrum", body)
+        self.assertIn("Ver servidores", body)
+        self.assertIn("mempool.space:60602:s", body)
+        self.assertIn("electrum.emzy.de:53002:s", body)
+        self.assertNotIn("Sin servidores Electrum", body)
+
+        path.write_text('[signet]\nesplora = []\nelectrum = []\n')
+        _, _, body = self.get("/config?network=signet")
+        self.assertIn("Sin servidores Electrum", body)
+
     def test_backup_nav_and_no_buttons_on_cards(self) -> None:
         _, _, body = self.get("/")
         self.assertIn('href="/backup?lang=es"', body)

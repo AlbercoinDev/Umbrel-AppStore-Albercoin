@@ -9,6 +9,7 @@ from elite.config_writer import (
     AppPaths,
     build_config,
     build_privacy,
+    ensure_public_servers,
     network_metrics_port,
     network_ports,
     toml_string,
@@ -264,6 +265,55 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertNotIn("privacy", config_data)
             self.assertNotIn("wallets = 5", config_text)
             self.assertFalse(paths.network_privacy_file("signet").exists())
+
+    def test_public_servers_fill_empty_network_lists(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template = root / "template.toml"
+            template.write_text(
+                '[mainnet]\nesplora = ["https://m/api"]\nelectrum = ["m:1:s"]\n'
+                '[testnet4]\nesplora = ["https://t/api"]\nelectrum = []\n'
+                '[signet]\nesplora = ["https://s/api"]\nelectrum = []\n'
+            )
+            target = root / "public-servers.toml"
+            target.write_text(template.read_text())
+
+            ensure_public_servers(target, "testnet4", template)
+            data = tomllib.loads(target.read_text())
+            self.assertEqual(data["testnet4"]["electrum"][0], "mempool.space:40002:s")
+            self.assertEqual(len(data["testnet4"]["electrum"]), 8)
+            self.assertEqual(data["testnet4"]["esplora"], ["https://t/api"])
+            # Idempotent and the other networks are untouched.
+            before = target.read_text()
+            ensure_public_servers(target, "testnet4", template)
+            self.assertEqual(target.read_text(), before)
+            self.assertEqual(tomllib.loads(target.read_text())["signet"]["electrum"], [])
+
+            # Mainnet gets the template list when the key is missing.
+            mainnet = root / "mainnet.toml"
+            mainnet.write_text('[mainnet]\nesplora = ["https://m/api"]\n')
+            ensure_public_servers(mainnet, "mainnet", template)
+            self.assertEqual(tomllib.loads(mainnet.read_text())["mainnet"]["electrum"], ["m:1:s"])
+
+            # A manual list always wins.
+            manual = root / "manual.toml"
+            manual.write_text('[testnet4]\nesplora = ["https://t/api"]\nelectrum = ["manual:1:s"]\n')
+            ensure_public_servers(manual, "testnet4", template)
+            self.assertEqual(tomllib.loads(manual.read_text())["testnet4"]["electrum"], ["manual:1:s"])
+
+            # Both keys missing: both are inserted and the TOML stays valid.
+            bare = root / "bare.toml"
+            bare.write_text('[testnet4]\n')
+            ensure_public_servers(bare, "testnet4", template)
+            bare_data = tomllib.loads(bare.read_text())["testnet4"]
+            self.assertEqual(bare_data["esplora"], ["https://t/api"])
+            self.assertEqual(len(bare_data["electrum"]), 8)
+
+            # Empty list with a customised Esplora list is respected.
+            custom = root / "custom.toml"
+            custom.write_text('[testnet4]\nesplora = ["https://custom/api"]\nelectrum = []\n')
+            ensure_public_servers(custom, "testnet4", template)
+            self.assertEqual(tomllib.loads(custom.read_text())["testnet4"]["electrum"], [])
 
     def test_toml_escaping(self) -> None:
         self.assertEqual(toml_string('a"b\\c'), '"a\\"b\\\\c"')

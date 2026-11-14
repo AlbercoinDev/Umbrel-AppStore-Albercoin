@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,28 @@ NETWORK_TOR_SOCKS: dict[str, int] = {
     "mainnet": 9050,
     "testnet4": 19050,
     "signet": 19051,
+}
+# e-lite's template ships a verified Electrum list only for mainnet. Every
+# network gets one so per-txid mode does not fall back to one HTTP request and
+# one Tor circuit per txid (plus one per decoy wallet). Checked on 2026-11-15:
+# server.version + server.features (genesis), headers and a real tx.get.
+ELECTRUM_DEFAULTS: dict[str, tuple[str, ...]] = {
+    "testnet4": (
+        "mempool.space:40002:s",
+        "blackie.c3-soft.com:57010:s",
+        "testnet4.qtornado.com:51012:s",
+        "fulcrum.theuplink.net:60002:s",
+        "testnet.aranguren.org:52002:s",
+        "v22019051929289916.bestsrv.de:60002:s",
+        "bitcoin.stagemole.eu:5010:s",
+        "134.199.227.217:50002:s",
+    ),
+    "signet": (
+        "mempool.space:60602:s",
+        "node202.fra.mempool.space:60602:s",
+        "electrum.emzy.de:53002:s",
+        "mempool.tk7.mempool.space:60602:s",
+    ),
 }
 
 
@@ -435,6 +459,126 @@ def build_privacy(network: str, config: NetworkConfig) -> str:
         ]
         _section(lines, section, values)
     return "\n".join(lines).rstrip() + "\n"
+
+
+
+def _section_bounds(lines: list[str], network: str) -> tuple[int, int] | None:
+    header = f"[{network}]"
+    for index, line in enumerate(lines):
+        if line.strip() == header:
+            end = len(lines)
+            for other in range(index + 1, len(lines)):
+                if lines[other].lstrip().startswith("["):
+                    end = other
+                    break
+            return index, end
+    return None
+
+
+def _key_line(lines: list[str], start: int, end: int, key: str) -> int | None:
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
+    for index in range(start + 1, end):
+        if pattern.match(lines[index]):
+            return index
+    return None
+
+
+def _write_array(lines: list[str], start: int, end: int, key: str, values: tuple[str, ...] | list[str]) -> bool:
+    replacement = [f"{key} = ["] + [f'    "{value}",' for value in values] + ["]"]
+    index = _key_line(lines, start, end, key)
+    if index is not None:
+        last = index
+        if "[" in lines[index] and "]" not in lines[index]:
+            while last + 1 < end and "]" not in lines[last]:
+                last += 1
+        lines[index:last + 1] = replacement
+        return True
+    insert_at = end
+    while insert_at > start + 1 and lines[insert_at - 1].strip() == "":
+        insert_at -= 1
+    lines[insert_at:insert_at] = replacement + [""]
+    return True
+
+
+def public_server_lists(path: Path, network: str) -> tuple[list[str], list[str], str]:
+    """Read the provider lists of one network (read-only, for the panel)."""
+    if not path.is_file():
+        return [], [], "missing"
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return [], [], str(exc)
+    except tomllib.TOMLDecodeError as exc:
+        return [], [], str(exc)
+    if not isinstance(data, dict):
+        return [], [], "not an object"
+    net = data.get(network)
+    if not isinstance(net, dict):
+        return [], [], "missing network"
+    esplora = net.get("esplora")
+    electrum = net.get("electrum")
+    return (
+        [str(item) for item in esplora] if isinstance(esplora, list) else [],
+        [str(item) for item in electrum] if isinstance(electrum, list) else [],
+        "",
+    )
+
+
+def ensure_public_servers(path: Path, network: str, template: Path | None = None) -> None:
+    """Fill empty or missing provider lists without touching manual edits.
+
+    e-lite ships `electrum = []` for testnet4 and signet; the app fills it with
+    verified servers. An existing non-empty list always wins. An empty list is
+    only replaced while the network's `esplora` still matches the shipped
+    template (an untouched copy); a customised file is left alone.
+    """
+    if not path.is_file():
+        return
+    try:
+        text = path.read_text(encoding="utf-8")
+        data = tomllib.loads(text)
+    except (OSError, tomllib.TOMLDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    current = data.get(network)
+    if not isinstance(current, dict):
+        return
+    template_net: dict[str, Any] = {}
+    if template is not None and template.is_file():
+        try:
+            template_data = tomllib.loads(template.read_text(encoding="utf-8"))
+            candidate = template_data.get(network)
+            if isinstance(candidate, dict):
+                template_net = candidate
+        except (OSError, tomllib.TOMLDecodeError):
+            pass
+
+    lines = text.splitlines()
+    bounds = _section_bounds(lines, network)
+    if bounds is None:
+        return
+    start, end = bounds
+    changed = False
+
+    esplora = current.get("esplora")
+    if not esplora and template_net.get("esplora"):
+        changed |= _write_array(lines, start, end, "esplora", list(template_net["esplora"]))
+        bounds = _section_bounds(lines, network)
+        if bounds is None:
+            return
+        start, end = bounds
+
+    desired = list(ELECTRUM_DEFAULTS.get(network, ())) or list(template_net.get("electrum") or [])
+    electrum = current.get("electrum")
+    untouched = current.get("esplora") == template_net.get("esplora")
+    if "electrum" not in current and desired:
+        changed |= _write_array(lines, start, end, "electrum", desired)
+    elif electrum == [] and untouched and desired:
+        changed |= _write_array(lines, start, end, "electrum", desired)
+
+    if changed:
+        write_config(path, "\n".join(lines) + "\n")
 
 
 

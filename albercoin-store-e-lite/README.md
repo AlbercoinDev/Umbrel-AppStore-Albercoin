@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.15.0-01`
+- Versión: `0.1.0-alpha.29.16.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,15 +15,18 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.15.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.16.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
 - `public-servers.toml` por red para proveedores Esplora y servidores Electrum,
-  sembrado desde el template oficial de e-lite. Si el archivo existe, no se
-  sobrescribe.
+  sembrado desde el template oficial de e-lite y completado por la app. Las
+  listas manuales no vacías se conservan.
 - `privacy.toml` por red con presets `balanced`, `max` y `fast`: modo por txid
   con wallets señuelo o solo bloques completos.
+- Listas de servidores completas para las tres redes: Esplora y Electrum
+  (10 en mainnet, 8 en testnet4, 4 en signet), insertadas por la app y
+  verificadas contra el génesis y una transacción real.
 - Rate limiting configurable por red (límite por segundo y ráfaga).
 - Panel web multi-red con activación/desactivación y configuración por red.
 - Lotes JSON-RPC para Sparrow (banner compatible con ElectrumX) y sonda de
@@ -77,14 +80,15 @@ más corta posible en los dos transportes:
   `max_parallel_fetches - 1` workers; no ocupa el último slot ni repite
   transacciones cacheadas. Los señuelos esperan a que termine la descarga de la
   wallet.
-- **Timeouts de e-lite 29.15**: `tor_connect_timeout_seconds = 10`,
+- **Timeouts de e-lite 29.16**: `tor_connect_timeout_seconds = 10`,
   `tor_stall_timeout_seconds = 12`, `tor_request_timeout_seconds = 60`
   (límite absoluto), `p2p_tor_timeout_seconds = 30`; connect/stall se duplican
   en `.onion`. `max_parallel_fetches = 16`, con hasta el doble de intentos
   (máx. 24; Tor permite 32 circuitos).
-- **Modo por txid** (29.15): una wallet fría con transacciones podadas se
-  carga en decenas de segundos por Tor en lugar de minutos, con transacciones
-  verificadas y wallets señuelo. El fallback son bloques completos.
+- **Modo por txid** (29.15, endurecido en 29.16): una wallet fría con
+  transacciones podadas se carga en decenas de segundos por Tor en lugar de
+  minutos, con transacciones verificadas y wallets señuelo del mismo tamaño.
+  El fallback son bloques completos.
 - Ajustes opcionales en Avanzado: `rawtx.max_parallel_fetches` (16 por
   defecto) y los timeouts. Los señuelos se eligen en **Privacidad**
   (`privacy.preset` y `privacy.decoys.wallets`); `rawtx.decoys` solo afecta a
@@ -114,17 +118,25 @@ servirla. Un servidor puede ocultar datos, pero no falsificarlos.
 | --- | --- | --- | --- |
 | `balanced` (defecto) | `tx` | txids sueltos, sesiones de 50, 3 wallets señuelo | 4 grupos plausibles |
 | `fast` | `tx` | txids, sesiones de 100, 1 señuelo | 2 grupos plausibles |
-| `max` | `block` | bloques completos | hashes de bloque, ningún txid |
+| `max` | `block` | bloques completos y señuelos aleatorios | hashes de bloque, ningún txid |
 
 - **Wallets señuelo**: por cada wallet real se cargan `k` wallets parecidas del
   índice, crecidas por sus salidas y estables entre cargas. La probabilidad de
   que un servidor elija la tuya es `1/(k+1)`.
 - **Reparto**: cada grupo se reparte entre al menos `sessions.min_servers`
   servidores, con una cuota máxima por servidor y sesiones en paralelo.
-- **Servidores**: `public-servers.toml` acepta `electrum = [...]`. El template
-  de 29.15 trae 10 servidores para mainnet; signet y testnet4 usan Esplora. Un
-  archivo antiguo sin la clave usa la lista del template incluido (queda en el
-  log); `electrum = []` desactiva Electrum y obliga a bloques completos.
+- **Servidores**: `public-servers.toml` acepta `esplora = [...]` y
+  `electrum = [...]`. La app rellena las tres redes con listas verificadas
+  (mainnet 10, testnet4 8, signet 4) y muestra el recuento en Privacidad. Una
+  lista manual no vacía nunca se sobrescribe; el vacío de un archivo sin tocar
+  se rellena. Para no usar txids, pon `privacy.preset = "max"`, no dejes la
+  lista vacía.
+- **Endurecimiento 29.16 (AUD-167)**: un `public-servers.toml` inválido ya no
+  cae a la lista del template (fail-closed), el modo txid solo se usa por
+  debajo de la altura de poda de Core, los señuelos crecen hasta el tamaño real
+  y el modo tx comparte un pool de 8 conexiones. `import-snapshot` rechaza
+  archivos con `decoy.key`, `tor/`, `tls/`, wallets, caché, configuración o
+  logs.
 - **Archivo**: `privacy.toml` vive junto a `e-lite.toml` y lo genera esta app
   desde **Configuración → Privacidad**. Las ediciones manuales se sobrescriben
   al arrancar la red; los valores no fijados usan el preset.
@@ -197,7 +209,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.15.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.16.1 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -421,7 +433,9 @@ red si estaba activa, ejecuta el trabajo y la reactiva al terminar.
   validar y reactivar. Cada fase tiene su barra, contador y tiempo; el total
   del trabajo se muestra aparte.
 - La exportación lee altura y hash de la salida de e-lite, sin descomprimir el
-  archivo recién creado. Para listar snapshots de formato 3, el panel lee el
+  archivo recién creado. La importación de e-lite 29.16 rechaza cualquier
+  archivo que contenga secretos o configuración (`decoy.key`, `tor/`, `tls/`,
+  wallets, caché, `bitcoin.conf`, logs) antes de extraerlo. Para listar snapshots de formato 3, el panel lee el
   manifiesto inicial y no recorre el archivo completo.
 - Se puede **cancelar** un trabajo; se mata el grupo de procesos, se limpian
   parciales y se reactiva la red.
@@ -459,7 +473,7 @@ data/
     tls/ca.crt, ca.key              # CA local compartida
     networks/<red>/
       e-lite.toml
-      privacy.toml                  # modo, señuelos y sesiones (29.15)
+      privacy.toml                  # modo, señuelos y sesiones (29.16)
       public-servers.toml           # Esplora y servidores Electrum de la red
       tls/                          # certificado y clave de la red
       tor/                          # claves onion y estado de Tor
@@ -493,7 +507,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.15.0-01@sha256:4ecf8bc23735aa801d1a8f55433cad9325399db224f1cfb564235310536ef4f1
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.1-01@sha256:4ecf8bc23735aa801d1a8f55433cad9325399db224f1cfb564235310536ef4f1
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -503,7 +517,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.15.0-01@sha256:4ecf8bc23735aa801d1a8f55433cad9325399db224f1cfb564235310536ef4f1
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.1-01@sha256:4ecf8bc23735aa801d1a8f55433cad9325399db224f1cfb564235310536ef4f1
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.
@@ -530,7 +544,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.15.0-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.1-01
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

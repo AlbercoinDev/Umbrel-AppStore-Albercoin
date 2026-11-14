@@ -168,8 +168,11 @@ class ConfigWriterTests(unittest.TestCase):
                 data["rawtx"],
                 {
                     "tor_fallback_clearnet": False,
-                    "prefetch": False,
-                    "tor_request_timeout_seconds": 20,
+                    "prefetch": True,
+                    "tor_request_timeout_seconds": 60,
+                    "tor_connect_timeout_seconds": 20,
+                    "tor_stall_timeout_seconds": 25,
+                    "p2p_tor_timeout_seconds": 30,
                     "max_parallel_fetches": 4,
                 },
             )
@@ -180,19 +183,19 @@ class ConfigWriterTests(unittest.TestCase):
             _, data = self._build("signet", NetworkConfig(), paths)
             self.assertEqual(data["server"]["listen"], "0.0.0.0:55211")
             self.assertEqual(data["rawtx"]["tor_fallback_clearnet"], False)
-            self.assertEqual(data["rawtx"]["prefetch"], False)
+            self.assertEqual(data["rawtx"]["prefetch"], True)
             self.assertEqual(data["core"]["network"], "auto")
             config = NetworkConfig(overrides={
                 "server.plain_lan": False,
                 "rawtx.tor_fallback_clearnet": True,
-                "rawtx.prefetch": True,
+                "rawtx.prefetch": False,
                 "core.network": "private",
             })
             _, data = self._build("signet", config, paths)
             self.assertEqual(data["server"]["listen"], "127.0.0.1:55211")
             self.assertEqual(data["server"]["tls_listen"], "0.0.0.0:55222")
             self.assertTrue(data["rawtx"]["tor_fallback_clearnet"])
-            self.assertTrue(data["rawtx"]["prefetch"])
+            self.assertFalse(data["rawtx"]["prefetch"])
             self.assertEqual(data["core"]["network"], "private")
 
     def test_sparrow_first_load_defaults(self) -> None:
@@ -200,16 +203,26 @@ class ConfigWriterTests(unittest.TestCase):
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
             self.assertTrue(data["server"]["advertise_electrumx_compat"])
-            self.assertEqual(data["rawtx"]["tor_request_timeout_seconds"], 20)
+            self.assertTrue(data["rawtx"]["prefetch"])
+            self.assertEqual(data["rawtx"]["tor_request_timeout_seconds"], 60)
+            self.assertEqual(data["rawtx"]["tor_connect_timeout_seconds"], 20)
+            self.assertEqual(data["rawtx"]["tor_stall_timeout_seconds"], 25)
+            self.assertEqual(data["rawtx"]["p2p_tor_timeout_seconds"], 30)
             self.assertEqual(data["rawtx"]["max_parallel_fetches"], 4)
             config = NetworkConfig(overrides={
                 "server.advertise_electrumx_compat": False,
-                "rawtx.tor_request_timeout_seconds": 35,
+                "rawtx.tor_request_timeout_seconds": 90,
+                "rawtx.tor_connect_timeout_seconds": 30,
+                "rawtx.tor_stall_timeout_seconds": 40,
+                "rawtx.p2p_tor_timeout_seconds": 45,
                 "rawtx.max_parallel_fetches": 8,
             })
             _, data = self._build("signet", config, paths)
             self.assertFalse(data["server"]["advertise_electrumx_compat"])
-            self.assertEqual(data["rawtx"]["tor_request_timeout_seconds"], 35)
+            self.assertEqual(data["rawtx"]["tor_request_timeout_seconds"], 90)
+            self.assertEqual(data["rawtx"]["tor_connect_timeout_seconds"], 30)
+            self.assertEqual(data["rawtx"]["tor_stall_timeout_seconds"], 40)
+            self.assertEqual(data["rawtx"]["p2p_tor_timeout_seconds"], 45)
             self.assertEqual(data["rawtx"]["max_parallel_fetches"], 8)
 
     def test_overrides_are_written(self) -> None:

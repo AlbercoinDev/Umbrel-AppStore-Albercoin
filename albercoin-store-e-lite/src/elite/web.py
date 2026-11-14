@@ -1177,6 +1177,12 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "JSON-RPC batches (lines / items / max)",
             f"{int(server.get('batch_lines') or 0)} / {int(server.get('batch_items') or 0)} / {int(server.get('batch_max_items') or 0)}",
         ))
+    if rawtx.get("decoys_pending") is not None:
+        rows.append((
+            "Decoys pendientes",
+            "Pending decoys",
+            f"{int(rawtx.get('decoys_pending') or 0):,}",
+        ))
     if rawtx.get("cache_blocks") is not None or rawtx.get("cache_txs") is not None:
         rows.append((
             "Caché rawtx (bloques / tx / bytes)",

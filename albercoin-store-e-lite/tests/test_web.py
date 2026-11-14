@@ -63,6 +63,9 @@ class WebTests(unittest.TestCase):
         self.assertIn('name="value__core.network"', body)
         self.assertIn('name="value__server.advertise_electrumx_compat"', body)
         self.assertIn('name="value__rawtx.tor_request_timeout_seconds"', body)
+        self.assertIn('name="value__rawtx.tor_connect_timeout_seconds"', body)
+        self.assertIn('name="value__rawtx.tor_stall_timeout_seconds"', body)
+        self.assertIn('name="value__rawtx.p2p_tor_timeout_seconds"', body)
         self.assertIn('name="value__rawtx.max_parallel_fetches"', body)
         self.assertIn("Caché rawtx", body)
         self.assertNotIn('name="enabled_mainnet"', body)
@@ -115,6 +118,7 @@ class WebTests(unittest.TestCase):
                 },
                 "rawtx": {
                     "tx_get_failures": {"no_source": 3, "external_failed": 1, "not_found": 0},
+                    "decoys_pending": 1,
                     "cache_blocks": 2,
                     "cache_txs": 5,
                     "cache_bytes": 6144,
@@ -133,6 +137,7 @@ class WebTests(unittest.TestCase):
         self.assertIn("Lotes JSON-RPC", body)
         self.assertIn("Compatibilidad ElectrumX", body)
         self.assertIn("Caché rawtx", body)
+        self.assertIn("Decoys pendientes", body)
 
     def test_tabs_connections_and_visible_logs(self) -> None:
         _, _, body = self.get('/?network=signet')

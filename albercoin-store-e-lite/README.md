@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.12.3-01`
+- Versión: `0.1.0-alpha.29.13.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.12.3`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.13.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -65,13 +65,22 @@ más corta posible en los dos transportes:
   Configuración → Avanzado si otra wallet se comporta mal.
 - La sonda de proveedores es **en paralelo** y la puerta de Electrum abre unos
   2 s después del primer proveedor sano.
-- **`rawtx.tor_request_timeout_seconds = 20`**: cada bloque por Tor crea su
-  circuito y descarga el bloque completo; un timeout corto enfriaba
-  proveedores justo durante la primera carga.
-- Ajustes opcionales de velocidad en Avanzado: `rawtx.prefetch` (precarga el
-  historial; más ancho de banda), `rawtx.decoys = 0` (menos señuelos, menos
-  privacidad) y `rawtx.max_parallel_fetches` (más descargas simultáneas; puede
-  saturar Tor). Los valores por defecto priorizan privacidad y estabilidad.
+- **`rawtx.prefetch = true`** por defecto: precarga en segundo plano los
+  bloques del historial. Ahora paga sus señuelos y nunca ocupa el último slot
+  de descarga, así que acelera la primera carga sin bloquear las peticiones de
+  la wallet. Se puede desactivar para reducir tráfico.
+- **Timeouts Tor**: `tor_connect_timeout_seconds = 20` (circuito + conexión),
+  `tor_stall_timeout_seconds = 25` (sin cabecera ni bytes) y
+  `tor_request_timeout_seconds = 60` (límite absoluto del intento). Un bloque
+  completo comparte 60 s entre todas las fuentes; el P2P por Tor usa 30 s y el
+  directo sigue en 8 s. Un timeout corto enfriaba proveedores justo durante la
+  primera carga.
+- **P2P sobre Tor corregido**: un peer muerto ya no bloquea al resto, backoff
+  por peer, v2 antes de v1 y lecturas acotadas.
+- Ajustes opcionales de velocidad en Avanzado: `rawtx.decoys = 0` (menos
+  señuelos, menos privacidad) y `rawtx.max_parallel_fetches` (más descargas
+  simultáneas; puede saturar Tor). Los valores por defecto priorizan privacidad
+  y estabilidad.
 - Para medir una primera carga **en frío**, vacía la caché rawtx desde
   Configuración → **Caché rawtx** y reinicia la red (o marca la casilla al
   vaciarla). Sin ese reinicio, los ficheros desaparecen pero el bloque en RAM
@@ -130,7 +139,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.12.3 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.13.0 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -252,7 +261,9 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   `index.adaptive_memtables`, `index.prefetch_deadline_ms` (50–60000 ms),
   `core.network` (`auto`/`private`/`clearnet`),
   `rawtx.tor_fallback_clearnet`, `rawtx.prefetch`,
-  `rawtx.tor_request_timeout_seconds`, `rawtx.max_parallel_fetches`,
+  `rawtx.tor_request_timeout_seconds`, `rawtx.tor_connect_timeout_seconds`,
+  `rawtx.tor_stall_timeout_seconds`, `rawtx.p2p_tor_timeout_seconds`,
+  `rawtx.max_parallel_fetches`,
   `server.advertise_electrumx_compat` y `server.plain_lan`. Se mantienen los
   valores privados de e-lite 29.12 (Tor-only y sin precarga); el listener plano
   sigue en la LAN por compatibilidad y se puede mover a localhost. La

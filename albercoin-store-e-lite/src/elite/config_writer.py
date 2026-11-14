@@ -292,6 +292,9 @@ def build_config(
         ("tor_fallback_clearnet", value("rawtx.tor_fallback_clearnet")),
         ("prefetch", value("rawtx.prefetch")),
         ("tor_request_timeout_seconds", value("rawtx.tor_request_timeout_seconds")),
+        ("tor_connect_timeout_seconds", value("rawtx.tor_connect_timeout_seconds")),
+        ("tor_stall_timeout_seconds", value("rawtx.tor_stall_timeout_seconds")),
+        ("p2p_tor_timeout_seconds", value("rawtx.p2p_tor_timeout_seconds")),
         ("max_parallel_fetches", value("rawtx.max_parallel_fetches")),
     ]
     for key in (

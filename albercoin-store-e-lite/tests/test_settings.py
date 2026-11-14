@@ -17,6 +17,8 @@ from elite.settings import (
     parse_setup_form,
     save_settings,
     validate_network,
+    preset_value,
+    privacy_level,
     validate_settings,
 )
 
@@ -103,6 +105,41 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(loaded.network("testnet4").overrides, {"index.profile": "nvme"})
             self.assertEqual(loaded.network("testnet4").public_hostnames, ["elite.example.org"])
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_privacy_defaults_and_presets(self) -> None:
+        config = NetworkConfig()
+        self.assertEqual(config.value("privacy.preset"), "balanced")
+        self.assertEqual(config.value("privacy.decoys.wallets"), 3)
+        self.assertEqual(preset_value("privacy.decoys.wallets", "fast"), 1)
+        self.assertEqual(preset_value("privacy.sessions.size", "fast"), 100)
+        self.assertEqual(preset_value("privacy.mode", "max"), "block")
+        self.assertEqual(privacy_level(config), ("high", "tx"))
+        config.overrides["privacy.decoys.wallets"] = 0
+        self.assertEqual(privacy_level(config), ("low", "tx"))
+        config.overrides["privacy.preset"] = "max"
+        self.assertEqual(privacy_level(config), ("max", "block"))
+
+    def test_privacy_form_and_ranges(self) -> None:
+        form = {
+            "value__privacy.preset": ["fast"],
+            "value__privacy.mode": ["preset"],
+            "value__privacy.decoys.wallets": ["5"],
+            "value__privacy.sessions.max_share": ["0.5"],
+            "value__privacy.blocks.decoys": ["2"],
+        }
+        settings, errors = parse_form(form, "signet")
+        self.assertEqual(errors, [])
+        overrides = settings.network("signet").overrides
+        self.assertEqual(overrides["privacy.preset"], "fast")
+        self.assertNotIn("privacy.mode", overrides)
+        self.assertEqual(overrides["privacy.decoys.wallets"], 5)
+        self.assertEqual(overrides["privacy.sessions.max_share"], 0.5)
+        self.assertEqual(overrides["privacy.blocks.decoys"], 2)
+
+        _, errors = parse_form({"value__privacy.decoys.wallets": ["9"]}, "signet")
+        self.assertTrue(any("privacy.decoys.wallets" in error for error in errors))
+        _, errors = parse_form({"value__privacy.sessions.max_share": ["0.05"]}, "signet")
+        self.assertTrue(any("privacy.sessions.max_share" in error for error in errors))
 
     def test_optional_rate_limit(self) -> None:
         settings, errors = parse_form({}, "signet")

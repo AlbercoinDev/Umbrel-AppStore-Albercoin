@@ -74,6 +74,24 @@ class WebTests(unittest.TestCase):
         self.assertIn('Auto usa 5000', body)
         self.assertIn('Restaurar valores predeterminados de esta red', body)
 
+    def test_config_sections_tooltips_and_privacy(self) -> None:
+        _, _, body = self.get("/config?network=signet")
+        self.assertIn('class="settings-section"', body)
+        self.assertIn("Servidor Electrum", body)
+        self.assertIn("Transacciones externas", body)
+        self.assertIn("Privacidad", body)
+        self.assertIn("Índice y rendimiento", body)
+        self.assertIn("Registro", body)
+        self.assertIn("Certificado y nombres TLS", body)
+        self.assertIn('name="value__privacy.preset"', body)
+        self.assertIn('name="value__privacy.decoys.wallets"', body)
+        self.assertIn('name="value__privacy.sessions.max_share"', body)
+        self.assertIn('class="tip"', body)
+        self.assertIn('title="Wallets señuelo cargadas', body)
+        self.assertIn("Rango: 0 – 8", body)
+        self.assertIn("Ofuscación activa", body)
+        self.assertIn("privacy.toml", body)
+
     def test_backup_nav_and_no_buttons_on_cards(self) -> None:
         _, _, body = self.get("/")
         self.assertIn('href="/backup?lang=es"', body)
@@ -123,6 +141,20 @@ class WebTests(unittest.TestCase):
                     "cache_blocks": 2,
                     "cache_txs": 5,
                     "cache_bytes": 6144,
+                    "tx_mode": {
+                        "active": True,
+                        "servers": 10,
+                        "preset": "balanced",
+                        "mode": "tx",
+                        "decoy_wallets": 3,
+                        "session_size": 50,
+                        "sessions": 12,
+                        "real_sent": 239,
+                        "decoys_sent": 717,
+                        "verified": 956,
+                        "rejected": 0,
+                        "block_fallback": 0,
+                    },
                 },
             },
             core_height=100,
@@ -141,6 +173,8 @@ class WebTests(unittest.TestCase):
         self.assertIn("Decoys pendientes", body)
         self.assertIn("Carrera de bloques", body)
         self.assertIn("9 / 2 / 6 / 1", body)
+        self.assertIn("Ofuscación (nivel / preset / modo / señuelos)", body)
+        self.assertIn("Alta / balanced / tx / 3", body)
 
     def test_logs_can_be_copied_and_downloaded(self) -> None:
         _, _, body = self.get('/?network=signet')

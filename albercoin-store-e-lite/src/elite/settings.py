@@ -18,7 +18,7 @@ from typing import Any
 NETWORKS = ("mainnet", "testnet4", "signet")
 SCHEMA_VERSION = 2
 
-GROUPS = ("performance", "server", "pruning", "core", "advanced")
+GROUPS = ("server", "rawtx", "privacy", "performance", "pruning", "core", "logging")
 
 
 @dataclass(frozen=True)
@@ -62,20 +62,36 @@ FIELDS: tuple[Field, ...] = (
     Field("server.rate_burst", "optional_int", None, "server", minimum=1, maximum=1000000),
     Field("server.plain_lan", "bool", True, "server", advanced=True),
     Field("server.advertise_electrumx_compat", "bool", True, "server", advanced=True),
-    Field("rawtx.enabled", "bool", True, "server"),
-    Field("rawtx.cache_mib", "int", 256, "server", minimum=0, maximum=262144),
-    Field("rawtx.decoys", "int", 1, "server", minimum=0, maximum=32),
-    Field("rawtx.use_p2p", "bool", True, "server"),
-    Field("rawtx.use_esplora", "bool", True, "server"),
-    Field("rawtx.allow_clearnet", "bool", False, "server", advanced=True),
-    Field("rawtx.tor_fallback_clearnet", "bool", False, "server", advanced=True),
-    Field("rawtx.prefetch", "bool", True, "server", advanced=True),
-    Field("rawtx.tor_request_timeout_seconds", "int", 60, "server", minimum=1, maximum=300, advanced=True),
-    Field("rawtx.tor_connect_timeout_seconds", "int", 10, "server", minimum=1, maximum=300, advanced=True),
-    Field("rawtx.tor_stall_timeout_seconds", "int", 12, "server", minimum=1, maximum=300, advanced=True),
-    Field("rawtx.p2p_tor_timeout_seconds", "int", 30, "server", minimum=1, maximum=300, advanced=True),
-    Field("rawtx.max_parallel_fetches", "int", 8, "server", minimum=1, maximum=16, advanced=True),
-    Field("rawtx.p2p_peers", "list", (), "server", advanced=True),
+    Field("rawtx.enabled", "bool", True, "rawtx"),
+    Field("rawtx.cache_mib", "int", 256, "rawtx", minimum=0, maximum=262144),
+    Field("rawtx.decoys", "int", 1, "rawtx", minimum=0, maximum=32),
+    Field("rawtx.use_p2p", "bool", True, "rawtx"),
+    Field("rawtx.use_esplora", "bool", True, "rawtx"),
+    Field("rawtx.allow_clearnet", "bool", False, "rawtx", advanced=True),
+    Field("rawtx.tor_fallback_clearnet", "bool", False, "rawtx", advanced=True),
+    Field("rawtx.prefetch", "bool", True, "rawtx", advanced=True),
+    Field("rawtx.tor_request_timeout_seconds", "int", 60, "rawtx", minimum=1, maximum=300, advanced=True),
+    Field("rawtx.tor_connect_timeout_seconds", "int", 10, "rawtx", minimum=1, maximum=300, advanced=True),
+    Field("rawtx.tor_stall_timeout_seconds", "int", 12, "rawtx", minimum=1, maximum=300, advanced=True),
+    Field("rawtx.p2p_tor_timeout_seconds", "int", 30, "rawtx", minimum=1, maximum=300, advanced=True),
+    Field("rawtx.max_parallel_fetches", "int", 16, "rawtx", minimum=1, maximum=16, advanced=True),
+    Field("rawtx.p2p_peers", "list", (), "rawtx", advanced=True),
+    # AUD-163 (e-lite 29.15): privacy.toml. Only values the operator changes
+    # are written; everything else comes from the selected preset.
+    Field("privacy.preset", "enum", "balanced", "privacy", options=("balanced", "max", "fast")),
+    Field("privacy.mode", "enum", "preset", "privacy", options=("preset", "tx", "block")),
+    Field("privacy.decoys.wallets", "int", 3, "privacy", minimum=0, maximum=8),
+    Field("privacy.decoys.size_min_ratio", "float", 0.5, "privacy", minimum=0.1, maximum=1.0, advanced=True),
+    Field("privacy.decoys.size_max_ratio", "float", 2.0, "privacy", minimum=1.0, maximum=10.0, advanced=True),
+    Field("privacy.decoys.era_margin_blocks", "int", 52560, "privacy", minimum=0, maximum=500000, advanced=True),
+    Field("privacy.decoys.seek_attempts", "int", 64, "privacy", minimum=8, maximum=1024, advanced=True),
+    Field("privacy.decoys.growth", "bool", True, "privacy", advanced=True),
+    Field("privacy.sessions.size", "int", 50, "privacy", minimum=1, maximum=500, advanced=True),
+    Field("privacy.sessions.min_servers", "int", 3, "privacy", minimum=1, maximum=16, advanced=True),
+    Field("privacy.sessions.max_share", "float", 0.34, "privacy", minimum=0.1, maximum=1.0, advanced=True),
+    Field("privacy.sessions.parallel", "int", 16, "privacy", minimum=1, maximum=32, advanced=True),
+    Field("privacy.sessions.batch_window_ms", "int", 20, "privacy", minimum=0, maximum=1000, advanced=True),
+    Field("privacy.blocks.decoys", "int", 1, "privacy", minimum=0, maximum=8, advanced=True),
     Field("core.prune_mib", "int", 1, "pruning", minimum=0, maximum=1000000),
     Field("pruning.allow_auto_prune", "bool", False, "pruning", advanced=True),
     Field("pruning.min_free_gib", "int", 10, "pruning", minimum=0, maximum=100000),
@@ -97,11 +113,89 @@ FIELDS: tuple[Field, ...] = (
     Field("core.cgroup_io_weight", "int", 0, "core", minimum=0, maximum=10000, advanced=True),
     Field("core.extra_args", "list", (), "core", advanced=True),
     Field("core.restart", "bool", True, "core", advanced=True),
-    Field("logging.max_mib", "int", 16, "core", minimum=0, maximum=1024, advanced=True),
-    Field("logging.level", "enum", "debug", "core", options=("info", "debug", "trace"), advanced=True),
+    Field("logging.max_mib", "int", 16, "logging", minimum=0, maximum=1024, advanced=True),
+    Field("logging.level", "enum", "debug", "logging", options=("info", "debug", "trace"), advanced=True),
 )
 
 FIELDS_BY_KEY = {f.key: f for f in FIELDS}
+# Presets of privacy.toml (e-lite 29.15). The panel shows these values when a
+# field is left on "use default"; e-lite applies the same values.
+PRESETS: dict[str, dict[str, Any]] = {
+    "balanced": {
+        "privacy.mode": "tx",
+        "privacy.decoys.wallets": 3,
+        "privacy.decoys.size_min_ratio": 0.5,
+        "privacy.decoys.size_max_ratio": 2.0,
+        "privacy.decoys.era_margin_blocks": 52560,
+        "privacy.decoys.seek_attempts": 64,
+        "privacy.decoys.growth": True,
+        "privacy.sessions.size": 50,
+        "privacy.sessions.min_servers": 3,
+        "privacy.sessions.max_share": 0.34,
+        "privacy.sessions.parallel": 16,
+        "privacy.sessions.batch_window_ms": 20,
+        "privacy.blocks.decoys": 1,
+    },
+    "fast": {
+        "privacy.mode": "tx",
+        "privacy.decoys.wallets": 1,
+        "privacy.decoys.size_min_ratio": 0.5,
+        "privacy.decoys.size_max_ratio": 2.0,
+        "privacy.decoys.era_margin_blocks": 52560,
+        "privacy.decoys.seek_attempts": 64,
+        "privacy.decoys.growth": True,
+        "privacy.sessions.size": 100,
+        "privacy.sessions.min_servers": 2,
+        "privacy.sessions.max_share": 0.5,
+        "privacy.sessions.parallel": 16,
+        "privacy.sessions.batch_window_ms": 20,
+        "privacy.blocks.decoys": 1,
+    },
+    "max": {
+        "privacy.mode": "block",
+        "privacy.decoys.wallets": 3,
+        "privacy.decoys.size_min_ratio": 0.5,
+        "privacy.decoys.size_max_ratio": 2.0,
+        "privacy.decoys.era_margin_blocks": 52560,
+        "privacy.decoys.seek_attempts": 64,
+        "privacy.decoys.growth": True,
+        "privacy.sessions.size": 50,
+        "privacy.sessions.min_servers": 3,
+        "privacy.sessions.max_share": 0.34,
+        "privacy.sessions.parallel": 16,
+        "privacy.sessions.batch_window_ms": 20,
+        "privacy.blocks.decoys": 1,
+    },
+}
+
+
+def preset_value(key: str, preset: str) -> Any:
+    """Value a privacy key takes under a preset (balanced when unknown)."""
+    table = PRESETS.get(preset, PRESETS["balanced"])
+    return table.get(key, FIELDS_BY_KEY[key].default)
+
+
+def effective_privacy_value(config: "NetworkConfig", key: str) -> Any:
+    """Value the panel must show: an explicit override or the preset's."""
+    if key in config.overrides:
+        value = config.overrides[key]
+        if key != "privacy.mode" or value in ("tx", "block"):
+            return value
+    return preset_value(key, str(config.value("privacy.preset")))
+
+
+def privacy_level(config: "NetworkConfig") -> tuple[str, str]:
+    """Obfuscation level and its explanation for the panel."""
+    effective_mode = str(effective_privacy_value(config, "privacy.mode"))
+    wallets = int(effective_privacy_value(config, "privacy.decoys.wallets"))
+    if effective_mode == "block":
+        return ("max", "block")
+    if wallets >= 3:
+        return ("high", "tx")
+    if wallets >= 1:
+        return ("medium", "tx")
+    return ("low", "tx")
+
 
 _IPV4_PORT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]{1,252}:[0-9]{1,5}$")
 _IPV6_PORT = re.compile(r"^\[[0-9A-Fa-f:]+\]:[0-9]{1,5}$")
@@ -328,6 +422,11 @@ def validate_network(network: str, config: NetworkConfig) -> list[str]:
     if prune is not None and int(prune) >= 550 and not bool(config.overrides.get("pruning.allow_auto_prune", False)):
         errors.append("pruning.allow_auto_prune: must be enabled when core.prune_mib >= 550")
 
+    min_ratio = config.value("privacy.decoys.size_min_ratio")
+    max_ratio = config.value("privacy.decoys.size_max_ratio")
+    if float(max_ratio) < float(min_ratio):
+        errors.append("privacy.decoys.size_max_ratio: cannot be lower than size_min_ratio")
+
     min_free = config.overrides.get("pruning.min_free_gib")
     critical = config.overrides.get("pruning.critical_free_gib")
     if min_free is not None and critical is not None and int(critical) > int(min_free):
@@ -368,7 +467,7 @@ def parse_form(form: dict[str, list[str]], network: str, previous: Settings | No
         except SettingsError as exc:
             errors.append(str(exc))
             continue
-        if coerced is not None:
+        if coerced is not None and not (field_def.key == "privacy.mode" and coerced == "preset"):
             overrides[field_def.key] = coerced
 
     try:

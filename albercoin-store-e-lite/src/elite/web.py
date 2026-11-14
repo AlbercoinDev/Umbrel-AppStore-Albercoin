@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 from . import APP_VERSION
 from .cache import CacheError, cache_clear, cache_status
 from .config_writer import AppPaths, network_metrics_port, network_ports
-from .i18n import field_help, field_label, select_language, t
+from .i18n import field_help, field_label, option_label, select_language, t
 from .runtime import BITCOIN_VERSION, E_LITE_VERSION, TOR_VERSION, RuntimeManager
 from .settings import (
     FIELDS,
@@ -25,12 +25,14 @@ from .settings import (
     NETWORKS,
     NetworkConfig,
     Settings,
-    default_label,
+    effective_privacy_value,
     format_value,
     load_settings,
     parse_form,
     parse_networks_form,
     parse_setup_form,
+    preset_value,
+    privacy_level,
     save_settings,
 )
 from .supervisor import SupervisorManager
@@ -66,6 +68,25 @@ DEMO_STATUS: dict[str, Any] = {
         "plan": {"readers": 4, "jobs": 2, "cache_mib": 1024, "commit_ms": 20000},
     },
     "core": {"connections": 9, "initial_block_download": False, "pruned": True, "pruneheight": 176000},
+    "rawtx": {
+        "tx_mode": {
+            "active": True,
+            "servers": 10,
+            "preset": "balanced",
+            "mode": "tx",
+            "decoy_wallets": 3,
+            "session_size": 50,
+            "sessions": 12,
+            "real_sent": 239,
+            "decoys_sent": 717,
+            "verified": 956,
+            "rejected": 0,
+            "block_fallback": 0,
+        },
+        "cache_blocks": 2,
+        "cache_txs": 5,
+        "cache_bytes": 6144,
+    },
 }
 
 DEMO_ONIONS = {
@@ -872,6 +893,24 @@ pre {{ margin:0; padding:16px; border-radius:14px; background:rgba(0,0,0,.32); b
 .log-tail {{ color:var(--muted); font-size:12px; font-weight:400; }}
 details {{ margin-top:14px; }}
 summary {{ cursor:pointer; color:var(--muted); font-weight:650; }}
+.settings-section {{ margin:0; }}
+.settings-section > summary {{ display:flex; justify-content:space-between; align-items:center; gap:14px; list-style:none; color:var(--text); }}
+.settings-section > summary::-webkit-details-marker {{ display:none; }}
+.settings-section > summary h2 {{ margin:0; font-size:17px; letter-spacing:.01em; }}
+.settings-section > summary:hover h2 {{ color:var(--accent); }}
+.section-meta {{ display:flex; align-items:center; gap:8px; }}
+.section-meta .pill {{ padding:3px 9px; font-size:11px; }}
+.section-meta .badge {{ font-size:11px; }}
+.chev {{ display:inline-block; color:var(--muted); font-size:18px; transition:transform .15s ease; }}
+.settings-section[open] .chev {{ transform:rotate(90deg); }}
+.settings-body {{ margin-top:14px; }}
+.subsection {{ margin-top:16px; border-top:1px solid rgba(255,255,255,.07); padding-top:12px; }}
+.subsection > summary {{ color:var(--muted); }}
+.tip {{ display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; border:1px solid rgba(92,200,255,.45); background:rgba(92,200,255,.12); color:#b9ecff; font-size:11px; font-weight:700; cursor:help; vertical-align:middle; }}
+.tip:focus {{ outline:2px solid rgba(92,200,255,.5); }}
+.range {{ color:var(--muted); font-size:11.5px; margin:2px 0 0; }}
+.privacy-level {{ padding:13px 15px; border:1px solid rgba(92,200,255,.28); border-radius:12px; background:rgba(92,200,255,.06); margin:6px 0 4px; }}
+.privacy-level p {{ margin:6px 0 0; }}
 label {{ font-weight:650; }}
 input[type=text], input[type=number], select, textarea {{ width:100%; background:rgba(0,0,0,.25); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:10px 12px; font:inherit; }}
 input:focus, select:focus, textarea:focus {{ outline:2px solid rgba(92,200,255,.35); border-color:rgba(92,200,255,.5); }}
@@ -1224,6 +1263,34 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "JSON-RPC batches (lines / items / max)",
             f"{int(server.get('batch_lines') or 0)} / {int(server.get('batch_items') or 0)} / {int(server.get('batch_max_items') or 0)}",
         ))
+    tx_mode = rawtx.get("tx_mode") or {}
+    if isinstance(tx_mode, dict) and tx_mode:
+        mode_name = str(tx_mode.get("mode") or "-")
+        wallets = int(tx_mode.get("decoy_wallets") or 0)
+        level = "max" if mode_name == "block" else "high" if wallets >= 3 else "medium" if wallets >= 1 else "low"
+        rows.append((
+            "Ofuscación (nivel / preset / modo / señuelos)",
+            "Obfuscation (level / preset / mode / decoys)",
+            f"{t(lang, 'obfuscation_' + level)} / {str(tx_mode.get('preset') or '-')} / {mode_name} / {wallets}",
+        ))
+        if tx_mode.get("active"):
+            rows.append((
+                "Sesiones tx (servidores / sesiones / txids por sesión)",
+                "Tx sessions (servers / sessions / txids per session)",
+                f"{int(tx_mode.get('servers') or 0)} / {int(tx_mode.get('sessions') or 0):,} / {int(tx_mode.get('session_size') or 0)}",
+            ))
+            if any(int(tx_mode.get(key) or 0) for key in ("real_sent", "decoys_sent")):
+                rows.append((
+                    "Txids pedidos (reales / señuelos)",
+                    "Txids requested (real / decoys)",
+                    f"{int(tx_mode.get('real_sent') or 0):,} / {int(tx_mode.get('decoys_sent') or 0):,}",
+                ))
+            if any(int(tx_mode.get(key) or 0) for key in ("verified", "rejected", "block_fallback")):
+                rows.append((
+                    "Verificación tx (correctas / rechazadas / fallback a bloques)",
+                    "Tx verification (verified / rejected / block fallback)",
+                    f"{int(tx_mode.get('verified') or 0):,} / {int(tx_mode.get('rejected') or 0):,} / {int(tx_mode.get('block_fallback') or 0):,}",
+                ))
     race = rawtx.get("race") or {}
     if isinstance(race, dict) and any(int(race.get(k) or 0) for k in ("attempts", "hedges", "wins_esplora", "wins_p2p")):
         rows.append((
@@ -1749,6 +1816,84 @@ pollBackup();
     return page(t(lang, "backup_title"), content, lang, active="backup")
 
 
+
+def _default_text(field_def: Any, value: Any) -> str:
+    if field_def.kind == "optional_int" and value is None:
+        return "auto"
+    return format_value(field_def, value)
+
+
+def _range_text(lang: str, field_def: Any) -> str:
+    if field_def.kind == "enum" and field_def.options:
+        return t(lang, "options_label") + ": " + ", ".join(
+            option_label(lang, field_def.key, option) for option in field_def.options
+        )
+    if field_def.minimum is None and field_def.maximum is None:
+        return ""
+    def number(value: float) -> str:
+        return str(int(value)) if float(value).is_integer() else f"{value:g}"
+
+    low = "−∞" if field_def.minimum is None else number(field_def.minimum)
+    high = "∞" if field_def.maximum is None else number(field_def.maximum)
+    return f'{t(lang, "range_label")}: {low} – {high}'
+
+
+def _privacy_summary(lang: str, config: NetworkConfig, path: Path) -> str:
+    level, _mode = privacy_level(config)
+    wallets = int(effective_privacy_value(config, "privacy.decoys.wallets"))
+    if level == "max":
+        detail = t(lang, "obfuscation_max_help")
+    elif wallets >= 1:
+        detail = t(lang, "obfuscation_tx_help", wallets=wallets, groups=wallets + 1)
+    else:
+        detail = t(lang, "obfuscation_off_help")
+    return (
+        '<div class="privacy-level">'
+        f'<div class="inline"><span class="badge">{h(t(lang, "obfuscation"))}</span>'
+        f'<strong>{h(t(lang, "obfuscation_" + level))}</strong></div>'
+        f'<p class="help">{h(detail)}</p>'
+        f'<p class="help">{h(t(lang, "privacy_file"))}: <code>{h(str(path))}</code> · '
+        f'{h(t(lang, "privacy_file_help"))}</p></div>'
+    )
+
+
+def _settings_section(
+    lang: str,
+    config: NetworkConfig,
+    group: str,
+    keys: list[str],
+    *,
+    first: bool = False,
+    extra: str = "",
+) -> str:
+    overridden = [key for key in keys if key in config.overrides]
+    meta: list[str] = []
+    if overridden:
+        meta.append(f'<span class="badge">{len(overridden)}</span>')
+    if group == "privacy":
+        level, _mode = privacy_level(config)
+        meta.append(f'<span class="pill">{h(t(lang, "obfuscation_" + level))}</span>')
+    opened = " open" if first or overridden else ""
+    regular = [key for key in keys if not FIELDS_BY_KEY[key].advanced]
+    advanced = [key for key in keys if FIELDS_BY_KEY[key].advanced]
+    body = "".join(_field_row(lang, config, key) for key in regular)
+    if advanced:
+        advanced_open = " open" if any(key in config.overrides for key in advanced) else ""
+        body += (
+            f'<details class="subsection"{advanced_open}>'
+            f'<summary>{h(t(lang, "group_advanced"))} ({len(advanced)})</summary>'
+            + "".join(_field_row(lang, config, key) for key in advanced)
+            + "</details>"
+        )
+    return (
+        f'<div class="card"><details class="settings-section"{opened}>'
+        f'<summary><h2>{h(t(lang, "group_" + group))}</h2>'
+        f'<span class="section-meta">{"".join(meta)}<span class="chev">›</span></span></summary>'
+        f'<div class="settings-body"><p class="help">{h(t(lang, "group_help_" + group))}</p>'
+        f'{extra}{body}</div></details></div>'
+    )
+
+
 def config_page(
     app: WebApp,
     snapshot: AppSnapshot,
@@ -1850,16 +1995,18 @@ def config_page(
     config = settings.network(selected)
     groups: dict[str, list[str]] = {}
     for field_def in FIELDS:
-        group = "advanced" if field_def.advanced else field_def.group
-        groups.setdefault(group, []).append(field_def.key)
+        groups.setdefault(field_def.group, []).append(field_def.key)
     sections = []
-    for group in ("performance", "server", "pruning", "core"):
+    section_order = ("server", "rawtx", "privacy", "performance", "pruning", "core", "logging")
+    for index, group in enumerate(section_order):
         if group not in groups:
             continue
-        rows = "".join(_field_row(lang, config, key) for key in groups[group])
-        sections.append(f'<div class="card"><h2>{h(t(lang, "group_" + group))}</h2>{rows}</div>')
-    advanced_rows = "".join(_field_row(lang, config, key) for key in groups.get("advanced", []))
-    advanced = f'<div class="card"><details><summary>{h(t(lang, "group_advanced"))}</summary>{advanced_rows}</details></div>' if advanced_rows else ""
+        extra = ""
+        if group == "privacy":
+            extra = _privacy_summary(lang, config, app.paths.network_privacy_file(selected))
+        sections.append(
+            _settings_section(lang, config, group, groups[group], first=index == 0, extra=extra)
+        )
 
     content = f"""
 {notice}
@@ -1871,13 +2018,15 @@ def config_page(
 <form method="post" action="/config?lang={lang}" onsubmit="return confirmSave(this)" data-network="{h(selected)}">
   <input type="hidden" name="network" value="{h(selected)}">
   <h2>{h(t(lang, f"network_{selected}"))}</h2>
-  <div class="card">
-    <h2>{h(t(lang, "tls_public_title"))}</h2>
-    <p class="help">{h(t(lang, "tls_public_help"))}</p>
-    <textarea name="public_hostnames" rows="3" placeholder="{h(t(lang, "tls_public_placeholder"))}">{h(chr(10).join(config.public_hostnames))}</textarea>
-  </div>
   {''.join(sections)}
-  {advanced}
+  <div class="card"><details class="settings-section"{' open' if config.public_hostnames else ''}>
+    <summary><h2>{h(t(lang, "group_tls"))}</h2><span class="section-meta">{f'<span class="badge">{len(config.public_hostnames)}</span>' if config.public_hostnames else ''}<span class="chev">›</span></span></summary>
+    <div class="settings-body">
+      <p class="help">{h(t(lang, "group_help_tls"))}</p>
+      <p class="help">{h(t(lang, "tls_public_help"))}</p>
+      <textarea name="public_hostnames" rows="3" placeholder="{h(t(lang, "tls_public_placeholder"))}">{h(chr(10).join(config.public_hostnames))}</textarea>
+    </div>
+  </details></div>
   <div class="card">
     <p class="help">{h(t(lang, "restart_notice"))}</p>
     <div class="inline">
@@ -1909,34 +2058,50 @@ function confirmSave(form) {{
 def _field_row(lang: str, config: NetworkConfig, key: str) -> str:
     field_def = FIELDS_BY_KEY[key]
     is_default = config.is_default(key)
-    value = config.value(key)
+    preset = str(config.value("privacy.preset"))
+    default_value = effective_privacy_value(config, key) if key.startswith("privacy.") else field_def.default
+    value = default_value if is_default else config.value(key)
+    if key == "privacy.mode" and is_default:
+        value = "preset"
     disabled = " disabled" if is_default else ""
     control_id = "value-" + key
     if field_def.kind == "bool":
         options = "".join(
-            f'<option value="{option}" {"selected" if (str(value).lower() == option) else ""}>{option}</option>'
+            f'<option value="{option}" {"selected" if (str(value).lower() == option) else ""}>{h(option_label(lang, key, option))}</option>'
             for option in ("true", "false")
         )
         control = f'<select id="{control_id}" name="value__{key}"{disabled}>{options}</select>'
     elif field_def.kind == "enum":
         options = "".join(
-            f'<option value="{option}" {"selected" if str(value) == option else ""}>{option}</option>'
+            f'<option value="{option}" {"selected" if str(value) == option else ""}>{h(option_label(lang, key, option))}</option>'
             for option in field_def.options
         )
         control = f'<select id="{control_id}" name="value__{key}"{disabled}>{options}</select>'
     elif field_def.kind == "list":
-        control = f'<textarea id="{control_id}" name="value__{key}" rows="3" placeholder="{h(default_label(field_def))}"{disabled}>{h(format_value(field_def, value))}</textarea>'
+        placeholder = _default_text(field_def, default_value)
+        control = f'<textarea id="{control_id}" name="value__{key}" rows="3" placeholder="{h(placeholder)}"{disabled}>{h(format_value(field_def, value))}</textarea>'
     else:
         step = "0.01" if field_def.kind == "float" else "1"
         control = f'<input id="{control_id}" type="number" step="{step}" name="value__{key}" value="{h(format_value(field_def, value))}"{disabled}>'
-    default_text = default_label(field_def)
+    if key == "privacy.mode":
+        default_text = f'{option_label(lang, key, "preset")} ({preset_value("privacy.mode", preset)})'
+    else:
+        default_text = _default_text(field_def, default_value)
     default_hint = f'<code>{h(default_text)}</code>' if default_text else ""
+    help_text = field_help(lang, key)
+    tip = (
+        f'<span class="tip" tabindex="0" role="note" title="{h(help_text)}" aria-label="{h(help_text)}">?</span>'
+        if help_text else ""
+    )
+    range_text = _range_text(lang, field_def)
+    range_html = f'<p class="range">{h(range_text)}</p>' if range_text else ""
     return f"""
 <div class="field">
-  <div class="label"><label for="default-{key}">{h(field_label(lang, key))}</label><code>{h(key)}</code></div>
+  <div class="label"><label for="default-{key}">{h(field_label(lang, key))} {tip}</label><code>{h(key)}</code></div>
   <div>
     <label class="checkline"><input id="default-{key}" type="checkbox" name="default__{key}" value="1" data-key="{h(key)}" {"checked" if is_default else ""} onchange="toggleDefault(this)"> {h(t(lang, "use_default"))} {default_hint}</label>
     {control}
-    <p class="help">{h(field_help(lang, key))}</p>
+    <p class="help">{h(help_text)}</p>
+    {range_html}
   </div>
 </div>"""

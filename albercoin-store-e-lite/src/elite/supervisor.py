@@ -12,7 +12,7 @@ from collections import deque
 from pathlib import Path
 from typing import Callable
 
-from .config_writer import AppPaths, build_config, write_config
+from .config_writer import AppPaths, build_config, build_privacy, write_config
 from .settings import NETWORKS, Settings
 from .tls import TLSManager
 
@@ -141,6 +141,10 @@ class NodeSupervisor:
                     active_networks=sum(1 for name in NETWORKS if settings.network(name).enabled),
                 )
                 write_config(self.paths.network_config_file(self.network), contents)
+                write_config(
+                    self.paths.network_privacy_file(self.network),
+                    build_privacy(self.network, config),
+                )
             except Exception as exc:  # noqa: BLE001
                 self._set_state("error", f"configuration: {exc}")
                 self._stop.wait(5)

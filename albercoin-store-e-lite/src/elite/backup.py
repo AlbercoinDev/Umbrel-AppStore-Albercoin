@@ -25,7 +25,7 @@ BUNDLE_FORMAT = "umbrel-1"
 EXCLUDE_INDEX = {
     "rawtx-cache", "tor", "tls", "LOG", "LOCK", "e-lite.log", "e-lite.log.1",
     "banner.txt", "core-paused-by-e-lite", "core-child.pid", "bitcoind.log", "bitcoin",
-    "e-lite-snapshot.json", "e-lite-snapshot.head.json",
+    "e-lite-snapshot.json", "e-lite-snapshot.head.json", "decoy.key",
 }
 # e-lite packs only chain data in --with-core (AUD-126). The wrapper mirrors that
 # allowlist: wallets, keys, bitcoin.conf and settings.json never enter a bundle.

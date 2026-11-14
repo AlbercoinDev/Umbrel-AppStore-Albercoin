@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.14.1-01`
+- Versión: `0.1.0-alpha.29.15.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,12 +15,15 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.14.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.15.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
-- `public-servers.toml` por red para proveedores Esplora, sembrado desde el
-  template oficial de e-lite. Si el archivo existe, no se sobrescribe.
+- `public-servers.toml` por red para proveedores Esplora y servidores Electrum,
+  sembrado desde el template oficial de e-lite. Si el archivo existe, no se
+  sobrescribe.
+- `privacy.toml` por red con presets `balanced`, `max` y `fast`: modo por txid
+  con wallets señuelo o solo bloques completos.
 - Rate limiting configurable por red (límite por segundo y ráfaga).
 - Panel web multi-red con activación/desactivación y configuración por red.
 - Lotes JSON-RPC para Sparrow (banner compatible con ElectrumX) y sonda de
@@ -74,14 +77,19 @@ más corta posible en los dos transportes:
   `max_parallel_fetches - 1` workers; no ocupa el último slot ni repite
   transacciones cacheadas. Los señuelos esperan a que termine la descarga de la
   wallet.
-- **Timeouts de e-lite 29.14**: `tor_connect_timeout_seconds = 10`,
+- **Timeouts de e-lite 29.15**: `tor_connect_timeout_seconds = 10`,
   `tor_stall_timeout_seconds = 12`, `tor_request_timeout_seconds = 60`
   (límite absoluto), `p2p_tor_timeout_seconds = 30`; connect/stall se duplican
-  en `.onion`. `max_parallel_fetches = 8`, con hasta el doble de intentos
+  en `.onion`. `max_parallel_fetches = 16`, con hasta el doble de intentos
   (máx. 24; Tor permite 32 circuitos).
-- Ajustes opcionales en Avanzado: `rawtx.decoys = 0` (menos señuelos, menos
-  privacidad), `rawtx.max_parallel_fetches` y los timeouts. **La app no fija
-  estos valores**: solo escribe los que cambies; el resto son los defaults de
+- **Modo por txid** (29.15): una wallet fría con transacciones podadas se
+  carga en decenas de segundos por Tor en lugar de minutos, con transacciones
+  verificadas y wallets señuelo. El fallback son bloques completos.
+- Ajustes opcionales en Avanzado: `rawtx.max_parallel_fetches` (16 por
+  defecto) y los timeouts. Los señuelos se eligen en **Privacidad**
+  (`privacy.preset` y `privacy.decoys.wallets`); `rawtx.decoys` solo afecta a
+  los bloques señuelo del modo `block` y del fallback. **La app no fija estos
+  valores**: solo escribe los que cambies; el resto son los defaults de
   e-lite, para que las mediciones reflejen su rendimiento real.
 - Para medir una primera carga **en frío**, vacía la caché rawtx desde
   Configuración → **Caché rawtx** y reinicia la red (o marca la casilla al
@@ -94,6 +102,38 @@ clearnet (`rawtx.allow_clearnet`) no hace que se prefiera directo mientras Tor
 funcione. La carrera puede enseñar el mismo bloque a **hasta 3 endpoints** a la
 vez (circuitos Tor distintos): es el precio de la velocidad, sin volver a
 clearnet. Los detalles de red muestran la fila **Carrera de bloques**.
+
+## Privacidad de las transacciones externas
+
+Cuando una transacción confirmada ya no está en Core porque su bloque fue
+podado, e-lite la pide fuera del nodo **solo por Tor** y la verifica contra el
+índice local (txid, posición en el bloque y rama merkle) antes de cachearla o
+servirla. Un servidor puede ocultar datos, pero no falsificarlos.
+
+| Preset | Modo | Qué pide | Qué ve un servidor |
+| --- | --- | --- | --- |
+| `balanced` (defecto) | `tx` | txids sueltos, sesiones de 50, 3 wallets señuelo | 4 grupos plausibles |
+| `fast` | `tx` | txids, sesiones de 100, 1 señuelo | 2 grupos plausibles |
+| `max` | `block` | bloques completos | hashes de bloque, ningún txid |
+
+- **Wallets señuelo**: por cada wallet real se cargan `k` wallets parecidas del
+  índice, crecidas por sus salidas y estables entre cargas. La probabilidad de
+  que un servidor elija la tuya es `1/(k+1)`.
+- **Reparto**: cada grupo se reparte entre al menos `sessions.min_servers`
+  servidores, con una cuota máxima por servidor y sesiones en paralelo.
+- **Servidores**: `public-servers.toml` acepta `electrum = [...]`. El template
+  de 29.15 trae 10 servidores para mainnet; signet y testnet4 usan Esplora. Un
+  archivo antiguo sin la clave usa la lista del template incluido (queda en el
+  log); `electrum = []` desactiva Electrum y obliga a bloques completos.
+- **Archivo**: `privacy.toml` vive junto a `e-lite.toml` y lo genera esta app
+  desde **Configuración → Privacidad**. Las ediciones manuales se sobrescriben
+  al arrancar la red; los valores no fijados usan el preset.
+- **Nivel de ofuscación**: el panel muestra el nivel activo (máxima, alta,
+  media o baja) y la probabilidad `1/(k+1)` según el preset y los señuelos.
+- **`decoy.key`**: el secreto que hace estables los señuelos vive en
+  `data/networks/<red>/e-lite/decoy.key` (0600) y **no entra** en las copias.
+- El estado de red añade sesiones, txids reales y señuelo, verificaciones,
+  rechazos y fallbacks a bloques.
 
 ## Logs
 
@@ -157,7 +197,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.14.1 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.15.0 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -170,6 +210,15 @@ signet**. Cada red tiene su propia configuración y la casilla **Usar valor
 predeterminado** por campo. La activación y desactivación se realiza únicamente
 en Estado; Configuración no duplica la gestión de redes. Los cambios se aplican
 solo a la red editada.
+
+La configuración está clasificada en secciones desplegables: **Servidor
+Electrum**, **Transacciones externas**, **Privacidad**, **Índice y
+rendimiento**, **Poda y disco**, **Bitcoin Core**, **Registro** y
+**Certificado y nombres TLS**. Dentro de cada sección, los ajustes poco
+habituales quedan en **Avanzado**. Cada parámetro muestra una descripción en un
+tooltip (`?`), su valor predeterminado y, cuando existe, el rango mínimo–máximo
+o los valores admitidos. La sección Privacidad incluye el nivel de ofuscación
+activo y la ruta de `privacy.toml`.
 
 En Estado, las conexiones muestran el hostname local y la dirección onion una
 sola vez, sin puerto, con los puertos Plain y TLS separados. El recuadro de
@@ -290,7 +339,7 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   `rawtx.tor_fallback_clearnet`, `rawtx.prefetch`,
   `rawtx.tor_request_timeout_seconds`, `rawtx.tor_connect_timeout_seconds`,
   `rawtx.tor_stall_timeout_seconds`, `rawtx.p2p_tor_timeout_seconds`,
-  `rawtx.max_parallel_fetches`,
+  `rawtx.max_parallel_fetches` (16 por defecto),
   `server.advertise_electrumx_compat` y `server.plain_lan`. Se mantienen los
   valores privados de e-lite 29.12 (Tor-only y sin precarga); el listener plano
   sigue en la LAN por compatibilidad y se puede mover a localhost. La
@@ -410,7 +459,8 @@ data/
     tls/ca.crt, ca.key              # CA local compartida
     networks/<red>/
       e-lite.toml
-      public-servers.toml           # proveedores Esplora de la red
+      privacy.toml                  # modo, señuelos y sesiones (29.15)
+      public-servers.toml           # Esplora y servidores Electrum de la red
       tls/                          # certificado y clave de la red
       tor/                          # claves onion y estado de Tor
   networks/<red>/
@@ -480,7 +530,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.14.1-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.15.0-01
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

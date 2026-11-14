@@ -1368,7 +1368,7 @@ def _zfs_arc_warning(lang: str) -> str:
     return (
         f'<div class="card warning"><p>{h(text)}</p>'
         f'<pre>{h(commands)}</pre>'
-        f'<button class="secondary" type="button" onclick="copyValue(this.dataset.value, this)" data-value="{h(commands)}">{h(button)}</button>'
+        f'<button class="secondary" type="button" onclick="copyValue(this.previousElementSibling.innerText, this)">{h(button)}</button>'
         f'</div>'
     )
 

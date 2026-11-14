@@ -119,6 +119,7 @@ class WebTests(unittest.TestCase):
                 "rawtx": {
                     "tx_get_failures": {"no_source": 3, "external_failed": 1, "not_found": 0},
                     "decoys_pending": 1,
+                    "race": {"attempts": 9, "hedges": 2, "wins_esplora": 6, "wins_p2p": 1},
                     "cache_blocks": 2,
                     "cache_txs": 5,
                     "cache_bytes": 6144,
@@ -138,6 +139,8 @@ class WebTests(unittest.TestCase):
         self.assertIn("Compatibilidad ElectrumX", body)
         self.assertIn("Caché rawtx", body)
         self.assertIn("Decoys pendientes", body)
+        self.assertIn("Carrera de bloques", body)
+        self.assertIn("9 / 2 / 6 / 1", body)
 
     def test_tabs_connections_and_visible_logs(self) -> None:
         _, _, body = self.get('/?network=signet')

@@ -212,10 +212,10 @@ def build_config(
         ("bitcoind", str(bitcoin_binary)),
         ("core_datadir", str(paths.network_core_data(network))),
         ("require_loopback_rpc", True),
-        # Explicit: the app's privacy posture does not drift with upstream defaults.
-        ("network", value("core.network")),
     ]
-    for key in ("core.timeout_seconds", "core.prune_mib", "core.restart", "core.io_priority", "core.cgroup_io_weight"):
+    # core.network is left to e-lite unless the operator overrides it: the
+    # app must be able to follow upstream performance/privacy defaults.
+    for key in ("core.network", "core.timeout_seconds", "core.prune_mib", "core.restart", "core.io_priority", "core.cgroup_io_weight"):
         if present(key):
             core_values.append((key.split(".", 1)[1], value(key)))
     if present("core.extra_args") and value("core.extra_args"):
@@ -288,15 +288,10 @@ def build_config(
         ],
     )
 
-    rawtx_values: list[tuple[str, Any]] = [
-        ("tor_fallback_clearnet", value("rawtx.tor_fallback_clearnet")),
-        ("prefetch", value("rawtx.prefetch")),
-        ("tor_request_timeout_seconds", value("rawtx.tor_request_timeout_seconds")),
-        ("tor_connect_timeout_seconds", value("rawtx.tor_connect_timeout_seconds")),
-        ("tor_stall_timeout_seconds", value("rawtx.tor_stall_timeout_seconds")),
-        ("p2p_tor_timeout_seconds", value("rawtx.p2p_tor_timeout_seconds")),
-        ("max_parallel_fetches", value("rawtx.max_parallel_fetches")),
-    ]
+    # Performance knobs intentionally follow e-lite's own defaults. The TOML
+    # only carries a value when the operator overrides it, so a new upstream
+    # release (new timeouts, parallelism, prefetch) is measured as shipped.
+    rawtx_values: list[tuple[str, Any]] = []
     for key in (
         "rawtx.enabled",
         "rawtx.cache_mib",
@@ -304,6 +299,13 @@ def build_config(
         "rawtx.use_p2p",
         "rawtx.use_esplora",
         "rawtx.allow_clearnet",
+        "rawtx.tor_fallback_clearnet",
+        "rawtx.prefetch",
+        "rawtx.tor_request_timeout_seconds",
+        "rawtx.tor_connect_timeout_seconds",
+        "rawtx.tor_stall_timeout_seconds",
+        "rawtx.p2p_tor_timeout_seconds",
+        "rawtx.max_parallel_fetches",
     ):
         if present(key):
             rawtx_values.append((key.split(".", 1)[1], value(key)))

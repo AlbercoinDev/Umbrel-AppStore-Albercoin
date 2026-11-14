@@ -1177,6 +1177,13 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "JSON-RPC batches (lines / items / max)",
             f"{int(server.get('batch_lines') or 0)} / {int(server.get('batch_items') or 0)} / {int(server.get('batch_max_items') or 0)}",
         ))
+    race = rawtx.get("race") or {}
+    if isinstance(race, dict) and any(int(race.get(k) or 0) for k in ("attempts", "hedges", "wins_esplora", "wins_p2p")):
+        rows.append((
+            "Carrera de bloques (intentos / hedges / Esplora / P2P)",
+            "Block race (attempts / hedges / Esplora / P2P)",
+            f"{int(race.get('attempts') or 0):,} / {int(race.get('hedges') or 0):,} / {int(race.get('wins_esplora') or 0):,} / {int(race.get('wins_p2p') or 0):,}",
+        ))
     if rawtx.get("decoys_pending") is not None:
         rows.append((
             "Decoys pendientes",

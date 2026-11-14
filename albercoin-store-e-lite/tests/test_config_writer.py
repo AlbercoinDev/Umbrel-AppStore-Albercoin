@@ -161,30 +161,18 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertNotIn("pruning", data)
             self.assertNotIn("max_clients", data["server"])
             self.assertNotIn("prune_mib", data["core"])
-            # The wrapper states its privacy posture explicitly so it does not
-            # drift with upstream defaults.
-            self.assertEqual(data["core"]["network"], "auto")
-            self.assertEqual(
-                data["rawtx"],
-                {
-                    "tor_fallback_clearnet": False,
-                    "prefetch": True,
-                    "tor_request_timeout_seconds": 60,
-                    "tor_connect_timeout_seconds": 20,
-                    "tor_stall_timeout_seconds": 25,
-                    "p2p_tor_timeout_seconds": 30,
-                    "max_parallel_fetches": 4,
-                },
-            )
+            # Performance/privacy knobs follow e-lite's own defaults unless the
+            # operator overrides them.
+            self.assertNotIn("rawtx", data)
+            self.assertNotIn("network", data["core"])
 
     def test_plain_listener_and_privacy_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
             self.assertEqual(data["server"]["listen"], "0.0.0.0:55211")
-            self.assertEqual(data["rawtx"]["tor_fallback_clearnet"], False)
-            self.assertEqual(data["rawtx"]["prefetch"], True)
-            self.assertEqual(data["core"]["network"], "auto")
+            self.assertNotIn("rawtx", data)
+            self.assertNotIn("network", data["core"])
             config = NetworkConfig(overrides={
                 "server.plain_lan": False,
                 "rawtx.tor_fallback_clearnet": True,
@@ -203,19 +191,16 @@ class ConfigWriterTests(unittest.TestCase):
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
             self.assertTrue(data["server"]["advertise_electrumx_compat"])
-            self.assertTrue(data["rawtx"]["prefetch"])
-            self.assertEqual(data["rawtx"]["tor_request_timeout_seconds"], 60)
-            self.assertEqual(data["rawtx"]["tor_connect_timeout_seconds"], 20)
-            self.assertEqual(data["rawtx"]["tor_stall_timeout_seconds"], 25)
-            self.assertEqual(data["rawtx"]["p2p_tor_timeout_seconds"], 30)
-            self.assertEqual(data["rawtx"]["max_parallel_fetches"], 4)
+            # The wrapper does not pin performance defaults: e-lite 29.14
+            # ships prefetch=true, 60/10/12/30 and 8 parallel fetches.
+            self.assertNotIn("rawtx", data)
             config = NetworkConfig(overrides={
                 "server.advertise_electrumx_compat": False,
                 "rawtx.tor_request_timeout_seconds": 90,
                 "rawtx.tor_connect_timeout_seconds": 30,
                 "rawtx.tor_stall_timeout_seconds": 40,
                 "rawtx.p2p_tor_timeout_seconds": 45,
-                "rawtx.max_parallel_fetches": 8,
+                "rawtx.max_parallel_fetches": 12,
             })
             _, data = self._build("signet", config, paths)
             self.assertFalse(data["server"]["advertise_electrumx_compat"])
@@ -223,7 +208,7 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertEqual(data["rawtx"]["tor_connect_timeout_seconds"], 30)
             self.assertEqual(data["rawtx"]["tor_stall_timeout_seconds"], 40)
             self.assertEqual(data["rawtx"]["p2p_tor_timeout_seconds"], 45)
-            self.assertEqual(data["rawtx"]["max_parallel_fetches"], 8)
+            self.assertEqual(data["rawtx"]["max_parallel_fetches"], 12)
 
     def test_overrides_are_written(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

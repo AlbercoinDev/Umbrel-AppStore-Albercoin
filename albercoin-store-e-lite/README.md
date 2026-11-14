@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.13.0-01`
+- Versión: `0.1.0-alpha.29.14.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.13.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.14.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -65,22 +65,24 @@ más corta posible en los dos transportes:
   Configuración → Avanzado si otra wallet se comporta mal.
 - La sonda de proveedores es **en paralelo** y la puerta de Electrum abre unos
   2 s después del primer proveedor sano.
-- **`rawtx.prefetch = true`** por defecto: precarga en segundo plano los
-  bloques del historial. Ahora paga sus señuelos y nunca ocupa el último slot
-  de descarga, así que acelera la primera carga sin bloquear las peticiones de
-  la wallet. Se puede desactivar para reducir tráfico.
-- **Timeouts Tor**: `tor_connect_timeout_seconds = 20` (circuito + conexión),
-  `tor_stall_timeout_seconds = 25` (sin cabecera ni bytes) y
-  `tor_request_timeout_seconds = 60` (límite absoluto del intento). Un bloque
-  completo comparte 60 s entre todas las fuentes; el P2P por Tor usa 30 s y el
-  directo sigue en 8 s. Un timeout corto enfriaba proveedores justo durante la
-  primera carga.
-- **P2P sobre Tor corregido**: un peer muerto ya no bloquea al resto, backoff
-  por peer, v2 antes de v1 y lecturas acotadas.
-- Ajustes opcionales de velocidad en Avanzado: `rawtx.decoys = 0` (menos
-  señuelos, menos privacidad) y `rawtx.max_parallel_fetches` (más descargas
-  simultáneas; puede saturar Tor). Los valores por defecto priorizan privacidad
-  y estabilidad.
+- **Carrera de bloques**: cada bloque externo se pide a la vez a hasta 3
+  proveedores/pares/circuitos; gana el primero verificado y se abortan los
+  demás. Un intento lento se sustituye si no envía nada en 6 s, baja de
+  96 KB/s tras 5 s o llega a 15 s (directo: 2 s / 256 KB/s / 6 s). `transaction.get`
+  ya no bloquea al lector de la conexión.
+- **Prefetch de historial** activado: hasta 64 bloques por historial con
+  `max_parallel_fetches - 1` workers; no ocupa el último slot ni repite
+  transacciones cacheadas. Los señuelos esperan a que termine la descarga de la
+  wallet.
+- **Timeouts de e-lite 29.14**: `tor_connect_timeout_seconds = 10`,
+  `tor_stall_timeout_seconds = 12`, `tor_request_timeout_seconds = 60`
+  (límite absoluto), `p2p_tor_timeout_seconds = 30`; connect/stall se duplican
+  en `.onion`. `max_parallel_fetches = 8`, con hasta el doble de intentos
+  (máx. 24; Tor permite 32 circuitos).
+- Ajustes opcionales en Avanzado: `rawtx.decoys = 0` (menos señuelos, menos
+  privacidad), `rawtx.max_parallel_fetches` y los timeouts. **La app no fija
+  estos valores**: solo escribe los que cambies; el resto son los defaults de
+  e-lite, para que las mediciones reflejen su rendimiento real.
 - Para medir una primera carga **en frío**, vacía la caché rawtx desde
   Configuración → **Caché rawtx** y reinicia la red (o marca la casilla al
   vaciarla). Sin ese reinicio, los ficheros desaparecen pero el bloque en RAM
@@ -89,7 +91,9 @@ más corta posible en los dos transportes:
 
 Las fuentes externas de bloques siguen intentando **Tor primero**; permitir
 clearnet (`rawtx.allow_clearnet`) no hace que se prefiera directo mientras Tor
-funcione. La mejora para una wallet en LAN es el batching y la sonda paralela.
+funcione. La carrera puede enseñar el mismo bloque a **hasta 3 endpoints** a la
+vez (circuitos Tor distintos): es el precio de la velocidad, sin volver a
+clearnet. Los detalles de red muestran la fila **Carrera de bloques**.
 
 ## Caché rawtx
 
@@ -139,7 +143,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.13.0 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.14.0 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus

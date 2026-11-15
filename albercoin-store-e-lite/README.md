@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.16.1-01`
+- Versión: `0.1.0-alpha.29.16.3-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.16.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.16.3`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -25,7 +25,7 @@ independientes por red.
 - `privacy.toml` por red con presets `balanced`, `max` y `fast`: modo por txid
   con wallets señuelo o solo bloques completos.
 - Listas de servidores completas para las tres redes: Esplora y Electrum
-  (10 en mainnet, 8 en testnet4, 4 en signet), insertadas por la app y
+  (10 en mainnet, 5 en testnet4, 4 en signet), insertadas por la app y
   verificadas contra el génesis y una transacción real.
 - Rate limiting configurable por red (límite por segundo y ráfaga).
 - Panel web multi-red con activación/desactivación y configuración por red.
@@ -127,7 +127,7 @@ servirla. Un servidor puede ocultar datos, pero no falsificarlos.
   servidores, con una cuota máxima por servidor y sesiones en paralelo.
 - **Servidores**: `public-servers.toml` acepta `esplora = [...]` y
   `electrum = [...]`. La app rellena las tres redes con listas verificadas
-  (mainnet 10, testnet4 8, signet 4) y muestra el recuento en Privacidad. Una
+  (mainnet 10, testnet4 5, signet 4) y muestra el recuento en Privacidad. Una
   lista manual no vacía nunca se sobrescribe; el vacío de un archivo sin tocar
   se rellena. Para no usar txids, pon `privacy.preset = "max"`, no dejes la
   lista vacía.
@@ -146,6 +146,22 @@ servirla. Un servidor puede ocultar datos, pero no falsificarlos.
   `data/networks/<red>/e-lite/decoy.key` (0600) y **no entra** en las copias.
 - El estado de red añade sesiones, txids reales y señuelo, verificaciones,
   rechazos y fallbacks a bloques.
+
+### Descarga directa, sin Tor
+
+Desde e-lite 29.16.3, **Transacciones externas → Descargar datos por Tor**
+(`rawtx.use_tor`) permite desactivar Tor solo para las descargas externas.
+La onion de la wallet sigue funcionando porque es independiente.
+
+Con `use_tor = false`, Esplora, Electrum por txid y P2P conectan directamente:
+los proveedores y pares ven la IP del equipo. Los señuelos siguen ocultando qué
+wallet se carga, pero no la IP. No hace falta `rawtx.allow_clearnet`; de hecho,
+ese campo solo era un fallback y no bastaba para forzar clearnet.
+
+Para pruebas, una VPN en el host oculta la IP a los proveedores, pero no es
+equivalente a Tor: el proveedor de VPN pasa a ver el tráfico y sigue habiendo
+correlación por tiempos. Cuida las fugas de DNS/IPv6 y no pongas la VPN solo en
+la wallet: e-lite sale por la IP del host.
 
 ## Logs
 
@@ -209,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.16.1 conserva las rutas explícitas de Umbrel y no migra
+La versión 0.1.0-alpha.29.16.3 conserva las rutas explícitas de Umbrel y no migra
 datos ni identidades onion. Los valores automáticos de poda ahora son
 `prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
 guardados se conservan. TLS sigue usando la CA local del wrapper y sus
@@ -274,6 +290,9 @@ Tor lo gestiona e-lite dentro del mismo contenedor, una instancia por red:
   bloques podados no están disponibles hasta que Tor funcione. Se puede
   reactivar el fallback en Configuración → Avanzado (`rawtx.tor_fallback_clearnet`),
   sabiendo que expone tu IP a los proveedores.
+- **Descarga directa**: `rawtx.use_tor = false` (visible en Transacciones
+  externas) desactiva Tor para todo el camino externo y deja la onion intacta.
+  La ruta efectiva aparece en Estado (`Ruta externa`) y en el log.
 
 No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 
@@ -323,24 +342,13 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   `min_gain_blocks`.
 - El plan de compactación aplica hilos físicos también al arrancar (SSD/NVMe
   2–8, ZFS/virtual 4, HDD/red 2).
-- `index.zfs_arc_dynamic` (activado) gestiona el tope del ARC por fase:
-  `zfs_arc_max_mib` durante la descarga (0 = mitad de RAM) y
-  `zfs_arc_min_mib` (1024) una vez sincronizado. Solo actúa si puede escribir
-  el parámetro de ZFS; sin permiso queda en modo aviso y lo reintenta cada
-  10 minutos. **Dentro del contenedor de Umbrel no puede escribir
-  `zfs_arc_max`**: limita el ARC en el host (8 GiB para 32 GiB de RAM) para
-  que `MemAvailable` y la caché de e-lite no se confundan. `e-lite arc-setup`
-  es para instalaciones nativas, no para Umbrel. El panel muestra los comandos
-  copiables:
-
-  ```sh
-  echo 8589934592 | sudo tee /sys/module/zfs/parameters/zfs_arc_max
-  printf 'options zfs zfs_arc_max=8589934592\n' | sudo tee /etc/modprobe.d/zfs.conf
-  sudo update-initramfs -u
-  ```
-
-  Los dos últimos dejan el tope persistente; requieren reiniciar el host. No
-  se modifica e-lite.
+- **Tope de ARC automático**: un servicio auxiliar `arc-cap` del Compose
+  monta un sysfs propio y fija `zfs_arc_max` en el host al arrancar o
+  actualizar la app. Usa 8 GiB en equipos con 24 GiB o más de RAM y un cuarto
+  de la RAM en equipos menores. `index.zfs_arc_dynamic` queda desactivado
+  para que e-lite no compita con el tope fijo. No hay que ejecutar nada a
+  mano. El servicio es privilegiado porque Umbrel monta `/sys` en solo
+  lectura; no tiene red ni acceso a los datos de la app.
 - Presupuesto desde `MemAvailable` (no RAM instalada) y `-dbcache` de Core
   ajustado a la memoria libre; con varias redes el wrapper sigue fijando su
   propio tope de `-dbcache`.
@@ -507,7 +515,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.1-01@sha256:01e7e109f858f1007746c57fa3745823fecdc56fa49543aba9fac6158f700931
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.3-01@sha256:01e7e109f858f1007746c57fa3745823fecdc56fa49543aba9fac6158f700931
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -517,7 +525,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.1-01@sha256:01e7e109f858f1007746c57fa3745823fecdc56fa49543aba9fac6158f700931
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.3-01@sha256:01e7e109f858f1007746c57fa3745823fecdc56fa49543aba9fac6158f700931
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.
@@ -544,7 +552,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.1-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.3-01
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

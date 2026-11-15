@@ -92,6 +92,17 @@ class WebTests(unittest.TestCase):
         self.assertIn("Ofuscación activa", body)
         self.assertIn("privacy.toml", body)
 
+    def test_use_tor_control_and_direct_warning(self) -> None:
+        _, _, body = self.get("/config?network=signet")
+        self.assertIn('name="value__rawtx.use_tor"', body)
+        settings = load_settings(self.paths.settings_file)
+        settings.network("signet").overrides["rawtx.use_tor"] = False
+        from elite.settings import save_settings
+        save_settings(self.paths.settings_file, settings)
+        _, _, body = self.get("/config?network=signet")
+        self.assertIn("Descarga externa directa", body)
+        self.assertIn("La onion de la wallet sigue funcionando", body)
+
     def test_privacy_servers_summary(self) -> None:
         path = self.paths.network_public_servers("signet")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,6 +166,7 @@ class WebTests(unittest.TestCase):
                     "batch_max_items": 100,
                 },
                 "rawtx": {
+                    "path": "tor",
                     "tx_get_failures": {"no_source": 3, "external_failed": 1, "not_found": 0},
                     "decoys_pending": 1,
                     "race": {"attempts": 9, "hedges": 2, "wins_esplora": 6, "wins_p2p": 1},
@@ -195,6 +207,8 @@ class WebTests(unittest.TestCase):
         self.assertIn("9 / 2 / 6 / 1", body)
         self.assertIn("Ofuscación (nivel / preset / modo / señuelos)", body)
         self.assertIn("Alta / balanced / tx / 3", body)
+        self.assertIn("Ruta externa", body)
+        self.assertIn("Tor", body)
 
     def test_logs_can_be_copied_and_downloaded(self) -> None:
         _, _, body = self.get('/?network=signet')

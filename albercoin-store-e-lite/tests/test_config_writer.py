@@ -82,7 +82,7 @@ class ConfigWriterTests(unittest.TestCase):
             _, data = self._build("signet", NetworkConfig(), paths, active_networks=3)
             self.assertEqual(data["index"]["memory_fraction"], 0.2)
             _, data = self._build("signet", NetworkConfig(), paths, active_networks=1)
-            self.assertNotIn("index", data)
+            self.assertEqual(data["index"], {"zfs_arc_dynamic": False})
             override = NetworkConfig(overrides={"index.memory_fraction": 0.5})
             _, data = self._build("signet", override, paths, active_networks=3)
             self.assertEqual(data["index"]["memory_fraction"], 0.5)
@@ -142,7 +142,7 @@ class ConfigWriterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
-            self.assertNotIn("index", data)
+            self.assertEqual(data["index"], {"zfs_arc_dynamic": False})
             override = NetworkConfig(overrides={"index.allow_low_memory": True})
             _, data = self._build("signet", override, paths)
             self.assertTrue(data["index"]["allow_low_memory"])
@@ -159,7 +159,7 @@ class ConfigWriterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
-            self.assertNotIn("index", data)
+            self.assertEqual(data["index"], {"zfs_arc_dynamic": False})
             self.assertNotIn("pruning", data)
             self.assertNotIn("max_clients", data["server"])
             self.assertNotIn("prune_mib", data["core"])
@@ -266,6 +266,15 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertNotIn("wallets = 5", config_text)
             self.assertFalse(paths.network_privacy_file("signet").exists())
 
+    def test_use_tor_override(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths)
+            self.assertNotIn("rawtx", data)
+            config = NetworkConfig(overrides={"rawtx.use_tor": False})
+            _, data = self._build("signet", config, paths)
+            self.assertFalse(data["rawtx"]["use_tor"])
+
     def test_public_servers_fill_empty_network_lists(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -281,7 +290,7 @@ class ConfigWriterTests(unittest.TestCase):
             ensure_public_servers(target, "testnet4", template)
             data = tomllib.loads(target.read_text())
             self.assertEqual(data["testnet4"]["electrum"][0], "mempool.space:40002:s")
-            self.assertEqual(len(data["testnet4"]["electrum"]), 8)
+            self.assertEqual(len(data["testnet4"]["electrum"]), 5)
             self.assertEqual(data["testnet4"]["esplora"], ["https://t/api"])
             # Idempotent and the other networks are untouched.
             before = target.read_text()
@@ -307,7 +316,7 @@ class ConfigWriterTests(unittest.TestCase):
             ensure_public_servers(bare, "testnet4", template)
             bare_data = tomllib.loads(bare.read_text())["testnet4"]
             self.assertEqual(bare_data["esplora"], ["https://t/api"])
-            self.assertEqual(len(bare_data["electrum"]), 8)
+            self.assertEqual(len(bare_data["electrum"]), 5)
 
             # Empty list with a customised Esplora list is respected.
             custom = root / "custom.toml"

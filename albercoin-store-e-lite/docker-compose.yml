@@ -4,6 +4,19 @@ services:
       APP_HOST: e-lite
       APP_PORT: 3000
 
+
+  # One-shot host helper: Umbrel mounts /sys read-only, so the app cannot set
+  # zfs_arc_max from its own container. This privileged helper mounts a fresh
+  # sysfs and applies the fixed cap on every app start/update. It runs a fixed
+  # script, has no network and no access to app data.
+  arc-cap:
+    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.3-01@sha256:01e7e109f858f1007746c57fa3745823fecdc56fa49543aba9fac6158f700931
+    user: "0:0"
+    privileged: true
+    network_mode: none
+    restart: "no"
+    command: ["sh", "/app/elite/arc_cap.sh"]
+
   app:
     image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.16.1-01@sha256:01e7e109f858f1007746c57fa3745823fecdc56fa49543aba9fac6158f700931
     user: "1000:1000"
@@ -11,6 +24,9 @@ services:
     init: true
     restart: on-failure
     stop_grace_period: 5m
+    depends_on:
+      arc-cap:
+        condition: service_completed_successfully
     sysctls:
       # Keep ephemeral source ports below the Electrum listeners so an
       # outgoing Core/Tor connection cannot collide with a TLS bind.

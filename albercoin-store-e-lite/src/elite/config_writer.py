@@ -33,18 +33,15 @@ ELECTRUM_DEFAULTS: dict[str, tuple[str, ...]] = {
     "testnet4": (
         "mempool.space:40002:s",
         "blackie.c3-soft.com:57010:s",
-        "testnet4.qtornado.com:51012:s",
+        "testnet4-electrum.mineracks.com:50002:s",
         "fulcrum.theuplink.net:60002:s",
         "testnet.aranguren.org:52002:s",
-        "v22019051929289916.bestsrv.de:60002:s",
-        "bitcoin.stagemole.eu:5010:s",
-        "134.199.227.217:50002:s",
     ),
     "signet": (
         "mempool.space:60602:s",
         "node202.fra.mempool.space:60602:s",
-        "electrum.emzy.de:53002:s",
         "mempool.tk7.mempool.space:60602:s",
+        "signet-electrum.mineracks.com:50002:s",
     ),
 }
 
@@ -278,6 +275,10 @@ def build_config(
         "index.reorg_window",
     ]
     index_values = [(key.split(".", 1)[1], value(key)) for key in index_keys if present(key)]
+    # The Umbrel app caps the host ARC with a privileged one-shot service; the
+    # e-lite per-phase manager would fight that fixed cap.
+    if not present("index.zfs_arc_dynamic"):
+        index_values.append(("zfs_arc_dynamic", False))
     # Every instance budgets memory independently. When several networks share
     # the same host, split e-lite's memory ceiling instead of letting each one
     # plan for the full default (0.75 of total RAM).
@@ -325,6 +326,7 @@ def build_config(
         "rawtx.decoys",
         "rawtx.use_p2p",
         "rawtx.use_esplora",
+        "rawtx.use_tor",
         "rawtx.allow_clearnet",
         "rawtx.tor_fallback_clearnet",
         "rawtx.prefetch",

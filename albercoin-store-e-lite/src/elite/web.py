@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import html
 import json
-import os
 import time
 import urllib.error
 import urllib.request
@@ -69,6 +68,7 @@ DEMO_STATUS: dict[str, Any] = {
     },
     "core": {"connections": 9, "initial_block_download": False, "pruned": True, "pruneheight": 176000},
     "rawtx": {
+        "path": "tor",
         "tx_mode": {
             "active": True,
             "servers": 10,
@@ -1250,6 +1250,14 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
     ]
     rawtx = live.get("rawtx") or {}
     server = live.get("server") or {}
+    path = str(rawtx.get("path") or "")
+    if path:
+        label = {
+            "tor": t(lang, "external_path_tor"),
+            "tor+fallback": t(lang, "external_path_fallback"),
+            "direct": t(lang, "external_path_direct"),
+        }.get(path, path)
+        rows.append(("Ruta externa", "External path", label))
     if server.get("banner"):
         rows.append(("Banner Electrum", "Electrum banner", server["banner"]))
     if "electrumx_compat" in server:
@@ -1407,47 +1415,12 @@ def _error_text(lang: str, error: str) -> str:
     return error
 
 
-def _zfs_arc_warning(lang: str) -> str:
-    """Warn when the host uses ZFS but the container cannot manage the ARC cap."""
-    if not Path("/proc/spl/kstat/zfs/arcstats").is_file():
-        return ""
-    try:
-        if os.access("/sys/module/zfs/parameters/zfs_arc_max", os.W_OK):
-            return ""
-    except OSError:
-        pass
-    text = (
-        "ZFS detectado y el contenedor no puede escribir zfs_arc_max. Limita el ARC "
-        "en el host a 8 GiB (25 % de 32 GiB; ajusta si tu RAM es distinta) para que "
-        "MemAvailable y la caché de e-lite no se confundan. Ejecuta los comandos en "
-        "el host, no dentro del contenedor; e-lite no se modifica."
-        if lang == "es" else
-        "ZFS detected and the container cannot write zfs_arc_max. Cap the ARC on the "
-        "host at 8 GiB (25 % of 32 GiB; adjust for other RAM sizes) so MemAvailable "
-        "and the e-lite cache agree. Run the commands on the host, not inside the "
-        "container; e-lite itself is not modified."
-    )
-    commands = "\n".join((
-        "echo 8589934592 | sudo tee /sys/module/zfs/parameters/zfs_arc_max",
-        "printf 'options zfs zfs_arc_max=8589934592\\n' | sudo tee /etc/modprobe.d/zfs.conf",
-        "sudo update-initramfs -u",
-    ))
-    button = "Copiar comandos" if lang == "es" else "Copy commands"
-    return (
-        f'<div class="card warning"><p>{h(text)}</p>'
-        f'<pre>{h(commands)}</pre>'
-        f'<button class="secondary" type="button" onclick="copyValue(this.previousElementSibling.innerText, this)">{h(button)}</button>'
-        f'</div>'
-    )
-
-
 def status_page(app: WebApp, snapshot: AppSnapshot, lang: str, query: str, error: str = "") -> str:
     notice = ""
     if error:
         notice = f'<div class="card error"><p>{h(error)}</p></div>'
     if "saved=1" in (query or ""):
         notice += f'<div class="card warning"><p>{h(t(lang, "saved"))}</p></div>'
-    notice += _zfs_arc_warning(lang)
     runtime = _runtime_card(snapshot, lang)
     enabled = snapshot.enabled_networks
     if enabled:
@@ -1848,6 +1821,17 @@ def _privacy_summary(lang: str, config: NetworkConfig, path: Path, network: str)
         detail = t(lang, "obfuscation_tx_help", wallets=wallets, groups=wallets + 1)
     else:
         detail = t(lang, "obfuscation_off_help")
+    use_tor = bool(config.value("rawtx.use_tor"))
+    if use_tor:
+        route = t(lang, "external_path_tor")
+        if bool(config.value("rawtx.tor_fallback_clearnet")):
+            route = t(lang, "external_path_fallback")
+        route_html = f'<p class="help">{h(t(lang, "external_path"))}: {h(route)}</p>'
+    else:
+        route_html = (
+            f'<p class="help">{h(t(lang, "external_path"))}: {h(t(lang, "external_path_direct"))}</p>'
+            f'<p class="server-warning">{h(t(lang, "external_direct_warning"))}</p>'
+        )
     esplora, electrum, server_error = public_server_lists(
         path.with_name("public-servers.toml"), network
     )
@@ -1874,7 +1858,7 @@ def _privacy_summary(lang: str, config: NetworkConfig, path: Path, network: str)
         f'<strong>{h(t(lang, "obfuscation_" + level))}</strong></div>'
         f'<p class="help">{h(detail)}</p>'
         f'<p class="help">{h(t(lang, "privacy_file"))}: <code>{h(str(path))}</code> · '
-        f'{h(t(lang, "privacy_file_help"))}</p>{servers}</div>'
+        f'{h(t(lang, "privacy_file_help"))}</p>{route_html}{servers}</div>'
     )
 
 

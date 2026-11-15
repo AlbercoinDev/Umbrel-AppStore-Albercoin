@@ -17,7 +17,7 @@
 
 | App | Código principal | Despliegue actual |
 | --- | --- | --- |
-| e-lite | `albercoin-store-e-lite/src/elite/`; pruebas en `tests/` | Imagen propia de GHCR (amd64); un Core, e-lite y Tor por red; descarga e-lite, Bitcoin Core y Tor verificados en el primer arranque |
+| e-lite | `albercoin-store-e-lite/src/elite/`; pruebas en `tests/` | Imagen propia de GHCR (amd64); un Core, e-lite y Tor por red; descarga e-lite, Bitcoin Core y Tor verificados en el primer arranque; servicio `arc-cap` privilegiado de un solo uso para fijar el ARC ZFS del host |
 | Frigate | Python/HTML y shell dentro de `docker-compose.yml`; `exports.sh` y `torrc` | Imágenes base; descarga y verifica el binario de Frigate al preparar el runtime |
 | Onion Rotator | `src/`; pruebas en `tests/`; herramientas en `scripts/` | Python con `src/` montado desde `${APP_DATA_DIR}`; el Compose no construye su Dockerfile |
 | Machine Doctor | `src/main.py`, `src/modules/cpu/`, `src/static/` | Imagen propia de GHCR, construida desde su Dockerfile |

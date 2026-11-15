@@ -12,7 +12,7 @@ folderAccess:
         readOnly: false
 category: bitcoin
 name: e-lite
-version: "0.1.0-alpha.29.16.1-01"
+version: "0.1.0-alpha.29.16.3-01"
 tagline: Servidor Electrum autónomo con Bitcoin Core incluido
 description: >-
   e-lite es un servidor Electrum 1.4–1.7 autónomo que incluye su propio Bitcoin Core
@@ -30,13 +30,13 @@ description: >-
   y ocupar mucho disco. El TLS usa un certificado autofirmado. Los puertos
   Electrum no tienen autenticación de clientes; úsalos solo en redes de confianza.
 releaseNotes: >-
-  Actualiza e-lite a 0.1.0-alpha.29.16.1 con el endurecimiento AUD-167:
-  importación que rechaza secretos, proveedores fail-closed, modo txid
-  limitado por la poda de Core, señuelos del mismo tamaño y límites de
-  servidor. Completa public-servers.toml en todas las redes con listas
-  verificadas (10 Electrum en mainnet, 8 en testnet4 y 4 en signet), muestra
-  sus recuentos en Privacidad y avisa si falta Electrum. Se mantienen los
-  presets privacy.toml, puertos, TLS, onions y copias formato 3.
+  Actualiza e-lite a 0.1.0-alpha.29.16.3: servidores Electrum verificados en
+  el template para testnet4 y signet, y nuevo rawtx.use_tor para descargar
+  datos externos directamente sin perder la onion. Añade el campo en el panel
+  y la ruta efectiva en Estado. El ARC de ZFS se fija solo con un servicio
+  auxiliar del host (8 GiB en equipos de 32 GiB, RAM/4 en equipos menores) y
+  desaparecen los avisos y comandos manuales. Mantiene puertos, TLS, onions,
+  copias formato 3 y los presets de privacidad.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/e-lite
 dependencies: []

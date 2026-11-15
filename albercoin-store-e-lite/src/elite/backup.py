@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 
 from .config_writer import AppPaths
-from .settings import NETWORKS, Settings
+from .settings import NETWORKS
 from .supervisor import SupervisorManager
 
 ALLOWED_EXTRA_ROOT = Path("/exports")

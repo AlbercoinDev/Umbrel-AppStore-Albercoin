@@ -84,7 +84,8 @@ Detalles en el [README del proyecto](https://github.com/AlbercoinDev/umbrel-tunn
 
 ## Actualizar a 1.6.0
 
-Actualiza primero el VPS y después esta app desde la tienda de Umbrel.
+Esta versión solo cambia el gateway: **el VPS no necesita actualización**. Si
+aun así actualizas sus binarios, hazlo antes que la app.
 
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
@@ -108,7 +109,12 @@ sudo umbrel-tunnel update \
 ```
 
 La revisión 1.5.0 permite compartir un VPS entre varios Umbrel (sección anterior).
-Actualiza **primero el VPS a 1.6.0**.
+En 1.6.0 no hace falta tocar el VPS.
+
+Desde 1.6.0 los secretos se guardan cifrados (AES-256-GCM) en `data/`, los
+destinos manuales se revalidan en cada sincronización y el relay UDP fija la IP
+aprobada por sesión. La app funciona en umbrelOS 1.x y 2.x y añade widget de
+pantalla de inicio.
 
 Desde 1.4.2 se refuerza la seguridad: el panel rechaza (403) las peticiones
 que llegan por el túnel WireGuard, el instalador del VPS está fijado al tag de la

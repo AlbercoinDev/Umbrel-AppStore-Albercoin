@@ -26,8 +26,8 @@ BITCOIN_VERSION = "32.1"
 BITCOIN_SHA256 = "61545c17c3120fb7412f896d248b11993af04ec8817aad3649c55b2afb044963"
 BITCOIN_URL = f"https://bitcoincore.org/bin/bitcoin-core-{BITCOIN_VERSION}/bitcoin-{BITCOIN_VERSION}-x86_64-linux-gnu.tar.gz"
 
-TOR_VERSION = "16.0"
-TOR_SHA256 = "cc950ebe9acb80188325c3a2cd8817def7dd7237d6fdcd861bb87b234a0cb2fd"
+TOR_VERSION = "16.0.1"
+TOR_SHA256 = "7039cb16060ab22e669852e55774d894b55f25ea8bd0ab7194d3478429a58725"
 TOR_URL = (
     "https://dist.torproject.org/torbrowser/"
     f"{TOR_VERSION}/tor-expert-bundle-linux-x86_64-{TOR_VERSION}.tar.gz"

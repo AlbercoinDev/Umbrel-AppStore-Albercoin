@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.17.0-01`
+- Versión: `0.1.0-alpha.29.17.0-02`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -17,7 +17,7 @@ independientes por red.
 
 - e-lite `0.1.0-alpha.29.17.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
-- Tor `16.0` (bundle oficial) verificado por SHA256.
+- Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
 - `public-servers.toml` por red para proveedores Esplora y servidores Electrum,
   sembrado desde el template oficial de e-lite y completado por la app. Las
@@ -515,7 +515,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-01@sha256:b6e64ddea9f97d4bd28b0dba3f31751cbdf826df05b92d28490f4bafc72c616e
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-02@sha256:b6e64ddea9f97d4bd28b0dba3f31751cbdf826df05b92d28490f4bafc72c616e
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -525,7 +525,7 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-01@sha256:b6e64ddea9f97d4bd28b0dba3f31751cbdf826df05b92d28490f4bafc72c616e
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-02@sha256:b6e64ddea9f97d4bd28b0dba3f31751cbdf826df05b92d28490f4bafc72c616e
 ```
 
 La imagen base `python:3.12-slim-bookworm` está fijada por digest.
@@ -552,7 +552,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-01
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-02
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

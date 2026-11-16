@@ -7,7 +7,7 @@ services:
       APP_PORT: 2193
   server:
     networks: [simplex_private]
-    image: ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-4
+    image: ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-4@sha256:63869233eff47bcb011dfb99119d285cd24c4252deaea11e7a154b1e276fd95e
     init: true
     restart: on-failure
     stop_grace_period: 3m

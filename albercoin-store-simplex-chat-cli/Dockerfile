@@ -1,13 +1,13 @@
-FROM ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8
+FROM debian:13-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 ARG TARGETARCH
 ARG SIMPLEX_VERSION=v7.1.2
 LABEL org.opencontainers.image.title="SimpleX Chat CLI for Umbrel" \
-       org.opencontainers.image.version="1.0.6" \
+       org.opencontainers.image.version="1.0.7" \
       org.opencontainers.image.source="https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl age tor python3 python3-venv libgmp10 libnuma1 libssl3t64 zlib1g libtinfo6 libatomic1 libgomp1 libstdc++6 gosu \
+    ca-certificates curl age tor python3 python3-venv libgmp10 libnuma1 libssl3t64 zlib1g libtinfo6 libatomic1 libgomp1 libstdc++6 gosu passwd \
     && rm -rf /var/lib/apt/lists/*
 RUN set -eu; \
     case "$TARGETARCH" in \

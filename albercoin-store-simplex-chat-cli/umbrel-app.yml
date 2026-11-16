@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-simplex-chat-cli
 category: social
 name: SimpleX Chat CLI
-version: "1.0.6"
+version: "1.0.7"
 tagline: Private messaging with web management and optional agents
 description: >-
   Run SimpleX Chat CLI independently on your Umbrel. Manage your profile,
@@ -36,9 +36,9 @@ dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Versión 1.0.6: actualiza SimpleX Chat CLI de v7.0.3 a v7.1.2 y la base Ubuntu
-  24.04 a la imagen vigente. Antes de arrancar la nueva versión se archiva la
-  base de datos existente. Las copias nuevas se etiquetan 1.0.6/v7.1.2; las
-  copias antiguas 1.0.0–1.0.5 con v7.0.3 siguen siendo restaurables. Se mantienen
-  el gestor web, Tor local, la retención de copias de 10 días y el conector
-  Hermes sin cambios de configuración.
+  Versión 1.0.7: cambia la base de Ubuntu 24.04 a Debian 13 slim, la última
+  estable, manteniendo SimpleX Chat CLI v7.1.2 y el mismo binario oficial. Antes
+  de arrancar la nueva versión se archiva la base de datos existente. Las copias
+  nuevas se etiquetan 1.0.7/v7.1.2; las copias antiguas 1.0.0–1.0.6 con v7.0.3
+  o v7.1.2 siguen siendo restaurables. Se mantienen el gestor web, Tor local, la
+  retención de copias de 10 días y el conector Hermes sin cambios.

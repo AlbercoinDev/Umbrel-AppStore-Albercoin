@@ -38,7 +38,7 @@ No se guarda la URI, contraseña ni salida cruda del CLI. El filtro
 
 ## Despliegue
 
-La versión 1.0.6 se distribuye mediante imagen multi-arquitectura AMD64/ARM64
+La versión 1.0.7 se distribuye mediante imagen multi-arquitectura AMD64/ARM64
 con digest fijado en `docker-compose.yml`. Actualiza la tienda y después la
 app desde Umbrel. No desinstales ni borres su directorio de datos: la
 actualización conserva identidad, conversaciones y configuración.

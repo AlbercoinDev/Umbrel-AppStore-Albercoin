@@ -1,4 +1,4 @@
-FROM ghcr.io/albercoindev/simplex-chat-cli:1.0.9@sha256:0dfadc14906cd6796e29010874e94e18caea1aeec1227dbbca1a572f7adbec5e AS probe
+FROM ghcr.io/albercoindev/simplex-chat-cli:1.0.10@sha256:d67c1cc3af5389f8d8e32002e694eec325537dd1163b012374867424dce8db03 AS probe
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 USER root
 LABEL org.opencontainers.image.version="0.1.0" org.opencontainers.image.title="SimpleX Server" io.albercoin.build="tor-check-5"

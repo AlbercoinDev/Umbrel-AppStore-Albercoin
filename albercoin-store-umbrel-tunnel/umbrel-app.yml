@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
-version: "1.5.0"
+version: "1.5.1"
 tagline: Expose Umbrel services through your own VPS over WireGuard
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
@@ -20,14 +20,15 @@ description: >-
   with a fixed public IP. Run the one-line installer on the VPS, then paste the
   pairing code in the app.
 releaseNotes: >-
-  Shared VPS: several Umbrels can now use the same VPS, each with its own
-  public domain. Two Umbrels can publish the same app on the same port
-  (HTTPS on 443, or TLS such as Electrum on 50002) and the VPS routes each
-  request by domain. Every Umbrel gets its own API token, sees and changes
-  only its own publications, and cannot reach the other Umbrels through the
-  tunnel. Plain TCP/UDP ports carry no domain, so each one still belongs to
-  a single Umbrel. Existing single-Umbrel installs keep working unchanged.
-  Update the VPS to 1.5.0 before updating this app.
+  Security update. The gateway container now drops all Linux capabilities and
+  adds back only NET_ADMIN, SYS_MODULE and DAC_OVERRIDE. Manual services reject
+  loopback, link-local/metadata, multicast and reserved destinations while
+  keeping private addresses and Docker container names working. A tamper-evident
+  audit log records logins, pairing, publications, settings and rotations, and
+  its status is shown in diagnostics. CI now checks Go vulnerabilities and
+  high-severity Python findings, and the VPS binaries are built with Go 1.26.11.
+  There are no changes to pairing, detection, publication or certificate flows.
+  Update the VPS to 1.5.1 for the rebuilt binaries.
 developer: AlbercoinDev
 website: https://github.com/AlbercoinDev/umbrel-tunnel
 dependencies: []

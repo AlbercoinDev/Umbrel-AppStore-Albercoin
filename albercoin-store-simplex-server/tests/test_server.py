@@ -124,7 +124,7 @@ class WebTests(unittest.TestCase):
         with patch.object(self.runtime, 'start_diagnostics', return_value=True):
             self.assertEqual(self.client.post('/diagnostics', data={'csrf': csrf}).status_code, 302)
         data = self.client.get('/service-status').json
-        self.assertEqual(data['build'], 'tor-check-4')
+        self.assertEqual(data['build'], 'tor-check-5')
         self.assertNotIn(self.runtime.password, str(data))
         self.assertNotIn('address', data)
 

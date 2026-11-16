@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.17.0-03`
+- Versión: `0.1.0-alpha.29.17.0-04`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -515,7 +515,7 @@ datadirs ni onions anteriores. Al actualizar:
 La app usa una imagen propia publicada en GHCR:
 
 ```
-ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-03@sha256:f5124eff2ae8b25b09dbe8316515927b626b8d031f3765c9b4eed0e981b0d06a
+ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-04
 ```
 
 El workflow `.github/workflows/e-lite-image.yml` construye y publica la imagen
@@ -525,10 +525,10 @@ para `linux/amd64` al hacer push a `master` que toque esta app, o manualmente co
 Después de publicar, fija el digest en `docker-compose.yml`:
 
 ```yaml
-image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-03@sha256:f5124eff2ae8b25b09dbe8316515927b626b8d031f3765c9b4eed0e981b0d06a
+image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-04
 ```
 
-La imagen base `python:3.14-slim` está fijada por digest.
+La imagen base `python:3.15-slim` está fijada por digest.
 
 ## Pruebas
 
@@ -552,7 +552,7 @@ docker run --rm -p 3000:3000 \
   -p 55111:55111 -p 55122:55122 \
   -p 55211:55211 -p 55222:55222 \
   -e DEVICE_DOMAIN_NAME=umbrel.local \
-  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-03
+  -v "$PWD/data-test:/data" ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-04
 ```
 
 La primera vez descarga los tres componentes y pide elegir redes.

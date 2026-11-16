@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-simplex-chat-cli
 category: social
 name: SimpleX Chat CLI
-version: "1.0.9"
+version: "1.0.10"
 tagline: Private messaging with web management and optional agents
 description: >-
   Run SimpleX Chat CLI independently on your Umbrel. Manage your profile,
@@ -36,9 +36,9 @@ dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Versión 1.0.9: actualiza el runtime Python de 3.13 a 3.14 sobre Debian 13,
+  Versión 1.0.10: actualiza el runtime Python de 3.14 a 3.15 sobre Debian 13,
   manteniendo SimpleX Chat CLI v7.1.4 y el mismo binario oficial. Antes de
   arrancar la nueva versión se archiva la base de datos existente. Las copias
-  nuevas se etiquetan 1.0.9/v7.1.4; las copias antiguas 1.0.0–1.0.8 con
+  nuevas se etiquetan 1.0.10/v7.1.4; las copias antiguas 1.0.0–1.0.9 con
   v7.0.3, v7.1.2 o v7.1.4 siguen siendo restaurables. No cambian el gestor,
   Tor local, la retención de copias ni el conector Hermes.

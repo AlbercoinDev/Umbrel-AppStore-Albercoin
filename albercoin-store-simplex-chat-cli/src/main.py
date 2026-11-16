@@ -24,7 +24,7 @@ from .backups import inventory, storage, NAME, validate_recipient
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "simplex_session"
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.0.10"
 TARGET = re.compile(r"^[@#][1-9][0-9]*$")
 
 

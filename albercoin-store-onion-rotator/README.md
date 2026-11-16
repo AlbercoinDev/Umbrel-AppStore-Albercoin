@@ -105,7 +105,7 @@ de estar disponible. Investiga el resultado antes de intentar otra rotación.
 
 ## Desarrollo y mapa del código
 
-Requisito: Python 3.14. Desde esta carpeta, revisa
+Requisito: Python 3.15. Desde esta carpeta, revisa
 `scripts/dev.sh` antes de ejecutarlo: crea datos ficticios en
 `/tmp/onion-rotator-dev-tor` y activa simulación y depuración por defecto, pero
 respeta los valores de entorno existentes. No lo conectes a datos de producción.

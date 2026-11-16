@@ -528,7 +528,7 @@ Después de publicar, fija el digest en `docker-compose.yml`:
 image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.17.0-03@sha256:f5124eff2ae8b25b09dbe8316515927b626b8d031f3765c9b4eed0e981b0d06a
 ```
 
-La imagen base `python:3.12-slim-bookworm` está fijada por digest.
+La imagen base `python:3.14-slim` está fijada por digest.
 
 ## Pruebas
 

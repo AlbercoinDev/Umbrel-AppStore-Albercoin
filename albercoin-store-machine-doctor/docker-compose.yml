@@ -8,7 +8,7 @@ services:
 
   server:
     # Pinned by digest: the workflow republishes the 0.1.12 tag on every push.
-    image: ghcr.io/albercoindev/machine-doctor:0.1.12
+    image: ghcr.io/albercoindev/machine-doctor:0.1.12@sha256:064a910377ae69de9cf66045754d4b6f89ddeb876fa359305f4cd4157928ddca
     hostname: machine-doctor-web
     init: true
     user: "0:0"

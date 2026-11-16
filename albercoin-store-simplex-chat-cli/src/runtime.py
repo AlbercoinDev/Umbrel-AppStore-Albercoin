@@ -103,7 +103,7 @@ class Runtime:
             with tarfile.open(partial, "w:gz", dereference=False) as archive:
                 for name in ("simplex", "manager"):
                     archive.add(DATA / name, arcname=name, recursive=True)
-                metadata = json.dumps({"app": "1.0.8", "simplex": "v7.1.4", "created_utc": stamp}).encode()
+                metadata = json.dumps({"app": "1.0.9", "simplex": "v7.1.4", "created_utc": stamp}).encode()
                 info = tarfile.TarInfo("backup-info.json")
                 info.size, info.mode, info.mtime = len(metadata), 0o600, int(time.time())
                 archive.addfile(info, io.BytesIO(metadata))

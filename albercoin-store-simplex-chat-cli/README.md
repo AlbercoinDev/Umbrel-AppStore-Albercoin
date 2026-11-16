@@ -1,6 +1,6 @@
-# SimpleX Chat CLI · Albercoin · v1.0.8
+# SimpleX Chat CLI · Albercoin · v1.0.9
 
-**Versión 1.0.8 publicada para AMD64 y ARM64 y fijada por digest en la tienda.**
+**Versión 1.0.9 publicada para AMD64 y ARM64 y fijada por digest en la tienda.**
 Detecta automáticamente servidores clearnet y onion, incluye Tor local para
 servidores propios onion y añade diagnóstico de red SMP/XFTP en el panel
 (detalle en las notas de la versión de `umbrel-app.yml` y en [red y Tor](docs/network.md)).
@@ -107,7 +107,7 @@ sudo python3 ./albercoin-store-simplex-chat-cli/scripts/restore.py \
 ```
 
 Sustituye la ruta de archivo de ejemplo por la de tu copia. El asistente no comprueba mediante Docker si la app está detenida: debes detenerla antes.
-Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0` a `1.0.8`: las anteriores a 1.0.6 usan SimpleX `v7.0.3`, las 1.0.6–1.0.7 `v7.1.2` y las nuevas `v7.1.4`; las copias de 1.0.5 se etiquetan como `1.0.4` en `backup-info.json`. Para `.tar.gz.age` requiere `age` instalado y `--identity /ruta/clave-privada`; consulta la guía enlazada al principio.
+Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0` a `1.0.9`: las anteriores a 1.0.6 usan SimpleX `v7.0.3`, las 1.0.6–1.0.7 `v7.1.2` y las nuevas `v7.1.4`; las copias de 1.0.5 se etiquetan como `1.0.4` en `backup-info.json`. Para `.tar.gz.age` requiere `age` instalado y `--identity /ruta/clave-privada`; consulta la guía enlazada al principio.
 Arranca después la app desde Umbrel. Se recuperan también la contraseña y el token anteriores. Si eran distintos, actualiza los clientes y usa la contraseña del momento de la copia.
 Para deshacer la restauración, detén la app y recupera los directorios `simplex` y `manager` de `before-restore-FECHA`, conservando primero los restaurados en otra carpeta. No ejecutes dos instancias simultáneas con una misma identidad recuperada de una copia.
 

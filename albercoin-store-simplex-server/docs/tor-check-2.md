@@ -36,6 +36,6 @@ datos. Conserva una copia offline antes de actualizar una app preliminar.
 ## Publicación
 
 - Imagen: `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2`.
-- El Compose fija el digest del índice multiarch publicado por el workflow.
+- Digest del índice multiarch: `sha256:cac39b33a8693e0666e96c9784e0c1eca6cdf54066584c8b96f332069c591c61`.
 - Pruebas del workflow: unitarias, smoke SMP/Tor, instalación inicial y
   actualización conservando datos.

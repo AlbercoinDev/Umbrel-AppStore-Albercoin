@@ -5,9 +5,9 @@ versión estable validada en un nodo Umbrel real.** SMP upstream v7.1.0;
 panel propio en español. XFTP queda para otra entrega, sin servicio ni controles
 ficticios en esta versión.
 
-**Afinado de la misma 0.1.0: compilación `tor-check-2`.** Añade comprobación
+**Afinado de la misma 0.1.0: compilación `tor-check-3`.** Añade comprobación
 onion con Tor independiente, TLS verificado y prueba oficial SMP desde el panel.
-No regenera identidades. Consulta [cambios y actualización sin borrar datos](docs/tor-check-2.md).
+No regenera identidades. Consulta [cambios y actualización sin borrar datos](docs/tor-check-3.md).
 
 ## Instalar y probar en Umbrel
 
@@ -16,10 +16,10 @@ Actualiza la tienda Albercoin, busca **SimpleX Server** e instala la versión
 Empieza con **Solo Tor** y perfiles SimpleX desechables. No necesitas abrir
 puertos del router. Consulta la [guía de prueba real](docs/testing-umbrel.md).
 
-La imagen de esta compilación se publica en `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2` para
+La imagen de esta compilación se publica en `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3` para
 AMD64 y ARM64; el Compose fija el digest del índice multiarch.
 Historial de la publicación inicial: [0.1.0 original](docs/release-0.1.0.md).
-La revisión actual y su procedimiento de actualización están en [tor-check-2](docs/tor-check-2.md).
+La revisión actual y su procedimiento de actualización están en [tor-check-3](docs/tor-check-3.md).
 
 ## Funciones
 
@@ -38,7 +38,7 @@ El QR representa la URI SMP; su importación debe comprobarse en cada cliente.
 El estado Tor distingue procesos, bootstrap y circuitos. **No equivale a una
 prueba de disponibilidad onion**: utiliza el botón de comprobación, que verifica
 conexión onion, identidad TLS y creación/asegurado/borrado de una cola temporal
-mediante el CLI oficial del asset de la release v7.1.2 (el binario declara
+mediante el CLI oficial del asset de la release v7.1.4 (el binario declara
 internamente `v7.0.0.12`). Esa instancia Tor tiene su propio directorio,
 estado, SOCKS local y circuitos; no comparte los del Tor que publica el servicio.
 La misma máquina/red sigue siendo el origen físico: no sustituye una prueba
@@ -159,9 +159,9 @@ La prueba opcional `tests/probe_client.py` requiere una imagen existente de
 nuestro cliente que contenga el binario y `/opt/venv/bin/python` con aiohttp:
 
 ```sh
-CLIENT_IMAGE=simplex-chat-cli:1.0.6-test python3 albercoin-store-simplex-server/tests/probe_client.py
+CLIENT_IMAGE=simplex-chat-cli:1.0.8-test python3 albercoin-store-simplex-server/tests/probe_client.py
 # Prueba opcional mediante circuitos Tor reales; requiere salida a la red Tor.
-CLIENT_IMAGE=simplex-chat-cli:1.0.6-test PROBE_TOR=1 python3 albercoin-store-simplex-server/tests/probe_client.py
+CLIENT_IMAGE=simplex-chat-cli:1.0.8-test PROBE_TOR=1 python3 albercoin-store-simplex-server/tests/probe_client.py
 ```
 
 Crea y retira contenedores temporales sin publicar puertos al host. Comprueba
@@ -185,7 +185,7 @@ digest resultante en Compose antes de actualizar la tienda.
   configuración inicial, arranque SMP y QR servidos correctamente.
 - Procesos reales SMP/Tor, handshake TLS local, cambio entre modos y conservación de identidades.
 - Rechazo de regeneración cuando falta el INI y existen datos.
-- Dos CLI reales de la imagen local `simplex-chat-cli:1.0.6-test` (binario que
+- Dos CLI reales de la imagen local `simplex-chat-cli:1.0.8-test` (binario que
   declara `v7.0.0.12`): texto recibido en ambas direcciones mediante SMP local.
 - Prueba equivalente mediante la dirección onion y circuitos Tor reales,
   usando el SOCKS compartido del entorno aislado: texto en ambos sentidos.
@@ -221,7 +221,7 @@ y configuración separados, sin reutilizar la contraseña SMP.
 
 Servidor oficial: https://github.com/simplex-chat/simplexmq (AGPL-3.0).
 Se distribuye su binario sin modificar; referencia exacta en Dockerfile.
-Cliente de diagnóstico del asset oficial de la release v7.1.2 (cadena interna
+Cliente de diagnóstico del asset oficial de la release v7.1.4 (cadena interna
 `v7.0.0.12`): https://github.com/simplex-chat/simplex-chat,
 binario sin modificar copiado desde la imagen fijada por digest en Dockerfile;
 licencia completa en `/usr/share/doc/simplex-chat/LICENSE` dentro del contenedor.

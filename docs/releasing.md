@@ -94,11 +94,11 @@ las imágenes en runners nativos AMD64/ARM64 antes de componer el índice. Antes
 de declararla estable, completar las verificaciones de su README en un nodo real.
 No se ha modificado la imagen de SimpleX Chat CLI.
 
-La compilación `tor-check-2` afina SimpleX Server sin incrementar la versión
+La compilación `tor-check-3` afina SimpleX Server sin incrementar la versión
 0.1.0. Conserva su propia etiqueta/digest y añade pruebas con Tor independiente.
 Como la detección de actualizaciones de Umbrel compara versiones, una instalación
 existente puede necesitar actualizarse explícitamente mediante su CLI. Consulta
-la [guía de actualización sin borrar datos](../albercoin-store-simplex-server/docs/tor-check-2.md).
+la [guía de actualización sin borrar datos](../albercoin-store-simplex-server/docs/tor-check-3.md).
 
 1. Confirmar el alcance y revisar el diff para no incluir secretos ni datos.
 2. Revisar versiones, notas de versión, referencias de imágenes y documentación.

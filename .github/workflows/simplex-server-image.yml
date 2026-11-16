@@ -42,8 +42,8 @@ jobs:
       - name: Publish the tested native image
         if: inputs.publish
         run: |
-          docker tag simplex-server:dev ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2-${{ matrix.arch }}
-          docker push ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2-${{ matrix.arch }}
+          docker tag simplex-server:dev ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3-${{ matrix.arch }}
+          docker push ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3-${{ matrix.arch }}
   manifest:
     needs: native
     if: inputs.publish
@@ -58,5 +58,5 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish multiarch index
         run: |
-          docker buildx imagetools create --tag ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2 ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2-amd64 ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2-arm64
-          docker buildx imagetools inspect ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-2 >> "$GITHUB_STEP_SUMMARY"
+          docker buildx imagetools create --tag ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3 ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3-amd64 ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3-arm64
+          docker buildx imagetools inspect ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3 >> "$GITHUB_STEP_SUMMARY"

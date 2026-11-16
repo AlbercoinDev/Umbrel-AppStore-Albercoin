@@ -30,7 +30,7 @@ English.
 | Machine Doctor | FastAPI image `0.1.10` pinned by digest in Compose (the workflow republishes the tag on every push); no automated test suite. `src/modules/{disk,thermal,ram}` contain only future-scope READMEs, not implementations. Runs privileged with host `/proc`, `/sys`, `/dev`. |
 | SimpleX Chat CLI | `1.0.8`, image pinned by digest. Python `unittest` plus a separate JS DOM test. `tests/integration.py` is destructive and only run manually inside Docker with disposable identities. |
 | Umbrel Tunnel | Only manifest, Compose and icon live here; gateway and VPS code live in `AlbercoinDev/umbrel-tunnel` (image built there, AMD64/ARM64, pinned by digest). Keep `APP_HOST=albercoin-store-umbrel-tunnel_gateway_1`, internal port `8081`, manifest port `8642` and the hosted `icon.svg` URL. Needs `NET_ADMIN`, `SYS_MODULE`, `/lib/modules:ro` and read-only `${UMBREL_ROOT}/app-data`; never the Docker socket. Update the VPS before the app. |
-| SimpleX Server | Preview `0.1.0`, build `tor-check-2`; version is intentionally unchanged. Dockerfile composes official SMP plus a CLI binary copied from the chat-cli image. Most real tests need a locally built Docker image. |
+| SimpleX Server | Preview `0.1.0`, build `tor-check-3`; version is intentionally unchanged. Dockerfile composes official SMP plus a CLI binary copied from the chat-cli image. Most real tests need a locally built Docker image. |
 
 ## Commands
 

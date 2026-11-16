@@ -5,7 +5,7 @@ services:
       APP_HOST: albercoin-store-simplex-chat-cli_server_1
       APP_PORT: 2191
   server:
-    image: ghcr.io/albercoindev/simplex-chat-cli:1.0.7@sha256:5fb4c0e96fdd681371f19e286799b0f706c22e293c758347029665adc5e68819
+    image: ghcr.io/albercoindev/simplex-chat-cli:1.0.8
     hostname: simplex-chat-cli-web
     init: true
     restart: on-failure

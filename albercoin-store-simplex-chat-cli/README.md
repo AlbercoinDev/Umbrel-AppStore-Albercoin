@@ -1,6 +1,6 @@
-# SimpleX Chat CLI · Albercoin · v1.0.7
+# SimpleX Chat CLI · Albercoin · v1.0.8
 
-**Versión 1.0.7 publicada para AMD64 y ARM64 y fijada por digest en la tienda.**
+**Versión 1.0.8 publicada para AMD64 y ARM64 y fijada por digest en la tienda.**
 Detecta automáticamente servidores clearnet y onion, incluye Tor local para
 servidores propios onion y añade diagnóstico de red SMP/XFTP en el panel
 (detalle en las notas de la versión de `umbrel-app.yml` y en [red y Tor](docs/network.md)).
@@ -11,7 +11,7 @@ Consulta [cambios de 1.0.4, retención de copias y restauración cifrada](docs/r
 
 [Catálogo](../README.md) · [Mapa del repositorio](../docs/architecture.md) · [Desarrollo](../docs/development.md) · [Publicación](../docs/releasing.md)
 
-Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.1.2** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
+Aplicación independiente para la tienda Umbrel Albercoin. Cliente oficial SimpleX Chat CLI **v7.1.4** y gestor web propio. Hermes Agent y otros clientes pueden conectarse opcionalmente mediante la API WebSocket.
 
 **Estado documentado de la versión 1.0.3:** publicada para AMD64 y ARM64 y fijada por digest en la tienda. La documentación de la entrega registra intercambio de texto en ambos sentidos entre dos identidades reales SimpleX 7.0.3 en contenedores de prueba, aceptación de solicitudes, conector autenticado y exclusión de mensajes/credenciales del informe. No registra una ejecución del gateway de Hermes ni un despliegue de esta revisión en tu nodo. Estas comprobaciones no se han repetido durante la revisión documental.
 
@@ -107,7 +107,7 @@ sudo python3 ./albercoin-store-simplex-chat-cli/scripts/restore.py \
 ```
 
 Sustituye la ruta de archivo de ejemplo por la de tu copia. El asistente no comprueba mediante Docker si la app está detenida: debes detenerla antes.
-Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0` a `1.0.7`: las anteriores a 1.0.6 usan SimpleX `v7.0.3` y las nuevas `v7.1.2`; las copias de 1.0.5 se etiquetan como `1.0.4` en `backup-info.json`. Para `.tar.gz.age` requiere `age` instalado y `--identity /ruta/clave-privada`; consulta la guía enlazada al principio.
+Valida el contenido de la copia, rechaza enlaces y rutas externas, comprueba espacio y preserva los directorios actuales en `data/before-restore-FECHA/`. Admite copias de este paquete `1.0.0` a `1.0.8`: las anteriores a 1.0.6 usan SimpleX `v7.0.3`, las 1.0.6–1.0.7 `v7.1.2` y las nuevas `v7.1.4`; las copias de 1.0.5 se etiquetan como `1.0.4` en `backup-info.json`. Para `.tar.gz.age` requiere `age` instalado y `--identity /ruta/clave-privada`; consulta la guía enlazada al principio.
 Arranca después la app desde Umbrel. Se recuperan también la contraseña y el token anteriores. Si eran distintos, actualiza los clientes y usa la contraseña del momento de la copia.
 Para deshacer la restauración, detén la app y recupera los directorios `simplex` y `manager` de `before-restore-FECHA`, conservando primero los restaurados en otra carpeta. No ejecutes dos instancias simultáneas con una misma identidad recuperada de una copia.
 
@@ -123,7 +123,7 @@ Hermes → WebSocket autenticado :2192/ws → gestor → misma identidad SimpleX
 ```
 
 1. En **Perfil y contactos**, crea tu dirección y ábrela desde SimpleX en tu móvil.
-2. Acepta aquí la solicitud. SimpleX 7.1.2 puede representarla como un contacto directo con `contactRequestId` y sin `activeConn`; el panel reconoce ese formato y el anterior. El ID de solicitud puede permanecer tras aceptar: por eso también se comprueba la conexión activa.
+2. Acepta aquí la solicitud. SimpleX 7.1.4 puede representarla como un contacto directo con `contactRequestId` y sin `activeConn`; el panel reconoce ese formato y el anterior. El ID de solicitud puede permanecer tras aceptar: por eso también se comprueba la conexión activa.
 3. Elige el contacto en **Conversaciones** y prueba texto en los dos sentidos. Las solicitudes pendientes no se ofrecen como conversaciones enviables.
 4. Los botones ⓘ explican cada campo y funcionan mediante foco, ratón o pulsación. El esquema desplegable al final de la página explica el recorrido y los datos de Hermes.
 
@@ -180,9 +180,9 @@ copias ni archivos de configuración con credenciales.
 
 ## Fuentes y licencia
 
-- SimpleX: https://github.com/simplex-chat/simplex-chat/tree/v7.1.2
-- Código fuente correspondiente al binario: https://github.com/simplex-chat/simplex-chat/archive/refs/tags/v7.1.2.tar.gz
-- API: https://github.com/simplex-chat/simplex-chat/blob/v7.1.2/bots/api/COMMANDS.md
+- SimpleX: https://github.com/simplex-chat/simplex-chat/tree/v7.1.4
+- Código fuente correspondiente al binario: https://github.com/simplex-chat/simplex-chat/archive/refs/tags/v7.1.4.tar.gz
+- API: https://github.com/simplex-chat/simplex-chat/blob/v7.1.4/bots/api/COMMANDS.md
 - Hermes: https://github.com/NousResearch/hermes-agent/tree/v2026.9.24/plugins/platforms/simplex
 - Paquete de Umbrel: https://github.com/getumbrel/umbrel-apps/tree/master/hermes-agent
 

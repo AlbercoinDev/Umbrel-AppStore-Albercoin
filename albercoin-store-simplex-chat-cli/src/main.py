@@ -24,7 +24,7 @@ from .backups import inventory, storage, NAME, validate_recipient
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "simplex_session"
-APP_VERSION = "1.0.7"
+APP_VERSION = "1.0.8"
 TARGET = re.compile(r"^[@#][1-9][0-9]*$")
 
 
@@ -64,9 +64,9 @@ class Manager:
         # Preserve the old database offline before a future binary version migration.
         marker = DATA / "manager/simplex-version"
         if list((DATA / "simplex").glob("*_chat.db")) and (
-                not marker.exists() or marker.read_text() != "v7.1.2"):
+                not marker.exists() or marker.read_text() != "v7.1.4"):
             await asyncio.to_thread(self.runtime.archive)
-        marker.write_text("v7.1.2")
+        marker.write_text("v7.1.4")
         await asyncio.to_thread(inventory, DATA / "backups")
         self.tasks = [asyncio.create_task(self.broker.run()), asyncio.create_task(self.runtime.supervise()),
                       asyncio.create_task(self.runtime.maintain_backups()), asyncio.create_task(self.supervise_network())]
@@ -196,7 +196,7 @@ async def change_password(request):
 
 async def status(request):
     m = request.app["manager"]
-    return web.json_response({"version": APP_VERSION, "revision": "chat-management-1", "simplex_version": "7.1.2",
+    return web.json_response({"version": APP_VERSION, "revision": "chat-management-1", "simplex_version": "7.1.4",
         "connected": m.broker.connected.is_set(), "generation": m.broker.generation,
         "last_exit_code": m.runtime.last_exit_code, "last_event": m.broker.last_event,
         "last_event_at": m.broker.last_event_at,

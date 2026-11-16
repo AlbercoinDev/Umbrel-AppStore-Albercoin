@@ -1,8 +1,8 @@
 FROM debian:13-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 ARG TARGETARCH
-ARG SIMPLEX_VERSION=v7.1.2
+ARG SIMPLEX_VERSION=v7.1.4
 LABEL org.opencontainers.image.title="SimpleX Chat CLI for Umbrel" \
-       org.opencontainers.image.version="1.0.7" \
+       org.opencontainers.image.version="1.0.8" \
       org.opencontainers.image.source="https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 RUN set -eu; \
     case "$TARGETARCH" in \
-      amd64) arch=x86_64; hash=709def910b56503ec2ced9a885d2c7c47f8b535826d5a349df62a8f99afef0ce ;; \
-      arm64) arch=aarch64; hash=b4c734bce2b5cc80c3a98f1f31c2a792294c27156272f2524085c52b806c140d ;; \
+      amd64) arch=x86_64; hash=15a64d3fe75782900b3686aed0f635569b1f3526c47139ff30ac1ce1a50189ca ;; \
+      arm64) arch=aarch64; hash=424d9b8c2e46abc221be190475c9d5a71c78b779791f722de1a25325a1b15e5f ;; \
       *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    test "$SIMPLEX_VERSION" = v7.1.2; \
+    test "$SIMPLEX_VERSION" = v7.1.4; \
     curl --fail --location --retry 3 "https://github.com/simplex-chat/simplex-chat/releases/download/${SIMPLEX_VERSION}/simplex-chat-ubuntu-24_04-${arch}" -o /usr/local/bin/simplex-chat; \
     echo "$hash  /usr/local/bin/simplex-chat" | sha256sum -c -; \
     chmod 755 /usr/local/bin/simplex-chat; \

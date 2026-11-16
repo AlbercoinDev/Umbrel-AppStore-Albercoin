@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
-version: "1.6.0"
+version: "1.6.1"
 tagline: Expose Umbrel services through your own VPS over WireGuard
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
@@ -30,7 +30,8 @@ releaseNotes: >-
   and the public domain, and marks regenerable haproxy.cfg as backup-ignored.
   The app works behind umbrelOS 2.x's in-process gateway without app_proxy.
   No changes to pairing, publications or VPS binaries; the VPS does not need
-  to be updated.
+  to be updated. 1.6.1 fails closed if data/secrets.key is missing or corrupt
+  instead of generating a new key that would make the stored data unreadable.
 developer: AlbercoinDev
 website: https://github.com/AlbercoinDev/umbrel-tunnel
 dependencies: []

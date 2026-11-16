@@ -1,7 +1,8 @@
 # Afinado de 0.1.0 · compilación tor-check-2
 
 La versión del manifiesto sigue siendo **0.1.0**. Esta compilación tiene su
-propia etiqueta de imagen y digest; no reemplaza la etiqueta `tor-check-1`.
+propia etiqueta y digest; las instalaciones existentes siguen fijadas por el
+digest anterior hasta que se actualicen.
 
 ## Cambios
 

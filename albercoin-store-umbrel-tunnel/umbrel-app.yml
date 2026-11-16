@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
-version: "1.5.2"
+version: "1.5.3"
 tagline: Expose Umbrel services through your own VPS over WireGuard
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
@@ -20,12 +20,12 @@ description: >-
   with a fixed public IP. Run the one-line installer on the VPS, then paste the
   pairing code in the app.
 releaseNotes: >-
-  Maintenance update: the gateway image moves to the current Alpine 3.22 base
-  digest so OS packages include the latest fixes. The Go VPS binaries are
-  rebuilt with Go 1.26.11 and the updated x/crypto and x/net modules. There are
-  no functional changes to pairing, detection, publication, certificates,
-  capabilities or the audit log. Existing configuration and publications are
-  preserved. Update the VPS to 1.5.2 for the rebuilt binaries.
+  Maintenance update: the gateway image moves to Alpine 3.24 with the current
+  Python 3.14 packages, so OS dependencies include the latest fixes. The Go VPS
+  binaries are rebuilt with Go 1.26.11. There are no functional changes to
+  pairing, detection, publication, certificates, capabilities or the audit log.
+  Existing configuration and publications are preserved. Update the VPS to
+  1.5.3 for the rebuilt binaries.
 developer: AlbercoinDev
 website: https://github.com/AlbercoinDev/umbrel-tunnel
 dependencies: []

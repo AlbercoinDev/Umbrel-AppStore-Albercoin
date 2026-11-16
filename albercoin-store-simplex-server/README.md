@@ -5,9 +5,9 @@ versión estable validada en un nodo Umbrel real.** SMP upstream v7.1.0;
 panel propio en español. XFTP queda para otra entrega, sin servicio ni controles
 ficticios en esta versión.
 
-**Afinado de la misma 0.1.0: compilación `tor-check-3`.** Añade comprobación
+**Afinado de la misma 0.1.0: compilación `tor-check-4`.** Añade comprobación
 onion con Tor independiente, TLS verificado y prueba oficial SMP desde el panel.
-No regenera identidades. Consulta [cambios y actualización sin borrar datos](docs/tor-check-3.md).
+No regenera identidades. Consulta [cambios y actualización sin borrar datos](docs/tor-check-4.md).
 
 ## Instalar y probar en Umbrel
 
@@ -16,10 +16,10 @@ Actualiza la tienda Albercoin, busca **SimpleX Server** e instala la versión
 Empieza con **Solo Tor** y perfiles SimpleX desechables. No necesitas abrir
 puertos del router. Consulta la [guía de prueba real](docs/testing-umbrel.md).
 
-La imagen de esta compilación se publica en `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-3` para
+La imagen de esta compilación se publica en `ghcr.io/albercoindev/simplex-server:0.1.0-tor-check-4` para
 AMD64 y ARM64; el Compose fija el digest del índice multiarch.
 Historial de la publicación inicial: [0.1.0 original](docs/release-0.1.0.md).
-La revisión actual y su procedimiento de actualización están en [tor-check-3](docs/tor-check-3.md).
+La revisión actual y su procedimiento de actualización están en [tor-check-4](docs/tor-check-4.md).
 
 ## Funciones
 
@@ -159,9 +159,9 @@ La prueba opcional `tests/probe_client.py` requiere una imagen existente de
 nuestro cliente que contenga el binario y `/opt/venv/bin/python` con aiohttp:
 
 ```sh
-CLIENT_IMAGE=simplex-chat-cli:1.0.8-test python3 albercoin-store-simplex-server/tests/probe_client.py
+CLIENT_IMAGE=simplex-chat-cli:1.0.9-test python3 albercoin-store-simplex-server/tests/probe_client.py
 # Prueba opcional mediante circuitos Tor reales; requiere salida a la red Tor.
-CLIENT_IMAGE=simplex-chat-cli:1.0.8-test PROBE_TOR=1 python3 albercoin-store-simplex-server/tests/probe_client.py
+CLIENT_IMAGE=simplex-chat-cli:1.0.9-test PROBE_TOR=1 python3 albercoin-store-simplex-server/tests/probe_client.py
 ```
 
 Crea y retira contenedores temporales sin publicar puertos al host. Comprueba
@@ -185,7 +185,7 @@ digest resultante en Compose antes de actualizar la tienda.
   configuración inicial, arranque SMP y QR servidos correctamente.
 - Procesos reales SMP/Tor, handshake TLS local, cambio entre modos y conservación de identidades.
 - Rechazo de regeneración cuando falta el INI y existen datos.
-- Dos CLI reales de la imagen local `simplex-chat-cli:1.0.8-test` (binario que
+- Dos CLI reales de la imagen local `simplex-chat-cli:1.0.9-test` (binario que
   declara `v7.0.0.12`): texto recibido en ambas direcciones mediante SMP local.
 - Prueba equivalente mediante la dirección onion y circuitos Tor reales,
   usando el SOCKS compartido del entorno aislado: texto en ambos sentidos.

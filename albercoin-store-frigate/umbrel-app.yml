@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-frigate
 category: bitcoin
 name: Frigate
-version: "1.6.1-09"
+version: "1.6.1-10"
 tagline: Electrum server for Silent Payments
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
 description: >-
@@ -29,7 +29,9 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Umbrel package revision 09 for Frigate 1.6.1.
+  Umbrel package revision 10 for Frigate 1.6.1. Actualiza la base Python de
+  3.12-alpine a 3.14-alpine; no cambia el binario de Frigate, la configuración
+  ni los datos.
 
 
   New installations wait for explicit setup confirmation before starting Frigate.

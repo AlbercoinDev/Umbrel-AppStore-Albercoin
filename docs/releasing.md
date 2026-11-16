@@ -24,7 +24,7 @@ e-lite únicamente distribuye binarios `x86_64`. Es una excepción deliberada al
 requisito multiarquitectura de Umbrel y está documentada en el README de la app.
 
 La imagen incluye el controlador web; e-lite, Bitcoin Core y Tor se descargan y
-verifican en el primer arranque. La etiqueta es `0.1.0-alpha.29.17.0-02` y el Compose
+verifican en el primer arranque. La etiqueta es `0.1.0-alpha.29.17.0-03` y el Compose
 fija el digest publicado. Un cambio de versión de e-lite, Core o Tor exige
 actualizar `src/elite/runtime.py` (versión, URL y SHA256), el manifiesto, la
 documentación y volver a publicar/fijar la imagen.
@@ -94,11 +94,11 @@ las imágenes en runners nativos AMD64/ARM64 antes de componer el índice. Antes
 de declararla estable, completar las verificaciones de su README en un nodo real.
 No se ha modificado la imagen de SimpleX Chat CLI.
 
-La compilación `tor-check-3` afina SimpleX Server sin incrementar la versión
+La compilación `tor-check-4` afina SimpleX Server sin incrementar la versión
 0.1.0. Conserva su propia etiqueta/digest y añade pruebas con Tor independiente.
 Como la detección de actualizaciones de Umbrel compara versiones, una instalación
 existente puede necesitar actualizarse explícitamente mediante su CLI. Consulta
-la [guía de actualización sin borrar datos](../albercoin-store-simplex-server/docs/tor-check-3.md).
+la [guía de actualización sin borrar datos](../albercoin-store-simplex-server/docs/tor-check-4.md).
 
 1. Confirmar el alcance y revisar el diff para no incluir secretos ni datos.
 2. Revisar versiones, notas de versión, referencias de imágenes y documentación.

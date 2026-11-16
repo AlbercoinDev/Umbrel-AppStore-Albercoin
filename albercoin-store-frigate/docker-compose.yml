@@ -5,7 +5,7 @@ services:
       APP_PORT: 80
 
   web:
-    image: python:3.12-alpine@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89
+    image: python:3.14-alpine@sha256:5862d971d1f0ae26b258cefa4e893556b1d3aba81bd2ff30888704ad378bab67
     restart: on-failure
     command:
       - python

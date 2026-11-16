@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-machine-doctor
 category: utilities
 name: Machine Doctor
-version: "0.1.10"
+version: "0.1.11"
 tagline: Hardware diagnostics for your Umbrel node
 description: >-
   Machine Doctor checks the health of your Umbrel machine, starting with CPU
@@ -26,7 +26,6 @@ submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 dependencies: []
 releaseNotes: >-
-  Actualiza el runtime Python a la imagen 3.12-slim vigente y las dependencias
-  FastAPI 0.163.1 y Uvicorn 0.54.0. Mantiene las funciones de diagnóstico de
-  CPU, los montajes de host y el formato de los informes; no hay migración de
-  datos.
+  Actualiza el runtime Python a la imagen 3.14-slim vigente y mantiene FastAPI
+  0.163.1 y Uvicorn 0.54.0. No cambian el diagnóstico de CPU, los montajes de
+  host ni el formato de los informes; no hay migración de datos.

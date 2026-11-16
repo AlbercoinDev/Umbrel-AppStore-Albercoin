@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import tarfile
 import tempfile
 import time
@@ -147,7 +148,8 @@ class BackupTests(unittest.TestCase):
         from elite.backup import _snapshot_files
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory)
-            for name, with_sidecar in (("oldest.tar.gz", False), ("old.tar.gz", False), ("new.tar.gz", True)):
+            now = time.time()
+            for index, (name, with_sidecar) in enumerate((("oldest.tar.gz", False), ("old.tar.gz", False), ("new.tar.gz", True))):
                 archive = destination / name
                 manifest = {"format": 2, "network": "signet", "height": 7, "core": {"bytes": 1, "tip_height": 9}}
                 payload = json.dumps(manifest).encode()
@@ -155,6 +157,8 @@ class BackupTests(unittest.TestCase):
                     info = tarfile.TarInfo("e-lite-snapshot.json")
                     info.size = len(payload)
                     tar.addfile(info, io.BytesIO(payload))
+                timestamp = now - 30 + index * 10
+                os.utime(archive, (timestamp, timestamp))
                 if with_sidecar:
                     write_sidecar(archive, manifest)
             items = _snapshot_files(destination)

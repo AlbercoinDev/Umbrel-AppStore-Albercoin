@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
-version: "1.6.1"
+version: "1.6.3"
 tagline: Expose Umbrel services through your own VPS over WireGuard
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
@@ -20,18 +20,15 @@ description: >-
   with a fixed public IP. Run the one-line installer on the VPS, then paste the
   pairing code in the app.
 releaseNotes: >-
-  Security and umbrelOS 2.x update. Secrets at rest (config.json, the
-  WireGuard private key, the persistent wg0.conf copy and pending rotations)
-  are now encrypted with AES-256-GCM; the key lives in data/secrets.key and
-  travels with app data, so restores keep working. Existing plaintext files
-  are migrated automatically on first start. Manual targets are revalidated on
-  every sync and the UDP relay pins an approved IP per session to stop DNS
-  rebinding. Adds a home-screen widget with tunnel status, healthy services
-  and the public domain, and marks regenerable haproxy.cfg as backup-ignored.
-  The app works behind umbrelOS 2.x's in-process gateway without app_proxy.
-  No changes to pairing, publications or VPS binaries; the VPS does not need
-  to be updated. 1.6.1 fails closed if data/secrets.key is missing or corrupt
-  instead of generating a new key that would make the stored data unreadable.
+  Security release. Release artifacts are now signed: SHA256SUMS has an
+  Ed25519 signature and both the installer and `umbrel-tunnel update` verify it
+  before running or installing anything, so a compromised download server or
+  GitHub release cannot swap the binary and its checksum together. The
+  installer snapshots the firewall and schedules an automatic rollback after
+  120 s unless you confirm with `umbrel-tunnel firewall confirm`; `--harden-ssh`
+  optionally disables password logins when authorized keys exist. Adds real
+  per-publication health checks: TCP every 60 s, HTTP HEAD for web targets and
+  UDP reported as "no data" instead of guessed. Update the VPS first to 1.6.3.
 developer: AlbercoinDev
 website: https://github.com/AlbercoinDev/umbrel-tunnel
 dependencies: []

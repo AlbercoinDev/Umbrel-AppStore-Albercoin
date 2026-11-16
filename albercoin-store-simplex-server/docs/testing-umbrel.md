@@ -18,10 +18,10 @@ La app incluye su propio Tor: no requiere instalar otra app Tor en Umbrel. Los
 clientes sí necesitan conectividad Tor propia. El servidor no convierte
 automáticamente en clientes Tor las otras apps del nodo.
 
-Con la compilación `tor-check-1`, pulsa **Comprobar servidor por Tor** antes de
+Con la compilación `tor-check-2`, pulsa **Comprobar servidor por Tor** antes de
 probar el móvil. Verifica las cinco fases y comparte el resultado textual si
 falla. Bootstrap completado y disponibilidad onion no son lo mismo. Si conservas
-la instalación inicial, sigue la [actualización de la misma versión](tor-check-1.md).
+la instalación inicial, sigue la [actualización de la misma versión](tor-check-2.md).
 
 ## Desde el cliente
 

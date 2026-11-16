@@ -30,9 +30,10 @@ dependencies: []
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 releaseNotes: >-
-  Afinado de la misma 0.1.0, compilación tor-check-1. Añade prueba onion desde
-  otro Tor, verificación de identidad TLS y prueba oficial SMP con resultados
-  por fase. Estado Tor en vivo y recuperación de procesos detenidos. Conserva
-  direcciones, certificados y colas. Al mantener la versión, instalaciones
-  existentes pueden necesitar forzar la actualización con el CLI de Umbrel;
-  consulta la guía tor-check-1 del repositorio. No desinstales para actualizar.
+  Compilación tor-check-2 de la misma 0.1.0. Actualiza SMP upstream de v7.0.1
+  a v7.1.0 y el CLI de diagnóstico de SimpleX a v7.1.2. Mantiene la prueba
+  onion desde otro Tor, la verificación TLS, el estado en vivo y la recuperación
+  de procesos. Conserva direcciones, certificados, contraseña SMP y colas.
+  Al mantener la versión, instalaciones existentes pueden necesitar forzar la
+  actualización con el CLI de Umbrel; consulta la guía tor-check-2 del
+  repositorio. No desinstales para actualizar.

@@ -20,7 +20,7 @@ import time
 
 from tor_control import control_config, query
 
-BUILD = 'tor-check-1'
+BUILD = 'tor-check-2'
 STEPS = [('local_tls', 'SMP local e identidad TLS'),
          ('probe_tor', 'Tor independiente conectado'),
          ('onion', 'Acceso a la dirección onion'),

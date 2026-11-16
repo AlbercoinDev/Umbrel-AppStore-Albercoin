@@ -33,7 +33,7 @@ if os.environ['PROBE_STAGE'] == 'old':
     data = urllib.parse.urlencode(dict(csrf=token(html), mode='tor', private='on')).encode()
     html = http.open(base + '/', data, timeout=60).read().decode()
 else:
-    assert 'tor-check-1' in html
+    assert 'tor-check-2' in html
     assert json.load(http.open(base + '/service-status'))['smp']
 assert 'smp://' in html
 paths = ['/etc/opt/simplex/ca.crt', '/etc/opt/simplex/ca.key', '/etc/opt/simplex/server.crt', '/etc/opt/simplex/server.key', '/etc/opt/simplex/fingerprint', '/data/tor/smp/hostname', '/data/tor/smp/hs_ed25519_secret_key', '/data/queue-password', '/data/admin-hash', '/data/session-key']
@@ -60,7 +60,7 @@ try:
         docker('stop', '--time', '150', name)
         docker('rm', name)
         containers.remove(name)
-    print('Initial 0.1.0 -> tor-check-1: SMP CA/fingerprint, onion/secret key, queue password, admin hash and session key unchanged; same login and SMP running')
+    print('Initial 0.1.0 -> tor-check-2: SMP CA/fingerprint, onion/secret key, queue password, admin hash and session key unchanged; same login and SMP running')
 finally:
     for name in containers:
         docker('stop', '--time', '150', name, check=False)

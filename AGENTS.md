@@ -10,10 +10,10 @@ English.
 - App version: `albercoin-store-*/umbrel-app.yml`.
 - Runtime image/digest, volumes, ports and env: that app's `docker-compose.yml`.
 - Binary URL/hash and image labels: `Dockerfile`; publication: `.github/workflows/`.
-- README versions can lag; trust the manifest. SimpleX Chat CLI 1.0.5 still
-  writes `"app": "1.0.4"` into `backup-info.json` (`src/runtime.py`), and
-  `scripts/restore.py` accepts only labels `1.0.0`-`1.0.4`; keep both in sync if
-  the label ever changes.
+- README versions can lag; trust the manifest. SimpleX Chat CLI 1.0.6 writes
+  `"app": "1.0.6"` and `"simplex": "v7.1.2"` into `backup-info.json`
+  (`src/runtime.py`), and `scripts/restore.py` accepts app labels `1.0.0`-`1.0.6`
+  with SimpleX `v7.0.3` or `v7.1.2`; keep both in sync if the label ever changes.
 - Directory names, app IDs, ports, `${APP_DATA_DIR}` paths and raw GitHub URLs
   are deployment contracts. Keep app directories at the root; do not restructure.
 - Editing sources here does not update an installed app. Umbrel consumes pinned

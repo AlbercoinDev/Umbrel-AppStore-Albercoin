@@ -1,7 +1,7 @@
 """Destructive integration checks on NEW disposable identities only, inside Docker.
 
 docker run --rm --entrypoint /opt/venv/bin/python \
-  -v "$PWD:/work:ro" -w /work simplex-chat-cli:1.0.4-test tests/integration.py
+  -v "$PWD:/work:ro" -w /work simplex-chat-cli:1.0.6-test tests/integration.py
 """
 import asyncio
 import json

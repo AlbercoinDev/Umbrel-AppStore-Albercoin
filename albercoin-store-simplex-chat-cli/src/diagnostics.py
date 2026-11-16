@@ -69,7 +69,7 @@ def guidance(details):
     for code, text in (
         ("contactnotfound", "El ID no existe en esta identidad. Actualiza las conversaciones y revisa SIMPLEX_ALLOWED_USERS en Hermes."),
         ("contactnotready", "El contacto todavía no está listo. Comprueba la aceptación de la solicitud y espera a completar la conexión."),
-        ("commanderror", "SimpleX no reconoce la sintaxis de la orden. Comprueba la compatibilidad del cliente o adaptador con SimpleX 7.0.3."),
+        ("commanderror", "SimpleX no reconoce la sintaxis de la orden. Comprueba la compatibilidad del cliente o adaptador con SimpleX 7.1.2."),
         ("broker", "Error del transporte con el servidor. Revisa el proxy, la salida a Internet y el estado SMP; el código anidado concreta el fallo."),
         ("auth", "El servidor rechazó la autenticación. Revisa el contexto: puede afectar a una cola SMP y no a la contraseña del panel."),
         ("quota", "Posible límite de la cola del servidor. Revisa si el destinatario se conecta y si el error persiste."),

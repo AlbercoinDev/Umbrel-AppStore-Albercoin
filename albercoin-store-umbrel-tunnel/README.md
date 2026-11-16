@@ -82,14 +82,14 @@ sudo umbrel-tunnel token rotate
 
 Detalles en el [README del proyecto](https://github.com/AlbercoinDev/umbrel-tunnel#vps-compartido-varios-umbrel-con-dominio-propio).
 
-## Actualizar a 1.5.1
+## Actualizar a 1.5.2
 
 Actualiza primero el VPS y después esta app desde la tienda de Umbrel.
 
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
 sudo umbrel-tunnel update
-umbrel-tunnel version   # 1.5.1
+umbrel-tunnel version   # 1.5.2
 sudo umbrel-tunnel doctor
 ```
 
@@ -108,7 +108,7 @@ sudo umbrel-tunnel update \
 ```
 
 La revisión 1.5.0 permite compartir un VPS entre varios Umbrel (sección anterior).
-Actualiza **primero el VPS a 1.5.1**.
+Actualiza **primero el VPS a 1.5.2**.
 
 Desde 1.4.2 se refuerza la seguridad: el panel rechaza (403) las peticiones
 que llegan por el túnel WireGuard, el instalador del VPS está fijado al tag de la

@@ -15,8 +15,15 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from . import APP_VERSION
 from .cache import CacheError, cache_clear, cache_status
-from .config_writer import AppPaths, network_metrics_port, network_ports, public_server_lists
+from .config_writer import (
+    NETWORK_TOR_SOCKS,
+    AppPaths,
+    network_metrics_port,
+    network_ports,
+    public_server_lists,
+)
 from .i18n import field_help, field_label, option_label, select_language, t
+from .probe import electrum_endpoints, esplora_endpoints, probe_network
 from .runtime import BITCOIN_VERSION, E_LITE_VERSION, TOR_VERSION, RuntimeManager
 from .settings import (
     FIELDS,
@@ -227,6 +234,26 @@ class WebApp:
     def settings(self) -> Settings:
         return load_settings(self.paths.settings_file)
 
+    def provider_probe(self, network: str) -> dict[str, Any]:
+        """Probe this network's providers through its managed Tor."""
+        if network not in NETWORKS:
+            return {"error": "unknown network", "tor_ok": False, "providers": []}
+        if self.demo:
+            return {"network": network, "tor_ok": False, "error": "demo", "providers": []}
+        settings = self.settings()
+        if not settings.network(network).enabled:
+            return {"network": network, "tor_ok": False, "error": "network disabled", "providers": []}
+        esplora, electrum, error = public_server_lists(self.paths.network_public_servers(network), network)
+        if error:
+            return {"network": network, "tor_ok": False, "error": error, "providers": []}
+        result = probe_network(
+            electrum_endpoints(electrum),
+            esplora_endpoints(esplora),
+            NETWORK_TOR_SOCKS[network],
+        )
+        result["network"] = network
+        return result
+
     def snapshot(self) -> AppSnapshot:
         settings = self.settings()
         if self.demo:
@@ -390,6 +417,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/widget/sync":
             self._send_json(self._widget_sync())
+            return
+        if parsed.path == "/api/diagnostics/providers":
+            params = parse_qs(parsed.query)
+            self._send_json(app.provider_probe((params.get("network") or [""])[0]))
             return
         if parsed.path == "/api/backup/status":
             self._send_json(app.backup.status() if app.backup else {})
@@ -764,6 +795,17 @@ def fmt_bytes(value: int) -> str:
     return f"{size:.1f} TiB"
 
 
+def _arc_cap_mib(lang: str) -> str:
+    """The host ZFS ARC cap when visible: 0 means the ZFS default."""
+    try:
+        value = int(Path("/sys/module/zfs/parameters/zfs_arc_max").read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return "—"
+    if value <= 0:
+        return "0 (" + ("sin tope" if lang == "es" else "no cap") + ")"
+    return f"{value // (1024 * 1024):,}"
+
+
 def fmt_duration(seconds: int) -> str:
     seconds = max(0, int(seconds or 0))
     days, seconds = divmod(seconds, 86400)
@@ -911,6 +953,10 @@ summary {{ cursor:pointer; color:var(--muted); font-weight:650; }}
 .status-family > summary h2 {{ margin:0; font-size:15px; letter-spacing:.01em; }}
 .status-family > summary:hover h2 {{ color:var(--accent); }}
 .status-family .row {{ padding:7px 0; }}
+.probe {{ margin-top:12px; border-top:1px solid rgba(255,255,255,.07); padding-top:12px; }}
+.probe .help {{ margin:6px 0 8px; }}
+.probe-line {{ font-size:12.5px; color:var(--muted); padding:3px 0; border-bottom:1px solid rgba(255,255,255,.05); }}
+.probe-line.bad {{ color:var(--warn); }}
 .subsection {{ margin-top:16px; border-top:1px solid rgba(255,255,255,.07); padding-top:12px; }}
 .subsection > summary {{ color:var(--muted); }}
 .tip {{ display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; border:1px solid rgba(92,200,255,.45); background:rgba(92,200,255,.12); color:#b9ecff; font-size:11px; font-weight:700; cursor:help; vertical-align:middle; }}
@@ -986,6 +1032,45 @@ function fallbackCopy(value, done) {{
   area.select();
   try {{ document.execCommand('copy'); done(); }} catch (e) {{}}
   document.body.removeChild(area);
+}}
+async function probeProviders(network, button) {{
+  const target = document.getElementById('probe-' + network);
+  if (!target) return;
+  const old = button.textContent;
+  button.disabled = true;
+  button.textContent = {json.dumps(t(lang, "probe_running"))};
+  target.textContent = '';
+  try {{
+    const response = await fetch('/api/diagnostics/providers?network=' + encodeURIComponent(network), {{cache: 'no-store'}});
+    const data = await response.json();
+    const box = document.createElement('div');
+    if (!data.tor_ok) {{
+      const line = document.createElement('p');
+      line.className = 'error';
+      line.textContent = {json.dumps(t(lang, "probe_tor"))} + (data.tor_error || data.error ? ': ' + (data.tor_error || data.error) : '');
+      box.appendChild(line);
+    }}
+    (data.providers || []).forEach(p => {{
+      const line = document.createElement('div');
+      line.className = 'probe-line' + (p.ok ? '' : ' bad');
+      let text = p.server + ' — ';
+      if (p.kind === 'electrum') {{
+        text += {json.dumps(t(lang, "probe_connect"))} + ' ' + (p.connect_ms ?? '-') + ' ms · '
+          + {json.dumps(t(lang, "probe_batch"))} + ' ' + (p.batch_ok ?? 0) + '/' + (p.batch_size ?? 0)
+          + ' (' + (p.batch_ms ?? '-') + ' ms) · ' + {json.dumps(t(lang, "probe_tx"))} + ' ' + (p.tx_ms ?? '-') + ' ms';
+      }} else {{
+        text += 'tip ' + (p.tip_ms ?? '-') + ' ms · ' + {json.dumps(t(lang, "probe_tx"))} + ' ' + (p.old_tx_ms ?? '-') + ' ms';
+      }}
+      if (p.error) text += ' · ' + p.error;
+      line.textContent = text;
+      box.appendChild(line);
+    }});
+    target.replaceChildren(box);
+  }} catch (err) {{
+    target.textContent = String(err);
+  }}
+  button.disabled = false;
+  button.textContent = old;
 }}
 </script>
 </html>"""
@@ -1132,6 +1217,16 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
   <div class="inline" style="margin-top:12px"><a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>
   {_logs_block(network, lang)}
 </div>"""
+
+
+def _provider_probe_block(network: str, lang: str) -> str:
+    return (
+        '<div class="probe">'
+        f'<button class="secondary" type="button" onclick="probeProviders(\'{h(network)}\', this)">'
+        f'{h(t(lang, "probe_button"))}</button>'
+        f'<p class="help">{h(t(lang, "probe_help"))}</p>'
+        f'<div id="probe-{h(network)}"></div></div>'
+    )
 
 
 def _status_families(network: NetworkSnapshot, lang: str) -> str:
@@ -1349,6 +1444,22 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
             "Block race (attempts / hedges / Esplora / P2P)",
             f"{int(race.get('attempts') or 0):,} / {int(race.get('hedges') or 0):,} / {int(race.get('wins_esplora') or 0):,} / {int(race.get('wins_p2p') or 0):,}",
         ))
+    fetch_count = int(rawtx.get("fetches") or 0)
+    fetch_bytes = int(rawtx.get("bytes") or 0)
+    if fetch_count or fetch_bytes:
+        tor_rows.append((
+            "Descargas externas (bloques / MiB)",
+            "External downloads (blocks / MiB)",
+            f"{fetch_count:,} / {fmt_bytes(fetch_bytes)}",
+        ))
+    decoys = int(rawtx.get("decoys") or 0)
+    decoys_pending = int(rawtx.get("decoys_pending") or 0)
+    if decoys or decoys_pending:
+        tor_rows.append((
+            "Señuelos de bloque (hechos / pendientes)",
+            "Block decoys (done / pending)",
+            f"{decoys:,} / {decoys_pending:,}",
+        ))
     failures = rawtx.get("tx_get_failures") or {}
     if isinstance(failures, dict):
         active = {str(k): int(v) for k, v in failures.items() if isinstance(v, (int, float)) and v}
@@ -1374,6 +1485,7 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
         if supervisor.get("last_reason"):
             machine_rows.append((t(lang, "supervisor_last_reason"), "Last reason", str(supervisor["last_reason"])))
     machine_rows.extend([
+        ("Tope del ARC ZFS (MiB)", "ZFS ARC cap (MiB)", _arc_cap_mib(lang)),
         ("Versiones e-lite / Core / Tor", "Versions e-lite / Core / Tor", f"{E_LITE_VERSION} / {BITCOIN_VERSION} / {TOR_VERSION}"),
         ("Versión de la app", "App version", APP_VERSION),
         ("Certificado TLS disponible", "TLS certificate available", value(network.tls, "certificate_available")),
@@ -1387,11 +1499,17 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
             f'<div class="row"><span class="k">{h(label_es if es else label_en)}</span><span class="v">{h(val)}</span></div>'
             for label_es, label_en, val in rows
         )
+        probe_network_name = getattr(network, "network", "")
+        extra = (
+            _provider_probe_block(probe_network_name, lang)
+            if title_key == "status_family_tor" and probe_network_name
+            else ""
+        )
         rendered.append(
             f'<details class="settings-section status-family"{opened}>'
             f'<summary><h2>{h(t(lang, title_key))}</h2>'
             f'<span class="section-meta"><span class="badge">{len(rows)}</span><span class="chev">›</span></span></summary>'
-            f'<div class="settings-body">{body}</div></details>'
+            f'<div class="settings-body">{body}{extra}</div></details>'
         )
     return "".join(rendered)
 

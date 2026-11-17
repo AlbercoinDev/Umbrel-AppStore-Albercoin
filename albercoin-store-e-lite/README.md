@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.19.2-02`
+- Versión: `0.1.0-alpha.29.20.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.19.2`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.20.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.19.2 conserva las rutas explícitas de Umbrel, el
+La versión 0.1.0-alpha.29.20.0 conserva las rutas explícitas de Umbrel, el
 formato del índice y las identidades onion: no hay reindexado ni migración.
 Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
 límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
@@ -320,6 +320,15 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - El planificador ya no tiene modos: e-lite indexa mientras Core descarga y
   pasa a `draining` cuando Core se pausa por backlog. El panel muestra la fase
   y el backlog sin indexar.
+- **Carga de wallets (29.20.0)**: cada intento por txid se corta a los **3 s** y
+  pasa a otro servidor; el presupuesto es de 8 s por transacción y 20 s por
+  bloque (12 s de cola + 8 s de red). El lote por servidor es adaptativo (50 y,
+  si el proveedor cierra, 20, 10…). Una tx podada arranca la descarga de su
+  bloque y el resto de txs de ese bloque se unen a la descarga. Los señuelos
+  usan un cuarto de las sesiones y las reales van primero.
+- **Probar servidores**: en Estado → Tor y privacidad, mide conexión, lote de
+  transacciones y una tx antigua en cada proveedor a través del Tor gestionado.
+  Usa txids públicos de prueba; no envía datos de la wallet.
 - El techo de caché dinámico ya no cuenta dos veces memtables/runtime: usa
   `MemAvailable` y una reserva dinámica. El panel muestra memoria efectiva,
   memtables y table readers reales.

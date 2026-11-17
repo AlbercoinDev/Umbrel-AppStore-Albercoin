@@ -38,6 +38,9 @@ class WebTests(unittest.TestCase):
 
     def test_status_page_multi_network(self) -> None:
         status, content_type, body = self.get("/")
+        status, content_type, signet = self.get("/?network=signet")
+        self.assertIn("Probar servidores", signet)
+        self.assertIn("Tope del ARC ZFS", signet)
         self.assertEqual(status, 200)
         self.assertIn("text/html", content_type)
         self.assertIn("e-lite", body)
@@ -266,6 +269,14 @@ class WebTests(unittest.TestCase):
         self.assertIn('name="network" value="mainnet"', body)
         self.assertIn('id="elite-log"', body)
         self.assertIn('id="core-log"', body)
+
+    def test_provider_probe_endpoint(self) -> None:
+        status, content_type, body = self.get("/api/diagnostics/providers?network=signet")
+        self.assertEqual(status, 200)
+        self.assertIn("application/json", content_type)
+        data = json.loads(body)
+        self.assertEqual(data["network"], "signet")
+        self.assertIn("providers", data)
 
     def test_api_status(self) -> None:
         _, content_type, body = self.get("/api/status")

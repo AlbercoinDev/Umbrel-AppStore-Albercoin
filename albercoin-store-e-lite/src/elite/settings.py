@@ -80,6 +80,7 @@ FIELDS: tuple[Field, ...] = (
     Field("rawtx.decoy_sessions", "enum", "same_round", "rawtx", options=("same_round", "background"), advanced=True),
     Field("rawtx.sessions_total", "int", 16, "rawtx", minimum=1, maximum=32, advanced=True),
     Field("rawtx.jitter_ms", "int", 50, "rawtx", minimum=0, maximum=250, advanced=True),
+    Field("rawtx.prefetch_history_blocks", "int", 0, "rawtx", minimum=0, maximum=4096, advanced=True),
     # AUD-163 (e-lite 29.15): privacy.toml. Only values the operator changes
     # are written; everything else comes from the selected preset.
     Field("privacy.preset", "enum", "balanced", "privacy", options=("balanced", "max", "fast")),

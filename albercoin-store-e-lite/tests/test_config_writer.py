@@ -159,6 +159,7 @@ class ConfigWriterTests(unittest.TestCase):
                     "rawtx.decoy_sessions": "background",
                     "rawtx.sessions_total": 24,
                     "rawtx.jitter_ms": 0,
+                    "rawtx.prefetch_history_blocks": 128,
                 }
             )
             _, data = self._build("signet", override, paths)
@@ -170,6 +171,7 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertEqual(rawtx["decoy_sessions"], "background")
             self.assertEqual(rawtx["sessions_total"], 24)
             self.assertEqual(rawtx["jitter_ms"], 0)
+            self.assertEqual(rawtx["prefetch_history_blocks"], 128)
 
     def test_allow_low_memory_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

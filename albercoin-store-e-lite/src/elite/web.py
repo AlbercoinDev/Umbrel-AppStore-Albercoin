@@ -1388,7 +1388,7 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
             for label_es, label_en, val in rows
         )
         rendered.append(
-            f'<details class="status-family"{opened}>'
+            f'<details class="settings-section status-family"{opened}>'
             f'<summary><h2>{h(t(lang, title_key))}</h2>'
             f'<span class="section-meta"><span class="badge">{len(rows)}</span><span class="chev">›</span></span></summary>'
             f'<div class="settings-body">{body}</div></details>'

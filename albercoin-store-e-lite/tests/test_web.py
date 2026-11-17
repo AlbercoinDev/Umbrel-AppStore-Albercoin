@@ -217,8 +217,8 @@ class WebTests(unittest.TestCase):
         self.assertIn("Core pausado; drenando el backlog", body)
         self.assertNotIn("index_paused", body)
         # Rows are grouped into collapsible families.
-        self.assertEqual(body.count('class="status-family"'), 7)
-        self.assertIn('class="status-family" open', body)
+        self.assertEqual(body.count('class="settings-section status-family"'), 7)
+        self.assertIn('class="settings-section status-family" open', body)
         self.assertIn("Supervisor interno de e-lite", body)
         self.assertIn("Último motivo", body)
         self.assertIn("oom", body)

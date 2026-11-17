@@ -10,7 +10,7 @@ services:
   # sysfs and applies the fixed cap on every app start/update. It runs a fixed
   # script, has no network and no access to app data.
   arc-cap:
-    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.24.0-01@sha256:997f33f6482ce94f2a3a6f796c98762e85443104af7f8b45464f99e2d5c1cde7
+    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.24.1-01@sha256:ad98a4c8d8af1b5bf0e28ba6797b4431c46ec8f33ae7afaa4fc61658b629efb1
     user: "0:0"
     privileged: true
     network_mode: none
@@ -18,7 +18,7 @@ services:
     command: ["sh", "/app/elite/arc_cap.sh"]
 
   app:
-    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.24.0-01@sha256:997f33f6482ce94f2a3a6f796c98762e85443104af7f8b45464f99e2d5c1cde7
+    image: ghcr.io/albercoindev/e-lite:0.1.0-alpha.29.24.1-01@sha256:ad98a4c8d8af1b5bf0e28ba6797b4431c46ec8f33ae7afaa4fc61658b629efb1
     user: "1000:1000"
     hostname: e-lite
     init: true

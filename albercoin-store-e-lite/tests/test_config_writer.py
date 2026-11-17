@@ -82,7 +82,7 @@ class ConfigWriterTests(unittest.TestCase):
             _, data = self._build("signet", NetworkConfig(), paths, active_networks=3)
             self.assertEqual(data["index"]["memory_fraction"], 0.2)
             _, data = self._build("signet", NetworkConfig(), paths, active_networks=1)
-            self.assertEqual(data["index"], {"zfs_arc_dynamic": False})
+            self.assertNotIn("index", data)
             override = NetworkConfig(overrides={"index.memory_fraction": 0.5})
             _, data = self._build("signet", override, paths, active_networks=3)
             self.assertEqual(data["index"]["memory_fraction"], 0.5)
@@ -100,49 +100,56 @@ class ConfigWriterTests(unittest.TestCase):
             _, data = self._build("signet", override, paths, active_networks=3, total_mib=7909)
             self.assertEqual(data["core"]["extra_args"], ["-dbcache=1200"])
 
-    def test_byte_watermarks_and_legacy_bridge(self) -> None:
+    def test_byte_watermarks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
             self.assertNotIn("pruning", data)
-            legacy = NetworkConfig(overrides={"pruning.max_bulk_lag_blocks": 12000})
-            _, data = self._build("signet", legacy, paths)
-            self.assertEqual(data["pruning"]["max_bulk_lag_blocks"], 12000)
-            self.assertEqual(data["pruning"]["max_bulk_lag_gib"], 0)
-            resume = NetworkConfig(overrides={"pruning.core_resume_ahead_blocks": 2500})
-            _, data = self._build("signet", resume, paths)
-            self.assertEqual(data["pruning"]["core_resume_ahead_blocks"], 2500)
-            self.assertEqual(data["pruning"]["core_resume_ahead_gib"], 0)
-            modern = NetworkConfig(overrides={"pruning.max_bulk_lag_gib": 50, "pruning.scheduler": "alternate"})
+            modern = NetworkConfig(overrides={"pruning.max_bulk_lag_gib": 50})
             _, data = self._build("signet", modern, paths)
             self.assertEqual(data["pruning"]["max_bulk_lag_gib"], 50)
-            self.assertEqual(data["pruning"]["scheduler"], "alternate")
+            # 29.19.0 removed the block-count window and rejected gib = 0, so
+            # the retired keys must never reach the generated file.
+            retired = NetworkConfig(
+                overrides={
+                    "pruning.max_bulk_lag_blocks": 12000,
+                    "pruning.core_resume_ahead_blocks": 2500,
+                    "pruning.scheduler": "alternate",
+                }
+            )
+            text, data = self._build("signet", retired, paths)
+            self.assertNotIn("max_bulk_lag_blocks", text)
+            self.assertNotIn("core_resume_ahead_blocks", text)
+            self.assertNotIn("scheduler", text)
+            self.assertNotIn("max_bulk_lag_gib", text)
+            self.assertNotIn("pruning", data)
 
-    def test_opt_in_io_and_prefetch_fields(self) -> None:
+    def test_opt_in_io_priority(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
             self.assertNotIn("io_priority", data["core"])
-            self.assertNotIn("cgroup_io_weight", data["core"])
             override = NetworkConfig(
                 overrides={
                     "core.io_priority": 5,
                     "core.cgroup_io_weight": 100,
                     "index.prefetch_deadline_ms": 250,
                     "index.adaptive_memtables": True,
+                    "index.zfs_arc_max_mib": 2048,
                 }
             )
-            _, data = self._build("signet", override, paths)
+            text, data = self._build("signet", override, paths)
             self.assertEqual(data["core"]["io_priority"], 5)
-            self.assertEqual(data["core"]["cgroup_io_weight"], 100)
-            self.assertEqual(data["index"]["prefetch_deadline_ms"], 250)
-            self.assertTrue(data["index"]["adaptive_memtables"])
+            self.assertNotIn("cgroup_io_weight", text)
+            self.assertNotIn("prefetch_deadline_ms", text)
+            self.assertNotIn("adaptive_memtables", text)
+            self.assertNotIn("zfs_arc", text)
 
     def test_allow_low_memory_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
-            self.assertEqual(data["index"], {"zfs_arc_dynamic": False})
+            self.assertNotIn("index", data)
             override = NetworkConfig(overrides={"index.allow_low_memory": True})
             _, data = self._build("signet", override, paths)
             self.assertTrue(data["index"]["allow_low_memory"])
@@ -159,7 +166,7 @@ class ConfigWriterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))
             _, data = self._build("signet", NetworkConfig(), paths)
-            self.assertEqual(data["index"], {"zfs_arc_dynamic": False})
+            self.assertNotIn("index", data)
             self.assertNotIn("pruning", data)
             self.assertNotIn("max_clients", data["server"])
             self.assertNotIn("prune_mib", data["core"])

@@ -60,7 +60,8 @@ DEMO_STATUS: dict[str, Any] = {
     "tor": {"managed": True, "socks_port": 9050, "control_port": 0},
     "pipeline": {"prepared": 190500, "applied": 184250, "discarded": 620},
     "rocksdb": {"pending_compaction_bytes": 73400320, "properties_ok": True, "running_compactions": 1, "level0_files": 23, "block_cache_bytes": 838860800},
-    "scheduler": {"mode": "overlap", "index_paused": False, "backlog_bytes": 12884901888, "high_bytes": 32212254720, "low_bytes": 7516192768},
+    "scheduler": {"phase": "indexing", "backlog_bytes": 12884901888, "high_bytes": 32212254720, "low_bytes": 7516192768},
+    "supervisor": {"supervised": True, "restarts": 0, "last_reason": ""},
     "machine": {
         "cpu": {"physical": 4, "logical": 8, "effective": 4, "physical_effective": 4, "smt": True},
         "disk": {"data": {"kind": "nvme", "mount": "/data"}, "core": {"kind": "nvme", "mount": "/data"}, "same_device": True},
@@ -904,6 +905,12 @@ summary {{ cursor:pointer; color:var(--muted); font-weight:650; }}
 .chev {{ display:inline-block; color:var(--muted); font-size:18px; transition:transform .15s ease; }}
 .settings-section[open] .chev {{ transform:rotate(90deg); }}
 .settings-body {{ margin-top:14px; }}
+.status-family {{ margin:0; padding:11px 0; border-top:1px solid rgba(255,255,255,.07); }}
+.status-family:first-child {{ border-top:0; padding-top:0; }}
+.status-family > summary {{ color:var(--text); }}
+.status-family > summary h2 {{ margin:0; font-size:15px; letter-spacing:.01em; }}
+.status-family > summary:hover h2 {{ color:var(--accent); }}
+.status-family .row {{ padding:7px 0; }}
 .subsection {{ margin-top:16px; border-top:1px solid rgba(255,255,255,.07); padding-top:12px; }}
 .subsection > summary {{ color:var(--muted); }}
 .tip {{ display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; border:1px solid rgba(92,200,255,.45); background:rgba(92,200,255,.12); color:#b9ecff; font-size:11px; font-weight:700; cursor:help; vertical-align:middle; }}
@@ -1072,8 +1079,6 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
     if network.phase == "runtime":
         state_text = t(lang, "not_ready")
     live = network.live or {}
-    tuning = live.get("tuning", {}) if isinstance(live.get("tuning"), dict) else {}
-    memory = live.get("memory", {}) if isinstance(live.get("memory"), dict) else {}
     overall = network.core_progress if network.core_ibd else network.index_progress
     if network.fully_synced:
         overall = 100.0
@@ -1122,26 +1127,27 @@ def _network_card(app: WebApp, network: NetworkSnapshot, lang: str, domain: str)
     <div class="stat"><div class="k">{h(t(lang, "clients"))}</div><div class="v">{int(live.get("clients", 0) or 0)} / {int(live.get("max_clients", 0) or 0)}</div></div>
   </div>
   <div class="card" style="background:rgba(0,0,0,.12)">
-    <div class="row"><span class="k">{h(t(lang, "uptime"))}</span><span class="v">{h(fmt_duration(int(live.get("uptime_seconds", 0) or 0)))}</span></div>
-    <div class="row"><span class="k">{h(t(lang, "disk_free"))}</span><span class="v">{h(fmt_bytes(int(live.get("disk_free_bytes", 0) or 0)))}</span></div>
-    <div class="row"><span class="k">{h(t(lang, "db_size"))}</span><span class="v">{h(fmt_bytes(int(live.get("db_bytes", 0) or 0)))}</span></div>
-    <div class="row"><span class="k">{h(t(lang, "memory"))}</span><span class="v">{int(memory.get("available_mib", 0) or 0):,} MiB</span></div>
-    <div class="row"><span class="k">{h(t(lang, "profile"))}</span><span class="v">{h(str(tuning.get("profile", "—")))}</span></div>
-    {_detail_rows(network, lang)}
+    {_status_families(network, lang)}
   </div>
   <div class="inline" style="margin-top:12px"><a class="button secondary" href="/config?network={network.network}">{h(t(lang, "configure"))}</a></div>
   {_logs_block(network, lang)}
 </div>"""
 
 
-def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
+def _status_families(network: NetworkSnapshot, lang: str) -> str:
+    """Collapsible status groups so one network does not fill the screen.
+
+    Rows are grouped by concern and rendered as `<details>` blocks with the
+    same styling as the configuration page. The sync family starts open; the
+    rest start collapsed and show their row count in the badge.
+    """
     live = network.live or {}
     core = live.get("core") or {}
     tuning = live.get("tuning") or {}
     memory = live.get("memory") or {}
     disk = live.get("disk") or {}
     descriptors = live.get("file_descriptors") or {}
-    tor = live.get("tor") or {}
+    tor_state = live.get("tor") or {}
     pipeline = live.get("pipeline") or {}
     rocksdb = live.get("rocksdb") or {}
     machine = live.get("machine") or {}
@@ -1149,51 +1155,33 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
     machine_disk = (machine.get("disk") or {}).get("data") or {}
     machine_plan = machine.get("plan") or {}
     scheduler = live.get("scheduler") or {}
+    supervisor = live.get("supervisor") or {}
+    rawtx = live.get("rawtx") or {}
+    server = live.get("server") or {}
     missing = "No disponible" if lang == "es" else "Unavailable"
+    es = lang == "es"
+
     def value(source: dict, key: str) -> object:
         result = source.get(key)
         if result is None:
             return missing
         if isinstance(result, bool):
-            return ("Sí" if lang == "es" else "Yes") if result else "No"
+            return ("Sí" if es else "Yes") if result else ("No" if es else "No")
         return result
-    rows = [
+
+    families: list[tuple[str, list[tuple[str, str, object]]]] = []
+
+    phase = str(scheduler.get("phase") or "")
+    phase_text = {
+        "indexing": t(lang, "scheduler_indexing"),
+        "draining": t(lang, "scheduler_draining"),
+    }.get(phase, phase or missing)
+    families.append(("status_family_sync", [
+        ("Tiempo activo", "Uptime", fmt_duration(int(live.get("uptime_seconds", 0) or 0))),
         ("Altura Core / cabeceras", "Core height / headers", f"{network.core_height:,} / {network.headers:,}" if network.live else missing),
-        ("Conexiones Core", "Core connections", value(core, "connections")),
-        ("Descarga inicial Core", "Core initial download", value(core, "initial_block_download")),
-        ("Poda activa", "Pruned", value(core, "pruned")),
-        ("Altura de poda", "Prune height", value(core, "pruneheight")),
+        ("Altura indexada", "Indexed height", f"{network.indexed:,}"),
+        ("Diferencia con Core", "Lag behind Core", f"{max(0, network.core_height - network.indexed):,}" if network.live else missing),
         ("Bloques/s", "Blocks/s", value(tuning, "blocks_per_sec")),
-        ("Caché (MiB)", "Cache (MiB)", value(tuning, "cache_mib")),
-        ("Límite peticiones/s (0 = desactivado)", "Rate limit/s (0 = disabled)", value(live, "rate_limit_rps")),
-        ("Ráfaga", "Burst", value(live, "rate_burst")),
-        ("Peticiones limitadas", "Rate limited requests", value(live, "rate_limited")),
-        ("RPC Core en loopback", "Core loopback RPC", value(live, "core_rpc_loopback")),
-        (
-            "Memoria efectiva / reserva dinámica",
-            "Effective memory / dynamic reserve",
-            f"{int(memory['effective_mib']):,} / {int(memory['dynamic_reserve_mib']):,} MiB" if "effective_mib" in memory and "dynamic_reserve_mib" in memory else missing,
-        ),
-        (
-            "Memtables / table readers reales",
-            "Actual memtables / table readers",
-            f"{int(memory['memtable_bytes_mib']):,} / {int(memory['table_readers_mib']):,} MiB" if "memtable_bytes_mib" in memory and "table_readers_mib" in memory else missing,
-        ),
-        (
-            "Descriptores abiertos (efectivo / límite)",
-            "Open files (effective / limit)",
-            f"{descriptors['max_open_files_effective']} / {descriptors['soft_limit']}" if descriptors else missing,
-        ),
-        (
-            "SOCKS de Tor",
-            "Tor SOCKS",
-            f"127.0.0.1:{tor['socks_port']}" if tor.get("managed") and tor.get("socks_port") else missing,
-        ),
-        (
-            "ControlPort de Tor",
-            "Tor ControlPort",
-            ("No gestionado" if lang == "es" else "Not managed") if not tor.get("control_port") else tor["control_port"],
-        ),
         (
             "Bloques del pipeline (preparados / aplicados / descartados)",
             "Pipeline blocks (prepared / applied / discarded)",
@@ -1204,30 +1192,26 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             "Unindexed backlog",
             fmt_bytes(int(scheduler["backlog_bytes"])) if scheduler.get("backlog_bytes") is not None else missing,
         ),
+        (t(lang, "scheduler_phase"), "Core / e-lite scheduler phase", phase_text),
+    ]))
+
+    families.append(("status_family_memory", [
+        ("Memoria disponible", "Available memory", f"{int(memory.get('available_mib', 0) or 0):,} MiB" if memory else missing),
         (
-            "Planificador Core / e-lite",
-            "Core / e-lite scheduler",
-            (
-                f"{scheduler['mode']} · "
-                + ("pausado" if scheduler.get("index_paused") else "activo")
-                if lang == "es"
-                else f"{scheduler['mode']} · " + ("paused" if scheduler.get("index_paused") else "active")
-            ) if scheduler else missing,
+            "Memoria efectiva / reserva dinámica",
+            "Effective memory / dynamic reserve",
+            f"{int(memory['effective_mib']):,} / {int(memory['dynamic_reserve_mib']):,} MiB" if "effective_mib" in memory and "dynamic_reserve_mib" in memory else missing,
         ),
         (
-            "Núcleos físicos / lógicos",
-            "Physical / logical cores",
-            f"{cpu['physical']} / {cpu['logical']}" if cpu else missing,
+            "Memtables / table readers reales",
+            "Actual memtables / table readers",
+            f"{int(memory['memtable_bytes_mib']):,} / {int(memory['table_readers_mib']):,} MiB" if "memtable_bytes_mib" in memory and "table_readers_mib" in memory else missing,
         ),
+        ("Caché (MiB)", "Cache (MiB)", value(tuning, "cache_mib")),
         (
-            "Disco de datos detectado",
-            "Detected data disk",
-            f"{machine_disk['kind']} ({machine_disk['mount']})" if machine_disk else missing,
-        ),
-        (
-            "Plan de máquina (lectores / jobs / commit)",
-            "Machine plan (readers / jobs / commit)",
-            f"{machine_plan['readers']} / {machine_plan['jobs']} / {machine_plan['commit_ms']} ms" if machine_plan else missing,
+            "Caché de bloques real",
+            "Actual block cache",
+            fmt_bytes(int(rocksdb["block_cache_bytes"])) if rocksdb.get("block_cache_bytes") is not None else missing,
         ),
         (
             "Compactaciones / ficheros L0",
@@ -1235,100 +1219,18 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
             f"{rocksdb['running_compactions']} / {rocksdb['level0_files']}" if "running_compactions" in rocksdb and "level0_files" in rocksdb else missing,
         ),
         (
-            "Caché de bloques real",
-            "Actual block cache",
-            fmt_bytes(int(rocksdb["block_cache_bytes"])) if rocksdb.get("block_cache_bytes") is not None else missing,
-        ),
-        (
             "Compactación pendiente",
             "Pending compaction",
             fmt_bytes(int(rocksdb["pending_compaction_bytes"])) if rocksdb.get("pending_compaction_bytes") is not None else missing,
         ),
-        ("Certificado TLS disponible", "TLS certificate available", value(network.tls, "certificate_available")),
-        ("Dirección Tor disponible", "Tor address available", bool(network.onion)),
-        ("Versiones e-lite / Core / Tor", "Versions e-lite / Core / Tor", f"{E_LITE_VERSION} / {BITCOIN_VERSION} / {TOR_VERSION}"),
+        ("Perfil", "Profile", value(tuning, "profile")),
+    ]))
+
+    disk_rows: list[tuple[str, str, object]] = [
+        ("Espacio libre", "Free space", fmt_bytes(int(live.get("disk_free_bytes", 0) or 0))),
+        ("Tamaño del índice", "Index size", fmt_bytes(int(live.get("db_bytes", 0) or 0))),
     ]
-    rawtx = live.get("rawtx") or {}
-    server = live.get("server") or {}
-    path = str(rawtx.get("path") or "")
-    if path:
-        label = {
-            "tor": t(lang, "external_path_tor"),
-            "tor+fallback": t(lang, "external_path_fallback"),
-            "direct": t(lang, "external_path_direct"),
-        }.get(path, path)
-        rows.append(("Ruta externa", "External path", label))
-    if server.get("banner"):
-        rows.append(("Banner Electrum", "Electrum banner", server["banner"]))
-    if "electrumx_compat" in server:
-        rows.append((
-            "Compatibilidad ElectrumX",
-            "ElectrumX compatibility",
-            ("Sí" if lang == "es" else "Yes") if server.get("electrumx_compat") else ("No" if lang == "es" else "No"),
-        ))
-    if server.get("batch_lines") is not None:
-        rows.append((
-            "Lotes JSON-RPC (líneas / items / máximo)",
-            "JSON-RPC batches (lines / items / max)",
-            f"{int(server.get('batch_lines') or 0)} / {int(server.get('batch_items') or 0)} / {int(server.get('batch_max_items') or 0)}",
-        ))
-    tx_mode = rawtx.get("tx_mode") or {}
-    if isinstance(tx_mode, dict) and tx_mode:
-        mode_name = str(tx_mode.get("mode") or "-")
-        wallets = int(tx_mode.get("decoy_wallets") or 0)
-        level = "max" if mode_name == "block" else "high" if wallets >= 3 else "medium" if wallets >= 1 else "low"
-        rows.append((
-            "Ofuscación (nivel / preset / modo / señuelos)",
-            "Obfuscation (level / preset / mode / decoys)",
-            f"{t(lang, 'obfuscation_' + level)} / {str(tx_mode.get('preset') or '-')} / {mode_name} / {wallets}",
-        ))
-        if tx_mode.get("active"):
-            rows.append((
-                "Sesiones tx (servidores / sesiones / txids por sesión)",
-                "Tx sessions (servers / sessions / txids per session)",
-                f"{int(tx_mode.get('servers') or 0)} / {int(tx_mode.get('sessions') or 0):,} / {int(tx_mode.get('session_size') or 0)}",
-            ))
-            if any(int(tx_mode.get(key) or 0) for key in ("real_sent", "decoys_sent")):
-                rows.append((
-                    "Txids pedidos (reales / señuelos)",
-                    "Txids requested (real / decoys)",
-                    f"{int(tx_mode.get('real_sent') or 0):,} / {int(tx_mode.get('decoys_sent') or 0):,}",
-                ))
-            if any(int(tx_mode.get(key) or 0) for key in ("verified", "rejected", "block_fallback")):
-                rows.append((
-                    "Verificación tx (correctas / rechazadas / fallback a bloques)",
-                    "Tx verification (verified / rejected / block fallback)",
-                    f"{int(tx_mode.get('verified') or 0):,} / {int(tx_mode.get('rejected') or 0):,} / {int(tx_mode.get('block_fallback') or 0):,}",
-                ))
-    race = rawtx.get("race") or {}
-    if isinstance(race, dict) and any(int(race.get(k) or 0) for k in ("attempts", "hedges", "wins_esplora", "wins_p2p")):
-        rows.append((
-            "Carrera de bloques (intentos / hedges / Esplora / P2P)",
-            "Block race (attempts / hedges / Esplora / P2P)",
-            f"{int(race.get('attempts') or 0):,} / {int(race.get('hedges') or 0):,} / {int(race.get('wins_esplora') or 0):,} / {int(race.get('wins_p2p') or 0):,}",
-        ))
-    if rawtx.get("decoys_pending") is not None:
-        rows.append((
-            "Decoys pendientes",
-            "Pending decoys",
-            f"{int(rawtx.get('decoys_pending') or 0):,}",
-        ))
-    if rawtx.get("cache_blocks") is not None or rawtx.get("cache_txs") is not None:
-        rows.append((
-            "Caché rawtx (bloques / tx / bytes)",
-            "Rawtx cache (blocks / txs / bytes)",
-            f"{int(rawtx.get('cache_blocks') or 0):,} / {int(rawtx.get('cache_txs') or 0):,} / {fmt_bytes(int(rawtx.get('cache_bytes') or 0))}",
-        ))
-    failures = rawtx.get("tx_get_failures") or {}
-    if isinstance(failures, dict):
-        active = {str(k): int(v) for k, v in failures.items() if isinstance(v, (int, float)) and v}
-        if active:
-            rows.append((
-                "Fallos tx.get",
-                "tx.get failures",
-                ", ".join(f"{key} {value}" for key, value in active.items()),
-            ))
-    for key, es, en in (
+    for key, label_es, label_en in (
         ("index_bytes", "Índice en disco", "Index on disk"),
         ("txids_bytes", "TXIDs en disco", "TXIDs on disk"),
         ("cache_bytes", "Caché en disco", "Cache on disk"),
@@ -1336,8 +1238,162 @@ def _detail_rows(network: NetworkSnapshot, lang: str) -> str:
         ("snapshot_bytes", "Snapshots en disco", "Snapshots on disk"),
         ("total_bytes", "Total e-lite en disco", "Total e-lite on disk"),
     ):
-        rows.append((es, en, fmt_bytes(disk[key]) if disk.get(key) is not None else missing))
-    return "".join(f'<div class="row"><span class="k">{h(es if lang == "es" else en)}</span><span class="v">{h(val)}</span></div>' for es, en, val in rows)
+        disk_rows.append((label_es, label_en, fmt_bytes(disk[key]) if disk.get(key) is not None else missing))
+    disk_rows.append((
+        "Disco de datos detectado",
+        "Detected data disk",
+        f"{machine_disk['kind']} ({machine_disk['mount']})" if machine_disk else missing,
+    ))
+    families.append(("status_family_disk", disk_rows))
+
+    clients_rows: list[tuple[str, str, object]] = [
+        ("Clientes", "Clients", f"{int(live.get('clients', 0) or 0)} / {int(live.get('max_clients', 0) or 0)}"),
+        ("Límite peticiones/s (0 = desactivado)", "Rate limit/s (0 = disabled)", value(live, "rate_limit_rps")),
+        ("Ráfaga", "Burst", value(live, "rate_burst")),
+        ("Peticiones limitadas", "Rate limited requests", value(live, "rate_limited")),
+        (
+            "Descriptores abiertos (efectivo / límite)",
+            "Open files (effective / limit)",
+            f"{descriptors['max_open_files_effective']} / {descriptors['soft_limit']}" if descriptors else missing,
+        ),
+    ]
+    if server.get("banner"):
+        clients_rows.append(("Banner Electrum", "Electrum banner", server["banner"]))
+    if "electrumx_compat" in server:
+        clients_rows.append((
+            "Compatibilidad ElectrumX",
+            "ElectrumX compatibility",
+            ("Sí" if es else "Yes") if server.get("electrumx_compat") else ("No" if es else "No"),
+        ))
+    if server.get("batch_lines") is not None:
+        clients_rows.append((
+            "Lotes JSON-RPC (líneas / items / máximo)",
+            "JSON-RPC batches (lines / items / max)",
+            f"{int(server.get('batch_lines') or 0)} / {int(server.get('batch_items') or 0)} / {int(server.get('batch_max_items') or 0)}",
+        ))
+    families.append(("status_family_clients", clients_rows))
+
+    families.append(("status_family_core", [
+        ("Conexiones Core", "Core connections", value(core, "connections")),
+        ("Descarga inicial Core", "Core initial download", value(core, "initial_block_download")),
+        ("Poda activa", "Pruned", value(core, "pruned")),
+        ("Altura de poda", "Prune height", value(core, "pruneheight")),
+        ("RPC Core en loopback", "Core loopback RPC", value(live, "core_rpc_loopback")),
+    ]))
+
+    tor_rows: list[tuple[str, str, object]] = [
+        (
+            "SOCKS de Tor",
+            "Tor SOCKS",
+            f"127.0.0.1:{tor_state['socks_port']}" if tor_state.get("managed") and tor_state.get("socks_port") else missing,
+        ),
+        (
+            "ControlPort de Tor",
+            "Tor ControlPort",
+            ("No gestionado" if es else "Not managed") if not tor_state.get("control_port") else tor_state["control_port"],
+        ),
+        ("Dirección Tor disponible", "Tor address available", ("Sí" if es else "Yes") if network.onion else ("No" if es else "No")),
+    ]
+    path = str(rawtx.get("path") or "")
+    if path:
+        label = {
+            "tor": t(lang, "external_path_tor"),
+            "tor+fallback": t(lang, "external_path_fallback"),
+            "direct": t(lang, "external_path_direct"),
+        }.get(path, path)
+        tor_rows.append(("Ruta externa", "External path", label))
+    tx_mode = rawtx.get("tx_mode") or {}
+    if isinstance(tx_mode, dict) and tx_mode:
+        mode_name = str(tx_mode.get("mode") or "-")
+        wallets = int(tx_mode.get("decoy_wallets") or 0)
+        level = "max" if mode_name == "block" else "high" if wallets >= 3 else "medium" if wallets >= 1 else "low"
+        tor_rows.append((
+            "Ofuscación (nivel / preset / modo / señuelos)",
+            "Obfuscation (level / preset / mode / decoys)",
+            f"{t(lang, 'obfuscation_' + level)} / {str(tx_mode.get('preset') or '-')} / {mode_name} / {wallets}",
+        ))
+        if tx_mode.get("active"):
+            tor_rows.append((
+                "Sesiones tx (servidores / sesiones / txids por sesión)",
+                "Tx sessions (servers / sessions / txids per session)",
+                f"{int(tx_mode.get('servers') or 0)} / {int(tx_mode.get('sessions') or 0):,} / {int(tx_mode.get('session_size') or 0)}",
+            ))
+            if any(int(tx_mode.get(key) or 0) for key in ("real_sent", "decoys_sent")):
+                tor_rows.append((
+                    "Txids pedidos (reales / señuelos)",
+                    "Txids requested (real / decoys)",
+                    f"{int(tx_mode.get('real_sent') or 0):,} / {int(tx_mode.get('decoys_sent') or 0):,}",
+                ))
+            if any(int(tx_mode.get(key) or 0) for key in ("verified", "rejected", "block_fallback")):
+                tor_rows.append((
+                    "Verificación tx (correctas / rechazadas / fallback a bloques)",
+                    "Tx verification (verified / rejected / block fallback)",
+                    f"{int(tx_mode.get('verified') or 0):,} / {int(tx_mode.get('rejected') or 0):,} / {int(tx_mode.get('block_fallback') or 0):,}",
+                ))
+    if rawtx.get("decoys_pending") is not None:
+        tor_rows.append((
+            "Decoys pendientes",
+            "Pending decoys",
+            f"{int(rawtx.get('decoys_pending') or 0):,}",
+        ))
+    if rawtx.get("cache_blocks") is not None or rawtx.get("cache_txs") is not None:
+        tor_rows.append((
+            "Caché rawtx (bloques / tx / bytes)",
+            "Rawtx cache (blocks / txs / bytes)",
+            f"{int(rawtx.get('cache_blocks') or 0):,} / {int(rawtx.get('cache_txs') or 0):,} / {fmt_bytes(int(rawtx.get('cache_bytes') or 0))}",
+        ))
+    race = rawtx.get("race") or {}
+    if isinstance(race, dict) and any(int(race.get(k) or 0) for k in ("attempts", "hedges", "wins_esplora", "wins_p2p")):
+        tor_rows.append((
+            "Carrera de bloques (intentos / hedges / Esplora / P2P)",
+            "Block race (attempts / hedges / Esplora / P2P)",
+            f"{int(race.get('attempts') or 0):,} / {int(race.get('hedges') or 0):,} / {int(race.get('wins_esplora') or 0):,} / {int(race.get('wins_p2p') or 0):,}",
+        ))
+    failures = rawtx.get("tx_get_failures") or {}
+    if isinstance(failures, dict):
+        active = {str(k): int(v) for k, v in failures.items() if isinstance(v, (int, float)) and v}
+        if active:
+            tor_rows.append((
+                "Fallos tx.get",
+                "tx.get failures",
+                ", ".join(f"{key} {count}" for key, count in active.items()),
+            ))
+    families.append(("status_family_tor", tor_rows))
+
+    machine_rows: list[tuple[str, str, object]] = [
+        ("Núcleos físicos / lógicos", "Physical / logical cores", f"{cpu['physical']} / {cpu['logical']}" if cpu else missing),
+        (
+            "Plan de máquina (lectores / jobs / commit)",
+            "Machine plan (readers / jobs / commit)",
+            f"{machine_plan['readers']} / {machine_plan['jobs']} / {machine_plan['commit_ms']} ms" if machine_plan else missing,
+        ),
+    ]
+    if supervisor:
+        machine_rows.append((t(lang, "supervisor"), "e-lite internal supervisor", value(supervisor, "supervised")))
+        machine_rows.append((t(lang, "supervisor_restarts"), "Automatic restarts", int(supervisor.get("restarts") or 0)))
+        if supervisor.get("last_reason"):
+            machine_rows.append((t(lang, "supervisor_last_reason"), "Last reason", str(supervisor["last_reason"])))
+    machine_rows.extend([
+        ("Versiones e-lite / Core / Tor", "Versions e-lite / Core / Tor", f"{E_LITE_VERSION} / {BITCOIN_VERSION} / {TOR_VERSION}"),
+        ("Versión de la app", "App version", APP_VERSION),
+        ("Certificado TLS disponible", "TLS certificate available", value(network.tls, "certificate_available")),
+    ])
+    families.append(("status_family_machine", machine_rows))
+
+    rendered: list[str] = []
+    for position, (title_key, rows) in enumerate(families):
+        opened = " open" if position == 0 else ""
+        body = "".join(
+            f'<div class="row"><span class="k">{h(label_es if es else label_en)}</span><span class="v">{h(val)}</span></div>'
+            for label_es, label_en, val in rows
+        )
+        rendered.append(
+            f'<details class="status-family"{opened}>'
+            f'<summary><h2>{h(t(lang, title_key))}</h2>'
+            f'<span class="section-meta"><span class="badge">{len(rows)}</span><span class="chev">›</span></span></summary>'
+            f'<div class="settings-body">{body}</div></details>'
+        )
+    return "".join(rendered)
 
 
 def setup_page(

@@ -155,7 +155,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(settings.network("signet").overrides["server.rate_limit"], 0)
 
-    def test_byte_watermarks_defaults_and_scheduler(self) -> None:
+    def test_byte_watermarks_and_retired_fields(self) -> None:
         settings, errors = parse_form({}, "signet")
         self.assertEqual(errors, [])
         config = settings.network("signet")
@@ -163,16 +163,26 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(config.value("pruning.prune_defer_free_gib"), 20)
         self.assertEqual(config.value("pruning.min_gain_blocks"), 5000)
         self.assertEqual(config.value("core.io_priority"), 0)
-        self.assertEqual(config.value("core.cgroup_io_weight"), 0)
-        self.assertEqual(config.value("index.prefetch_deadline_ms"), 0)
-        self.assertFalse(config.value("index.adaptive_memtables"))
         self.assertEqual(config.value("pruning.core_resume_ahead_gib"), 7)
-        self.assertEqual(config.value("pruning.scheduler"), "overlap")
+        # 29.19.0 retired these keys; the form must not create overrides for
+        # them and gib = 0 is a startup error upstream.
         settings, errors = parse_form({"value__pruning.scheduler": ["alternate"]}, "signet")
         self.assertEqual(errors, [])
-        self.assertEqual(settings.network("signet").overrides["pruning.scheduler"], "alternate")
-        _, errors = parse_form({"value__pruning.scheduler": ["bogus"]}, "signet")
+        self.assertEqual(settings.network("signet").overrides, {})
+        _, errors = parse_form({"value__pruning.max_bulk_lag_gib": ["0"]}, "signet")
         self.assertTrue(errors)
+        for key in (
+            "pruning.scheduler",
+            "pruning.max_bulk_lag_blocks",
+            "pruning.core_resume_ahead_blocks",
+            "core.cgroup_io_weight",
+            "index.zfs_arc_dynamic",
+            "index.zfs_arc_max_mib",
+            "index.zfs_arc_min_mib",
+            "index.adaptive_memtables",
+            "index.prefetch_deadline_ms",
+        ):
+            self.assertNotIn(key, FIELDS_BY_KEY)
 
     def test_public_hostnames(self) -> None:
         form = {"public_hostnames": ["elite.example.org, otro.example.net\nelite.example.org"]}

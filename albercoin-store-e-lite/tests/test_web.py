@@ -154,7 +154,7 @@ class WebTests(unittest.TestCase):
 
     def test_tx_get_failure_row(self) -> None:
         from types import SimpleNamespace
-        from elite.web import _detail_rows
+        from elite.web import _status_families
 
         network = SimpleNamespace(
             live={
@@ -188,13 +188,16 @@ class WebTests(unittest.TestCase):
                         "block_fallback": 0,
                     },
                 },
+                "scheduler": {"phase": "draining", "backlog_bytes": 2048},
+                "supervisor": {"supervised": True, "restarts": 2, "last_reason": "oom"},
             },
             core_height=100,
             headers=100,
+            indexed=95,
             tls={},
             onion="",
         )
-        body = _detail_rows(network, "es")
+        body = _status_families(network, "es")
         self.assertIn("Fallos tx.get", body)
         self.assertIn("no_source 3", body)
         self.assertIn("external_failed 1", body)
@@ -209,6 +212,16 @@ class WebTests(unittest.TestCase):
         self.assertIn("Alta / balanced / tx / 3", body)
         self.assertIn("Ruta externa", body)
         self.assertIn("Tor", body)
+        # 29.19.0 replaced scheduler mode/index_paused with phase.
+        self.assertIn("Planificador Core / e-lite", body)
+        self.assertIn("Core pausado; drenando el backlog", body)
+        self.assertNotIn("index_paused", body)
+        # Rows are grouped into collapsible families.
+        self.assertEqual(body.count('class="status-family"'), 7)
+        self.assertIn('class="status-family" open', body)
+        self.assertIn("Supervisor interno de e-lite", body)
+        self.assertIn("Último motivo", body)
+        self.assertIn("oom", body)
 
     def test_logs_can_be_copied_and_downloaded(self) -> None:
         _, _, body = self.get('/?network=signet')

@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.17.0-04`
+- Versión: `0.1.0-alpha.29.19.2-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.17.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.19.2`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,10 +225,13 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.17.0 conserva las rutas explícitas de Umbrel y no migra
-datos ni identidades onion. Los valores automáticos de poda ahora son
-`prune_defer_free_gib = 20` y `min_gain_blocks = 5000`; los ajustes manuales
-guardados se conservan. TLS sigue usando la CA local del wrapper y sus
+La versión 0.1.0-alpha.29.19.2 conserva las rutas explícitas de Umbrel, el
+formato del índice y las identidades onion: no hay reindexado ni migración.
+Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
+límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
+escriben; si estaban guardados, se descartan al cargar la configuración. Los
+valores automáticos de poda siguen siendo `prune_defer_free_gib = 20` y
+`min_gain_blocks = 5000`. TLS sigue usando la CA local del wrapper y sus
 certificados por red, sin regenerar la CA en la actualización. Para wallets
 que requieren confianza explícita (incluido Sparrow/Java), importa la CA de
 `/tls/ca.crt`, no el certificado servidor ni su cadena completa.
@@ -310,14 +313,13 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - Los commits en bloque son más grandes y menos frecuentes (250k txs, 512
   bloques, 20–60 s según disco, con tope de bytes), y la poda se ejecuta en su
   propio hilo después de la barrera de commit: ya no bloquea la indexación.
-- El límite de backlog se mide en **bytes** (`max_bulk_lag_gib`, 30 GiB) y la
-  reanudación en `core_resume_ahead_gib` (7 GiB). Los antiguos límites por
-  bloques siguen disponibles como legado: si fijas uno en el panel, el wrapper
-  escribe el GiB correspondiente a 0 para que tu valor siga mandando.
-- `pruning.scheduler` permite `overlap` (por defecto) o `alternate`, donde Core
-  y e-lite se turnan para escribir. `alternate` requiere
-  `pause_core_during_bulk`.
-- El panel muestra el backlog sin indexar y el modo del planificador.
+- El límite de backlog se mide en **bytes** (`max_bulk_lag_gib`, 30 GiB; mínimo
+  1) y la reanudación en `core_resume_ahead_gib` (7 GiB). Las ventanas por
+  bloques ya no existen: 29.19.0 las eliminó y `max_bulk_lag_gib = 0` impide
+  arrancar, así que el panel ya no las ofrece.
+- El planificador ya no tiene modos: e-lite indexa mientras Core descarga y
+  pasa a `draining` cuando Core se pausa por backlog. El panel muestra la fase
+  y el backlog sin indexar.
 - El techo de caché dinámico ya no cuenta dos veces memtables/runtime: usa
   `MemAvailable` y una reserva dinámica. El panel muestra memoria efectiva,
   memtables y table readers reales.
@@ -342,19 +344,17 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   `min_gain_blocks`.
 - El plan de compactación aplica hilos físicos también al arrancar (SSD/NVMe
   2–8, ZFS/virtual 4, HDD/red 2).
-- **Tope de ARC automático**: un servicio auxiliar `arc-cap` del Compose
-  monta un sysfs propio y fija `zfs_arc_max` en el host al arrancar o
-  actualizar la app. Usa 8 GiB en equipos con 24 GiB o más de RAM y un cuarto
-  de la RAM en equipos menores. `index.zfs_arc_dynamic` queda desactivado
-  para que e-lite no compita con el tope fijo. No hay que ejecutar nada a
+- **Tope de ARC en ZFS**: desde 29.19.0 e-lite ya no escribe `zfs_arc_max`;
+  solo lee el ARC y avisa cuando está sin límite. La app mantiene el servicio
+  auxiliar `arc-cap` del Compose, que monta un sysfs propio y fija el tope en
+  el host al arrancar o actualizar. Usa 8 GiB en equipos con 24 GiB o más de
+  RAM y un cuarto de la RAM en equipos menores. No hay que ejecutar nada a
   mano. El servicio es privilegiado porque Umbrel monta `/sys` en solo
   lectura; no tiene red ni acceso a los datos de la app.
 - Presupuesto desde `MemAvailable` (no RAM instalada) y `-dbcache` de Core
   ajustado a la memoria libre; con varias redes el wrapper sigue fijando su
   propio tope de `-dbcache`.
 - Opciones en **Avanzado**: `core.io_priority` (ionice 0–7),
-  `core.cgroup_io_weight` (io.weight 1–10000, requiere delegación),
-  `index.adaptive_memtables`, `index.prefetch_deadline_ms` (50–60000 ms),
   `core.network` (`auto`/`private`/`clearnet`),
   `rawtx.tor_fallback_clearnet`, `rawtx.prefetch`,
   `rawtx.tor_request_timeout_seconds`, `rawtx.tor_connect_timeout_seconds`,

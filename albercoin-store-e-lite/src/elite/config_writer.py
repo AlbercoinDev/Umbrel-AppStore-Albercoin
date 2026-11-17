@@ -239,7 +239,7 @@ def build_config(
     ]
     # core.network is left to e-lite unless the operator overrides it: the
     # app must be able to follow upstream performance/privacy defaults.
-    for key in ("core.network", "core.timeout_seconds", "core.prune_mib", "core.restart", "core.io_priority", "core.cgroup_io_weight"):
+    for key in ("core.network", "core.timeout_seconds", "core.prune_mib", "core.restart", "core.io_priority"):
         if present(key):
             core_values.append((key.split(".", 1)[1], value(key)))
     if present("core.extra_args") and value("core.extra_args"):
@@ -263,22 +263,13 @@ def build_config(
         "index.background_jobs",
         "index.readers",
         "index.commit_interval_ms",
-        "index.prefetch_deadline_ms",
-        "index.adaptive_memtables",
         "index.max_open_files",
-        "index.zfs_arc_dynamic",
-        "index.zfs_arc_max_mib",
-        "index.zfs_arc_min_mib",
         "index.commit_sync",
         "index.allow_low_memory",
         "index.batch_blocks",
         "index.reorg_window",
     ]
     index_values = [(key.split(".", 1)[1], value(key)) for key in index_keys if present(key)]
-    # The Umbrel app caps the host ARC with a privileged one-shot service; the
-    # e-lite per-phase manager would fight that fixed cap.
-    if not present("index.zfs_arc_dynamic"):
-        index_values.append(("zfs_arc_dynamic", False))
     # Every instance budgets memory independently. When several networks share
     # the same host, split e-lite's memory ceiling instead of letting each one
     # plan for the full default (0.75 of total RAM).
@@ -347,11 +338,8 @@ def build_config(
         "pruning.min_free_gib",
         "pruning.critical_free_gib",
         "pruning.max_bulk_lag_gib",
-        "pruning.max_bulk_lag_blocks",
-        "pruning.scheduler",
         "pruning.pause_core_during_bulk",
         "pruning.core_resume_ahead_gib",
-        "pruning.core_resume_ahead_blocks",
         "pruning.prune_defer_free_gib",
         "pruning.min_gain_blocks",
         "pruning.min_gain_live_blocks",
@@ -359,14 +347,6 @@ def build_config(
         "pruning.repair_max_gap_blocks",
     ]
     pruning_values = [(key.split(".", 1)[1], value(key)) for key in pruning_keys if present(key)]
-    # The byte watermarks take precedence in 29.8.0. If the operator kept using
-    # the legacy block knobs, disable the GiB values so their choice still wins.
-    for legacy, gib in (
-        ("pruning.max_bulk_lag_blocks", "pruning.max_bulk_lag_gib"),
-        ("pruning.core_resume_ahead_blocks", "pruning.core_resume_ahead_gib"),
-    ):
-        if present(legacy) and not present(gib):
-            pruning_values.append((gib.split(".", 1)[1], 0))
     _section(lines, "pruning", pruning_values)
 
     _section(

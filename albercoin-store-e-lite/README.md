@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.24.1-01`
+- Versión: `0.1.0-alpha.29.25.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.24.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.25.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.24.1 conserva las rutas explícitas de Umbrel, el
+La versión 0.1.0-alpha.29.25.0 conserva las rutas explícitas de Umbrel, el
 formato del índice y las identidades onion: no hay reindexado ni migración.
 Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
 límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
@@ -320,14 +320,18 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - El planificador ya no tiene modos: e-lite indexa mientras Core descarga y
   pasa a `draining` cuando Core se pausa por backlog. El panel muestra la fase
   y el backlog sin indexar.
-- **Carga de wallets (29.21.0)**: camino configurable (`rawtx.path`:
+- **Carga de wallets (29.25.0)**: camino configurable (`rawtx.path`:
   `auto`/`tx`/`block`), plazo total por petición (`wallet_deadline_seconds`,
   12 s), intento por txid (`txid_attempt_seconds`, 3 s), carrera
   (`txid_race`), sesiones señuelo (`same_round`/`background`), sesiones
   simultáneas (`sessions_total`), jitter (`jitter_ms`) y bloques de precarga
   por historial (`prefetch_history_blocks`, 0 = automático), bloques P2P en
   vuelo por peer (`p2p_blocks_per_peer`) y cuota/rotación por proveedor
-  (`provider_quota`). En `auto` el bloque
+  (`provider_quota`). En `auto` la vía txid tiene dos intentos de 3 s (6 s)
+  antes de tocar el bloque; el bloque dispone de 20 s de red y reintentos
+  para fallos transitorios dentro de los 45 s por petición. Un fallo
+  transitorio nunca llega a la wallet. `txid_race` (opt-in) acorta el txid a
+  2,5 s para arrancar el bloque antes. El bloque
   en curso recibe 250 ms de ventaja y la vía txid corre en paralelo; gana la
   primera respuesta verificada.
 - Cada intento por txid se corta a los **3 s** y

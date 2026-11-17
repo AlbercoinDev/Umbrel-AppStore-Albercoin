@@ -1461,6 +1461,17 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
             "Txid path (served / stalled)",
             f"{txid_wins:,} / {txid_stalls:,}",
         ))
+    governor = rawtx.get("tor_governor") or {}
+    gov_total = int(governor.get("total") or 0)
+    if gov_total:
+        state = " en pausa" if governor.get("paused") else ""
+        tor_rows.append((
+            "Flujos Tor (en uso / total" + (", pausas" if int(governor.get("pauses") or 0) else "") + ")",
+            "Tor streams (in use / total" + (", pauses" if int(governor.get("pauses") or 0) else "") + ")",
+            f"{int(governor.get('in_use') or 0):,} / {gov_total:,}"
+            + (f" · {int(governor.get('pauses') or 0):,} pausas" if int(governor.get("pauses") or 0) else "")
+            + state,
+        ))
     joins = int(rawtx.get("block_joins") or 0)
     race = rawtx.get("race") or {}
     wins_txid = int(race.get("wins_txid") or 0)

@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.25.0-01`
+- Versión: `0.1.0-alpha.29.25.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.25.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.25.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.25.0 conserva las rutas explícitas de Umbrel, el
+La versión 0.1.0-alpha.29.25.1 conserva las rutas explícitas de Umbrel, el
 formato del índice y las identidades onion: no hay reindexado ni migración.
 Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
 límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
@@ -343,6 +343,16 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - **Probar servidores**: en Estado → Tor y privacidad, mide conexión, lote de
   transacciones y una tx antigua en cada proveedor a través del Tor gestionado.
   Usa txids públicos de prueba; no envía datos de la wallet.
+- **Gestor de flujos Tor (29.25.1)**: `rawtx.tor_streams` (8 por defecto)
+  limita los flujos simultáneos por Tor (bloques, sesiones txid y señuelos
+  comparten el presupuesto, wallet primero). Ante un rechazo (EAGAIN, 429)
+  hay una pausa global de 0,5–4 s que cualquier éxito levanta al instante.
+  El panel muestra flujos en uso/total y las pausas.
+- **Tiempos por transporte**: una wallet por onion (origen loopback) recibe
+  1800 s de idle y 120 s de escritura; clearnet/LAN se queda en 600/30.
+- **Circuitos calientes**: un latido de proveedores por minuto mantiene las
+  rutas Tor listas mientras la app da servicio; el primer `tx.get` no paga el
+  montaje del circuito.
 - El techo de caché dinámico ya no cuenta dos veces memtables/runtime: usa
   `MemAvailable` y una reserva dinámica. El panel muestra memoria efectiva,
   memtables y table readers reales.

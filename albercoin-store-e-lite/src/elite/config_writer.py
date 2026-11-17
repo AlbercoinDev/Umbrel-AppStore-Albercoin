@@ -336,6 +336,7 @@ def build_config(
         "rawtx.prefetch_history_blocks",
         "rawtx.p2p_blocks_per_peer",
         "rawtx.provider_quota",
+        "rawtx.tor_streams",
     ):
         if present(key):
             rawtx_values.append((key.split(".", 1)[1], value(key)))

@@ -83,6 +83,7 @@ FIELDS: tuple[Field, ...] = (
     Field("rawtx.prefetch_history_blocks", "int", 0, "rawtx", minimum=0, maximum=4096, advanced=True),
     Field("rawtx.p2p_blocks_per_peer", "int", 3, "rawtx", minimum=1, maximum=4, advanced=True),
     Field("rawtx.provider_quota", "float", 1.5, "rawtx", minimum=0.0, maximum=4.0, advanced=True),
+    Field("rawtx.tor_streams", "int", 8, "rawtx", minimum=2, maximum=32, advanced=True),
     # AUD-163 (e-lite 29.15): privacy.toml. Only values the operator changes
     # are written; everything else comes from the selected preset.
     Field("privacy.preset", "enum", "balanced", "privacy", options=("balanced", "max", "fast")),

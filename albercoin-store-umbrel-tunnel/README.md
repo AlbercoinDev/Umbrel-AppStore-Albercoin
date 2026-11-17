@@ -82,7 +82,7 @@ sudo umbrel-tunnel token rotate
 
 Detalles en el [README del proyecto](https://github.com/AlbercoinDev/umbrel-tunnel#vps-compartido-varios-umbrel-con-dominio-propio).
 
-## Actualizar a 1.6.7
+## Actualizar a 1.6.8
 
 Esta versión solo cambia el gateway: **el VPS no necesita actualización**. Si
 aun así actualizas sus binarios, hazlo antes que la app.
@@ -90,7 +90,7 @@ aun así actualizas sus binarios, hazlo antes que la app.
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
 sudo umbrel-tunnel update
-umbrel-tunnel version   # 1.6.7
+umbrel-tunnel version   # 1.6.8
 sudo umbrel-tunnel doctor
 ```
 
@@ -109,7 +109,7 @@ sudo umbrel-tunnel update \
 ```
 
 La revisión 1.5.0 permite compartir un VPS entre varios Umbrel (sección anterior).
-En 1.6.7 no hace falta tocar el VPS; solo se actualiza la app.
+En 1.6.8 no hace falta tocar el VPS; solo se actualiza la app.
 
 Desde 1.6.0 los secretos se guardan cifrados (AES-256-GCM) en `data/`, los
 destinos manuales se revalidan en cada sincronización y el relay UDP fija la IP

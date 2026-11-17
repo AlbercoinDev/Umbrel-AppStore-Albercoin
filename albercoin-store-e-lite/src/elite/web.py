@@ -1452,6 +1452,16 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
             "External downloads (blocks / MiB)",
             f"{fetch_count:,} / {fmt_bytes(fetch_bytes)}",
         ))
+    joins = int(rawtx.get("block_joins") or 0)
+    race = rawtx.get("race") or {}
+    wins_txid = int(race.get("wins_txid") or 0)
+    wins_block = int(race.get("wins_block") or 0)
+    if joins or wins_txid or wins_block:
+        tor_rows.append((
+            "Carrera txid / bloque (unidas / gana txid / gana bloque)",
+            "Txid / block race (joined / txid wins / block wins)",
+            f"{joins:,} / {wins_txid:,} / {wins_block:,}",
+        ))
     decoys = int(rawtx.get("decoys") or 0)
     decoys_pending = int(rawtx.get("decoys_pending") or 0)
     if decoys or decoys_pending:

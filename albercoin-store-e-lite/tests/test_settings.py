@@ -184,6 +184,43 @@ class SettingsTests(unittest.TestCase):
         ):
             self.assertNotIn(key, FIELDS_BY_KEY)
 
+    def test_wallet_fetch_path_and_budgets(self) -> None:
+        settings, errors = parse_form({}, "signet")
+        self.assertEqual(errors, [])
+        config = settings.network("signet")
+        self.assertEqual(config.value("rawtx.path"), "auto")
+        self.assertEqual(config.value("rawtx.wallet_deadline_seconds"), 12)
+        self.assertEqual(config.value("rawtx.txid_attempt_seconds"), 3)
+        self.assertTrue(config.value("rawtx.txid_race"))
+        self.assertEqual(config.value("rawtx.decoy_sessions"), "same_round")
+        self.assertEqual(config.value("rawtx.sessions_total"), 16)
+        self.assertEqual(config.value("rawtx.jitter_ms"), 50)
+        settings, errors = parse_form(
+            {
+                "value__rawtx.path": ["block"],
+                "value__rawtx.wallet_deadline_seconds": ["20"],
+                "value__rawtx.txid_attempt_seconds": ["4"],
+                "value__rawtx.decoy_sessions": ["background"],
+                "value__rawtx.sessions_total": ["24"],
+                "value__rawtx.jitter_ms": ["0"],
+            },
+            "signet",
+        )
+        self.assertEqual(errors, [])
+        config = settings.network("signet")
+        self.assertEqual(config.value("rawtx.path"), "block")
+        self.assertEqual(config.value("rawtx.wallet_deadline_seconds"), 20)
+        self.assertEqual(config.value("rawtx.txid_attempt_seconds"), 4)
+        self.assertEqual(config.value("rawtx.decoy_sessions"), "background")
+        self.assertEqual(config.value("rawtx.sessions_total"), 24)
+        self.assertEqual(config.value("rawtx.jitter_ms"), 0)
+        _, errors = parse_form({"value__rawtx.path": ["bogus"]}, "signet")
+        self.assertTrue(errors)
+        _, errors = parse_form({"value__rawtx.sessions_total": ["0"]}, "signet")
+        self.assertTrue(errors)
+        _, errors = parse_form({"value__rawtx.jitter_ms": ["251"]}, "signet")
+        self.assertTrue(errors)
+
     def test_public_hostnames(self) -> None:
         form = {"public_hostnames": ["elite.example.org, otro.example.net\nelite.example.org"]}
         settings, errors = parse_form(form, "signet")

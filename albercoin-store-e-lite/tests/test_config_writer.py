@@ -145,6 +145,32 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertNotIn("adaptive_memtables", text)
             self.assertNotIn("zfs_arc", text)
 
+    def test_wallet_fetch_keys_are_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self._paths(Path(directory))
+            _, data = self._build("signet", NetworkConfig(), paths)
+            self.assertNotIn("rawtx", data)
+            override = NetworkConfig(
+                overrides={
+                    "rawtx.path": "block",
+                    "rawtx.wallet_deadline_seconds": 20,
+                    "rawtx.txid_attempt_seconds": 4,
+                    "rawtx.txid_race": False,
+                    "rawtx.decoy_sessions": "background",
+                    "rawtx.sessions_total": 24,
+                    "rawtx.jitter_ms": 0,
+                }
+            )
+            _, data = self._build("signet", override, paths)
+            rawtx = data["rawtx"]
+            self.assertEqual(rawtx["path"], "block")
+            self.assertEqual(rawtx["wallet_deadline_seconds"], 20)
+            self.assertEqual(rawtx["txid_attempt_seconds"], 4)
+            self.assertFalse(rawtx["txid_race"])
+            self.assertEqual(rawtx["decoy_sessions"], "background")
+            self.assertEqual(rawtx["sessions_total"], 24)
+            self.assertEqual(rawtx["jitter_ms"], 0)
+
     def test_allow_low_memory_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = self._paths(Path(directory))

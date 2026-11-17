@@ -326,6 +326,13 @@ def build_config(
         "rawtx.tor_stall_timeout_seconds",
         "rawtx.p2p_tor_timeout_seconds",
         "rawtx.max_parallel_fetches",
+        "rawtx.path",
+        "rawtx.wallet_deadline_seconds",
+        "rawtx.txid_attempt_seconds",
+        "rawtx.txid_race",
+        "rawtx.decoy_sessions",
+        "rawtx.sessions_total",
+        "rawtx.jitter_ms",
     ):
         if present(key):
             rawtx_values.append((key.split(".", 1)[1], value(key)))

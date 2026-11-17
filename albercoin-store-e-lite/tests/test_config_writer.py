@@ -160,6 +160,8 @@ class ConfigWriterTests(unittest.TestCase):
                     "rawtx.sessions_total": 24,
                     "rawtx.jitter_ms": 0,
                     "rawtx.prefetch_history_blocks": 128,
+                    "rawtx.p2p_blocks_per_peer": 2,
+                    "rawtx.provider_quota": 2.0,
                 }
             )
             _, data = self._build("signet", override, paths)
@@ -172,6 +174,8 @@ class ConfigWriterTests(unittest.TestCase):
             self.assertEqual(rawtx["sessions_total"], 24)
             self.assertEqual(rawtx["jitter_ms"], 0)
             self.assertEqual(rawtx["prefetch_history_blocks"], 128)
+            self.assertEqual(rawtx["p2p_blocks_per_peer"], 2)
+            self.assertEqual(rawtx["provider_quota"], 2.0)
 
     def test_allow_low_memory_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

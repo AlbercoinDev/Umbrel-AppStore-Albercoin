@@ -81,6 +81,8 @@ FIELDS: tuple[Field, ...] = (
     Field("rawtx.sessions_total", "int", 16, "rawtx", minimum=1, maximum=32, advanced=True),
     Field("rawtx.jitter_ms", "int", 50, "rawtx", minimum=0, maximum=250, advanced=True),
     Field("rawtx.prefetch_history_blocks", "int", 0, "rawtx", minimum=0, maximum=4096, advanced=True),
+    Field("rawtx.p2p_blocks_per_peer", "int", 3, "rawtx", minimum=1, maximum=4, advanced=True),
+    Field("rawtx.provider_quota", "float", 1.5, "rawtx", minimum=0.0, maximum=4.0, advanced=True),
     # AUD-163 (e-lite 29.15): privacy.toml. Only values the operator changes
     # are written; everything else comes from the selected preset.
     Field("privacy.preset", "enum", "balanced", "privacy", options=("balanced", "max", "fast")),
@@ -427,6 +429,10 @@ def validate_network(network: str, config: NetworkConfig) -> list[str]:
     max_ratio = config.value("privacy.decoys.size_max_ratio")
     if float(max_ratio) < float(min_ratio):
         errors.append("privacy.decoys.size_max_ratio: cannot be lower than size_min_ratio")
+
+    quota = config.overrides.get("rawtx.provider_quota")
+    if quota is not None and float(quota) != 0.0 and float(quota) < 1.0:
+        errors.append("rawtx.provider_quota: use 0 (off) or 1.0..4.0")
 
     min_free = config.overrides.get("pruning.min_free_gib")
     critical = config.overrides.get("pruning.critical_free_gib")

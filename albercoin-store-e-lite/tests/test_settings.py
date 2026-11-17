@@ -196,6 +196,8 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(config.value("rawtx.sessions_total"), 16)
         self.assertEqual(config.value("rawtx.jitter_ms"), 50)
         self.assertEqual(config.value("rawtx.prefetch_history_blocks"), 0)
+        self.assertEqual(config.value("rawtx.p2p_blocks_per_peer"), 3)
+        self.assertEqual(config.value("rawtx.provider_quota"), 1.5)
         settings, errors = parse_form(
             {
                 "value__rawtx.path": ["block"],
@@ -205,6 +207,8 @@ class SettingsTests(unittest.TestCase):
                 "value__rawtx.sessions_total": ["24"],
                 "value__rawtx.jitter_ms": ["0"],
                 "value__rawtx.prefetch_history_blocks": ["128"],
+                "value__rawtx.p2p_blocks_per_peer": ["2"],
+                "value__rawtx.provider_quota": ["2.0"],
             },
             "signet",
         )
@@ -217,6 +221,8 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(config.value("rawtx.sessions_total"), 24)
         self.assertEqual(config.value("rawtx.jitter_ms"), 0)
         self.assertEqual(config.value("rawtx.prefetch_history_blocks"), 128)
+        self.assertEqual(config.value("rawtx.p2p_blocks_per_peer"), 2)
+        self.assertEqual(config.value("rawtx.provider_quota"), 2.0)
         _, errors = parse_form({"value__rawtx.path": ["bogus"]}, "signet")
         self.assertTrue(errors)
         _, errors = parse_form({"value__rawtx.sessions_total": ["0"]}, "signet")
@@ -224,6 +230,10 @@ class SettingsTests(unittest.TestCase):
         _, errors = parse_form({"value__rawtx.jitter_ms": ["251"]}, "signet")
         self.assertTrue(errors)
         _, errors = parse_form({"value__rawtx.prefetch_history_blocks": ["4097"]}, "signet")
+        self.assertTrue(errors)
+        _, errors = parse_form({"value__rawtx.p2p_blocks_per_peer": ["5"]}, "signet")
+        self.assertTrue(errors)
+        _, errors = parse_form({"value__rawtx.provider_quota": ["0.5"]}, "signet")
         self.assertTrue(errors)
 
     def test_public_hostnames(self) -> None:

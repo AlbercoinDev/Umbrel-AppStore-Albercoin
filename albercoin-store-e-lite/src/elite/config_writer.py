@@ -334,6 +334,8 @@ def build_config(
         "rawtx.sessions_total",
         "rawtx.jitter_ms",
         "rawtx.prefetch_history_blocks",
+        "rawtx.p2p_blocks_per_peer",
+        "rawtx.provider_quota",
     ):
         if present(key):
             rawtx_values.append((key.split(".", 1)[1], value(key)))

@@ -1452,6 +1452,15 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
             "External downloads (blocks / MiB)",
             f"{fetch_count:,} / {fmt_bytes(fetch_bytes)}",
         ))
+    tx_mode = rawtx.get("tx_mode") or {}
+    txid_wins = int(tx_mode.get("txid_wins") or 0)
+    txid_stalls = int(tx_mode.get("txid_stalls") or 0)
+    if txid_wins or txid_stalls:
+        tor_rows.append((
+            "Vía txid (servidas / estancadas)",
+            "Txid path (served / stalled)",
+            f"{txid_wins:,} / {txid_stalls:,}",
+        ))
     joins = int(rawtx.get("block_joins") or 0)
     race = rawtx.get("race") or {}
     wins_txid = int(race.get("wins_txid") or 0)

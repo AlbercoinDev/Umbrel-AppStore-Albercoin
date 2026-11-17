@@ -74,7 +74,7 @@ FIELDS: tuple[Field, ...] = (
     Field("rawtx.p2p_peers", "list", (), "rawtx", advanced=True),
     # 29.21: wallet fetch path and budgets (e-lite validates the same ranges).
     Field("rawtx.path", "enum", "auto", "rawtx", options=("auto", "tx", "block")),
-    Field("rawtx.wallet_deadline_seconds", "int", 12, "rawtx", minimum=3, maximum=60, advanced=True),
+    Field("rawtx.wallet_deadline_seconds", "int", 35, "rawtx", minimum=3, maximum=60, advanced=True),
     Field("rawtx.txid_attempt_seconds", "int", 3, "rawtx", minimum=1, maximum=30, advanced=True),
     Field("rawtx.txid_race", "bool", True, "rawtx", advanced=True),
     Field("rawtx.decoy_sessions", "enum", "same_round", "rawtx", options=("same_round", "background"), advanced=True),

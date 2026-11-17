@@ -1,4 +1,4 @@
 """e-lite Umbrel wrapper."""
 
-APP_VERSION = "0.1.0-alpha.29.23.0-01"
+APP_VERSION = "0.1.0-alpha.29.24.0-01"
 __version__ = APP_VERSION

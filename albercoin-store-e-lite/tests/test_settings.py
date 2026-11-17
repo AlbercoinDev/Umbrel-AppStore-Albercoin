@@ -189,7 +189,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(errors, [])
         config = settings.network("signet")
         self.assertEqual(config.value("rawtx.path"), "auto")
-        self.assertEqual(config.value("rawtx.wallet_deadline_seconds"), 12)
+        self.assertEqual(config.value("rawtx.wallet_deadline_seconds"), 35)
         self.assertEqual(config.value("rawtx.txid_attempt_seconds"), 3)
         self.assertTrue(config.value("rawtx.txid_race"))
         self.assertEqual(config.value("rawtx.decoy_sessions"), "same_round")

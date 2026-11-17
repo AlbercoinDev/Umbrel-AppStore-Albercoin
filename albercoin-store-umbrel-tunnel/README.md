@@ -53,7 +53,7 @@ servicio manual desde **Servicios y puertos → Añadir servicio manual**.
 
 ## VPS compartido: varios Umbrel, cada uno con su dominio
 
-Desde 1.5.0 un mismo VPS puede dar servicio a varios Umbrel. Cada uno tiene su
+Desde 0.5.0 un mismo VPS puede dar servicio a varios Umbrel. Cada uno tiene su
 propio dominio público, su token y su IP en el túnel. Dos Umbrel pueden
 publicar la misma app en el mismo puerto y el VPS decide por el dominio:
 
@@ -82,7 +82,7 @@ sudo umbrel-tunnel token rotate
 
 Detalles en el [README del proyecto](https://github.com/AlbercoinDev/umbrel-tunnel#vps-compartido-varios-umbrel-con-dominio-propio).
 
-## Actualizar a 1.6.8
+## Actualizar a 0.6.8
 
 Esta versión solo cambia el gateway: **el VPS no necesita actualización**. Si
 aun así actualizas sus binarios, hazlo antes que la app.
@@ -90,39 +90,39 @@ aun así actualizas sus binarios, hazlo antes que la app.
 ```sh
 sudo umbrel-tunnel backup --output /root/umbrel-tunnel-before-update.tar.gz
 sudo umbrel-tunnel update
-umbrel-tunnel version   # 1.6.8
+umbrel-tunnel version   # 0.6.8
 sudo umbrel-tunnel doctor
 ```
 
 `update` verifica el checksum, comprueba que el binario nuevo se ejecuta,
 actualiza las unidades systemd y reinicia el servicio. Si vienes de antes de
-1.2.0, usa el instalador del tarball para actualizar también `tmpfiles`, `sysctl`
+0.2.0, usa el instalador del tarball para actualizar también `tmpfiles`, `sysctl`
 y la unidad. No uses `--force` ni `--purge`. Se mantienen configuración, claves,
 token y publicaciones; los servicios se reinician brevemente. No desinstales ni
 vuelvas a vincular.
 
-Si vienes de un VPS anterior a 1.3.2, su `update` aún exige `--from`:
+Si vienes de un VPS anterior a 0.3.2, su `update` aún exige `--from`:
 
 ```sh
 sudo umbrel-tunnel update \
   --from "https://github.com/AlbercoinDev/umbrel-tunnel/releases/latest/download/umbrel-tunnel-linux-$(dpkg --print-architecture)"
 ```
 
-La revisión 1.5.0 permite compartir un VPS entre varios Umbrel (sección anterior).
-En 1.6.8 no hace falta tocar el VPS; solo se actualiza la app.
+La revisión 0.5.0 permite compartir un VPS entre varios Umbrel (sección anterior).
+En 0.6.8 no hace falta tocar el VPS; solo se actualiza la app.
 
-Desde 1.6.0 los secretos se guardan cifrados (AES-256-GCM) en `data/`, los
+Desde 0.6.0 los secretos se guardan cifrados (AES-256-GCM) en `data/`, los
 destinos manuales se revalidan en cada sincronización y el relay UDP fija la IP
 aprobada por sesión. La app funciona en umbrelOS 1.x y 2.x y añade widget de
 pantalla de inicio.
 
-Desde 1.4.2 se refuerza la seguridad: el panel rechaza (403) las peticiones
+Desde 0.4.2 se refuerza la seguridad: el panel rechaza (403) las peticiones
 que llegan por el túnel WireGuard, el instalador del VPS está fijado al tag de la
 release y verifica el SHA256 del binario, un `config.json` corrupto se recupera
 de la última copia válida en lugar de sustituirse por valores por defecto, y una
 rotación interrumpida por un reinicio se confirma o se revierte al arrancar.
 
-Desde 1.4.1 la app coordina la rotación WireGuard por el túnel anterior y confirma
+Desde 0.4.1 la app coordina la rotación WireGuard por el túnel anterior y confirma
 el nuevo; si no se confirma, el VPS restaura la clave anterior en aproximadamente
 un minuto. Desvincular limpia las
 publicaciones antes de retirar el peer y conserva la conexión si falla. Si el

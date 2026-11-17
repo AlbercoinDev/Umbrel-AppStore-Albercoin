@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: networking
 name: Umbrel Tunnel
-version: "1.6.8"
+version: "0.6.8"
 tagline: Expose Umbrel services through your own VPS over WireGuard
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-umbrel-tunnel/icon.svg
 description: >-
@@ -20,9 +20,12 @@ description: >-
   with a fixed public IP. Run the one-line installer on the VPS, then paste the
   pairing code in the app.
 releaseNotes: >-
-  Metadata update: the app author is now shown as "Albercoin". No functional
-  changes; keeps the single Services health widget, 30 s health checks,
-  signed releases and the diagnostics card. No VPS changes.
+  Version renumbering: the app moves from 1.x to 0.x and stays on 0.x until it
+  is fully proven. This release is 0.6.8; the history, tags and releases are
+  renamed to 0.x and only the latest release remains installable. No functional
+  changes: keeps the single Services health widget, 30 s health checks, signed
+  releases, encryption at rest and the diagnostics card. The VPS does not need
+  to be updated.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/umbrel-tunnel
 dependencies: []

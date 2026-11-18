@@ -173,6 +173,14 @@ class WebTests(unittest.TestCase):
                     "tx_get_failures": {"no_source": 3, "external_failed": 1, "not_found": 0},
                     "decoys_pending": 1,
                     "race": {"attempts": 9, "hedges": 2, "wins_esplora": 6, "wins_p2p": 1},
+                    "tor_governor": {
+                        "total": 8,
+                        "in_use": 3,
+                        "peak": 8,
+                        "pauses": 0,
+                        "paused": False,
+                        "wallet": {"waited": 4, "wait_ms": 2000, "timeouts": 1},
+                    },
                     "cache_blocks": 2,
                     "cache_txs": 5,
                     "cache_bytes": 6144,
@@ -213,6 +221,9 @@ class WebTests(unittest.TestCase):
         self.assertIn("9 / 2 / 6 / 1", body)
         self.assertIn("Ofuscación (nivel / preset / modo / señuelos)", body)
         self.assertIn("Alta / balanced / tx / 3", body)
+        self.assertIn("3 / 8 (máx. 8)", body)
+        self.assertIn("Espera de flujo wallet", body)
+        self.assertIn("4 / 500 ms / 1", body)
         self.assertIn("Ruta externa", body)
         self.assertIn("Tor", body)
         # 29.19.0 replaced scheduler mode/index_paused with phase.

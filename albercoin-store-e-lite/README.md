@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.25.1-01`
+- Versión: `0.1.0-alpha.29.25.2-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.25.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.25.2`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.25.1 conserva las rutas explícitas de Umbrel, el
+La versión 0.1.0-alpha.29.25.2 conserva las rutas explícitas de Umbrel, el
 formato del índice y las identidades onion: no hay reindexado ni migración.
 Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
 límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
@@ -343,6 +343,14 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - **Probar servidores**: en Estado → Tor y privacidad, mide conexión, lote de
   transacciones y una tx antigua en cada proveedor a través del Tor gestionado.
   Usa txids públicos de prueba; no envía datos de la wallet.
+- **Presupuesto real de flujos Tor (29.25.2)**: `rawtx.tor_streams` cuenta
+  conexiones abiertas de verdad (cada intento de bloque, sesión Electrum y
+  petición Esplora-tx), no peticiones; las sesiones txid esperan como mucho
+  3 s y un fallo transitorio de una tx confirmada se reintenta dentro del
+  plazo en vez de llegar a la wallet. Un 429 ya no pausa todo Tor. El error
+  de historial demasiado grande incluye el scripthash; `e-lite doctor history
+  <hash>` lo diagnostica. El plazo por petición admite 3–300 s (45 por
+  defecto). El panel muestra el máximo de flujos y la espera de la wallet.
 - **Gestor de flujos Tor (29.25.1)**: `rawtx.tor_streams` (8 por defecto)
   limita los flujos simultáneos por Tor (bloques, sesiones txid y señuelos
   comparten el presupuesto, wallet primero). Ante un rechazo (EAGAIN, 429)

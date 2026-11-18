@@ -12,7 +12,7 @@ folderAccess:
         readOnly: false
 category: bitcoin
 name: e-lite
-version: "0.1.0-alpha.29.25.1-01"
+version: "0.1.0-alpha.29.25.2-01"
 tagline: Servidor Electrum autónomo con Bitcoin Core incluido
 description: >-
   e-lite es un servidor Electrum 1.4–1.7 autónomo que incluye su propio Bitcoin Core
@@ -30,13 +30,16 @@ description: >-
   y ocupar mucho disco. El TLS usa un certificado autofirmado. Los puertos
   Electrum no tienen autenticación de clientes; úsalos solo en redes de confianza.
 releaseNotes: >-
-  Actualiza e-lite a 0.1.0-alpha.29.25.1: gestor de flujos Tor
-  (rawtx.tor_streams, 8 por defecto) con prioridad wallet > precarga >
-  señuelos y pausa global ante rechazos (EAGAIN, 429) que cualquier éxito
-  levanta al instante. Clientes por onion con tiempos propios (idle 1800 s,
-  escritura 120 s). Latido de proveedores cada minuto para circuitos
-  calientes cuando la app da servicio. Mantiene la vía txid primero (6 s),
-  bloque con 20 s de red y reintentos, Core 32.1, Tor 16.0.1 y el índice sin
+  Actualiza e-lite a 0.1.0-alpha.29.25.2: el límite de flujos Tor
+  (rawtx.tor_streams) cuenta conexiones abiertas de verdad (cada intento de
+  bloque, sesión Electrum y petición Esplora-tx), así que Tor deja de
+  saturarse en la primera carga de una wallet. Las sesiones txid esperan
+  como mucho 3 s y la congestión local no gasta servidores. Un fallo
+  transitorio de una tx confirmada se reintenta dentro del plazo en vez de
+  llegar a la wallet (evita el NullPointerException de Sparrow). Un 429 ya no
+  pausa todo Tor. El error de historial demasiado grande incluye el
+  scripthash y `e-lite doctor history <hash>` lo diagnostica. Logs de debug
+  detallados sin hashes. Mantiene Core 32.1, Tor 16.0.1 y el índice sin
   cambios.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/e-lite

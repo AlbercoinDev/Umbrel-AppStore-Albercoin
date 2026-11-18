@@ -1465,13 +1465,25 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
     gov_total = int(governor.get("total") or 0)
     if gov_total:
         state = " en pausa" if governor.get("paused") else ""
+        peak = int(governor.get("peak") or 0)
         tor_rows.append((
             "Flujos Tor (en uso / total" + (", pausas" if int(governor.get("pauses") or 0) else "") + ")",
             "Tor streams (in use / total" + (", pauses" if int(governor.get("pauses") or 0) else "") + ")",
             f"{int(governor.get('in_use') or 0):,} / {gov_total:,}"
+            + (f" (máx. {peak:,})" if peak else "")
             + (f" · {int(governor.get('pauses') or 0):,} pausas" if int(governor.get("pauses") or 0) else "")
             + state,
         ))
+        wallet_lane = governor.get("wallet") or {}
+        waited = int(wallet_lane.get("waited") or 0)
+        timeouts = int(wallet_lane.get("timeouts") or 0)
+        if waited or timeouts:
+            avg = int(wallet_lane.get("wait_ms") or 0) // max(waited, 1)
+            tor_rows.append((
+                "Espera de flujo wallet (veces / media / sin flujo)",
+                "Wallet stream wait (times / avg / none free)",
+                f"{waited:,} / {avg:,} ms / {timeouts:,}",
+            ))
     joins = int(rawtx.get("block_joins") or 0)
     race = rawtx.get("race") or {}
     wins_txid = int(race.get("wins_txid") or 0)

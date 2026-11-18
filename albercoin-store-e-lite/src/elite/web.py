@@ -1397,6 +1397,17 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
             "direct": t(lang, "external_path_direct"),
         }.get(path, path)
         tor_rows.append(("Ruta externa", "External path", label))
+    qualification = rawtx.get("qualification")
+    if isinstance(qualification, dict):
+        for es_label, en_label, keys in (
+            ("Rutas aptas (txid / bloque)", "Qualified routes (txid / block)",
+             ("txid_ready", "blocks_ready")),
+            ("Sondas (aptas / lentas / fallidas / flujos Tor)", "Probes (passed / slow / failed / Tor streams)",
+             ("probe_passes", "probe_slow", "probe_failures", "probe_streams")),
+            ("Proveedores (saltos / pausas / flujos fallidos)", "Providers (skips / pauses / failed streams)",
+             ("skipped", "paused", "failed_streams")),
+        ):
+            tor_rows.append((es_label, en_label, " / ".join(f"{int(qualification.get(key) or 0):,}" for key in keys)))
     tx_mode = rawtx.get("tx_mode") or {}
     if isinstance(tx_mode, dict) and tx_mode:
         mode_name = str(tx_mode.get("mode") or "-")
@@ -1418,6 +1429,13 @@ def _status_families(network: NetworkSnapshot, lang: str) -> str:
                     "Txids pedidos (reales / señuelos)",
                     "Txids requested (real / decoys)",
                     f"{int(tx_mode.get('real_sent') or 0):,} / {int(tx_mode.get('decoys_sent') or 0):,}",
+                ))
+            by_operator = tx_mode.get("items_by_operator")
+            if isinstance(by_operator, dict) and by_operator:
+                top = sorted(by_operator.items(), key=lambda item: (-int(item[1]), item[0]))[:8]
+                tor_rows.append((
+                    "Txids pedidos por operador", "Txids requested by operator",
+                    " · ".join(f"{operator}: {int(count):,}" for operator, count in top),
                 ))
             if any(int(tx_mode.get(key) or 0) for key in ("verified", "rejected", "block_fallback")):
                 tor_rows.append((

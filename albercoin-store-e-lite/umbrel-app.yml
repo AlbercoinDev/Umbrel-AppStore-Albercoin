@@ -12,7 +12,7 @@ folderAccess:
         readOnly: false
 category: bitcoin
 name: e-lite
-version: "0.1.0-alpha.29.26.1-01"
+version: "0.1.0-alpha.29.26.2-01"
 tagline: Servidor Electrum autónomo con Bitcoin Core incluido
 description: >-
   e-lite es un servidor Electrum 1.4–1.7 autónomo que incluye su propio Bitcoin Core
@@ -30,16 +30,14 @@ description: >-
   y ocupar mucho disco. El TLS usa un certificado autofirmado. Los puertos
   Electrum no tienen autenticación de clientes; úsalos solo en redes de confianza.
 releaseNotes: >-
-  Actualiza e-lite a 0.1.0-alpha.29.26.1: reparto justo de flujos Tor en la
-  recuperación de wallets. Cada lote de transacciones listo y cada descarga de
-  bloque tienen su propia cola y se turnan al liberarse un flujo, así que una
-  cola de bloques ya no deja esperando 19–27 s a un lote que respondería en
-  menos de 3 s (AUD-201). Si fallan los servidores de una ronda, la transacción
-  se reintenta hasta tres rondas, cada 2 s, mientras la petición tenga tiempo;
-  el bloque sigue compitiendo en paralelo. Sigue enviándose solo el txid por
-  Tor con los mismos señuelos; `preset = "max"` no envía ningún txid. Sin
-  reindexado ni borrado de caché: mantiene Core 32.1, Tor 16.0.1 y el formato
-  del índice.
+  Actualiza a e-lite 0.1.0-alpha.29.26.2: la recuperación por txid y por bloques
+  solo usa rutas externas que han pasado una comprobación reciente, rápida y
+  válida con datos públicos. HTTPS y onion se prueban por separado. Los lotes
+  saltan rutas no aptas antes de abrir otro flujo Tor; los fallos repetidos
+  ponen la ruta en pausa hasta que supera una nueva sonda. Si faltan
+  operadores distintos para txid, se usan bloques de rutas comprobadas.
+  El panel muestra rutas aptas, sondas y flujos fallidos. Sin reindexado ni
+  borrado de caché; Bitcoin Core 32.1 y Tor 16.0.1 no cambian.
 developer: Albercoin
 website: https://github.com/AlbercoinDev/e-lite
 dependencies: []

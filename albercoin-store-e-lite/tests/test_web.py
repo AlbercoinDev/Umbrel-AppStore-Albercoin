@@ -181,6 +181,11 @@ class WebTests(unittest.TestCase):
                         "paused": False,
                         "wallet": {"waited": 4, "wait_ms": 2000, "timeouts": 1},
                     },
+                    "qualification": {
+                        "txid_ready": 4, "blocks_ready": 3,
+                        "probe_passes": 8, "probe_slow": 1, "probe_failures": 2, "probe_streams": 11,
+                        "skipped": 5, "paused": 2, "failed_streams": 3,
+                    },
                     "cache_blocks": 2,
                     "cache_txs": 5,
                     "cache_bytes": 6144,
@@ -194,6 +199,7 @@ class WebTests(unittest.TestCase):
                         "sessions": 12,
                         "real_sent": 239,
                         "decoys_sent": 717,
+                        "items_by_operator": {"example.com": 5, "example.org": 12},
                         "verified": 956,
                         "rejected": 0,
                         "block_fallback": 0,
@@ -224,6 +230,11 @@ class WebTests(unittest.TestCase):
         self.assertIn("3 / 8 (máx. 8)", body)
         self.assertIn("Espera de flujo wallet", body)
         self.assertIn("4 / 500 ms / 1", body)
+        self.assertIn("Rutas aptas (txid / bloque)", body)
+        self.assertIn("8 / 1 / 2 / 11", body)
+        self.assertIn("5 / 2 / 3", body)
+        self.assertIn("example.org: 12 · example.com: 5", body)
+        self.assertIn("Qualified routes (txid / block)", _status_families(network, "en"))
         self.assertIn("Ruta externa", body)
         self.assertIn("Tor", body)
         # 29.19.0 replaced scheduler mode/index_paused with phase.

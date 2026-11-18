@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.25.2-01`
+- Versión: `0.1.0-alpha.29.26.0-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.25.2`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.26.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.25.2 conserva las rutas explícitas de Umbrel, el
+La versión 0.1.0-alpha.29.26.0 conserva las rutas explícitas de Umbrel, el
 formato del índice y las identidades onion: no hay reindexado ni migración.
 Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
 límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
@@ -320,23 +320,23 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - El planificador ya no tiene modos: e-lite indexa mientras Core descarga y
   pasa a `draining` cuando Core se pausa por backlog. El panel muestra la fase
   y el backlog sin indexar.
-- **Carga de wallets (29.25.0)**: camino configurable (`rawtx.path`:
-  `auto`/`tx`/`block`), plazo total por petición (`wallet_deadline_seconds`,
-  12 s), intento por txid (`txid_attempt_seconds`, 3 s), carrera
-  (`txid_race`), sesiones señuelo (`same_round`/`background`), sesiones
-  simultáneas (`sessions_total`), jitter (`jitter_ms`) y bloques de precarga
-  por historial (`prefetch_history_blocks`, 0 = automático), bloques P2P en
-  vuelo por peer (`p2p_blocks_per_peer`) y cuota/rotación por proveedor
-  (`provider_quota`). En `auto` la vía txid tiene dos intentos de 3 s (6 s)
-  antes de tocar el bloque; el bloque dispone de 20 s de red y reintentos
-  para fallos transitorios dentro de los 45 s por petición. Un fallo
-  transitorio nunca llega a la wallet. `txid_race` (opt-in) acorta el txid a
-  2,5 s para arrancar el bloque antes. El bloque
-  en curso recibe 250 ms de ventaja y la vía txid corre en paralelo; gana la
-  primera respuesta verificada.
-- Cada intento por txid se corta a los **3 s** y
-  pasa a otro servidor; el presupuesto es de 8 s por transacción y 20 s por
-  bloque (12 s de cola + 8 s de red). El lote por servidor es adaptativo (50 y,
+- **Carga de wallets (29.25.0, revisada en 29.26.0)**: camino configurable
+  (`rawtx.path`: `auto`/`tx`/`block`), plazo total por petición
+  (`wallet_deadline_seconds`, 45 s), intento por txid
+  (`txid_attempt_seconds`, 3 s), carrera (`txid_race`), sesiones señuelo
+  (`same_round`/`background`), sesiones simultáneas (`sessions_total`), jitter
+  (`jitter_ms`) y bloques de precarga por historial
+  (`prefetch_history_blocks`, 0 = automático), bloques P2P en vuelo por peer
+  (`p2p_blocks_per_peer`) y cuota/rotación por proveedor (`provider_quota`).
+  En `auto` la transacción suelta va primero y después arranca o se une la
+  descarga del bloque completo; un bloque en curso se puede unir al instante y
+  gana la primera respuesta verificada. `tx` usa la misma vía txid sin la
+  carrera anticipada; `block` no deja salir ningún txid. Un fallo transitorio
+  nunca llega a la wallet.
+- Cada intento por txid se corta a los **3 s** y pasa a otro servidor; un
+  bloque dispone de 60 s de red desde que obtiene slot (la cola puede añadir
+  hasta 120 s) y la petición de wallet tiene su propio plazo
+  (`wallet_deadline_seconds`, 45 s). El lote por servidor es adaptativo (50 y,
   si el proveedor cierra, 20, 10…). Una tx podada arranca la descarga de su
   bloque y el resto de txs de ese bloque se unen a la descarga. Los señuelos
   usan un cuarto de las sesiones y las reales van primero.
@@ -351,6 +351,18 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   de historial demasiado grande incluye el scripthash; `e-lite doctor history
   <hash>` lo diagnostica. El plazo por petición admite 3–300 s (45 por
   defecto). El panel muestra el máximo de flujos y la espera de la wallet.
+- **Recuperación de wallets desde cero (29.26.0)**: cada transacción indexada
+  tiene un trabajo compartido (y otro por bloque); cada espera lleva su propio
+  plazo y la primera respuesta verificada desbloquea a todas las conexiones.
+  El planificador por txid admite trabajo solo cuando hay servidor, sesión y
+  flujo a la vez, y la espera local no gasta un intento de proveedor.
+  Esplora-tx cierra su socket antes de devolver el flujo. Un fallo temporal de
+  una tx confirmada cierra la conexión Electrum en vez de responder un error
+  por ítem que Sparrow podría recordar como transacción inexistente. Las
+  respuestas de historial no esperan a los señuelos: el trabajo va en segundo
+  plano y se promueve cuando la wallet lo pide. Una wallet que lee durante una
+  reorganización o puesta al día corta espera la siguiente notificación de
+  disponibilidad. No hay reindexado ni borrado de `rawtx-cache`.
 - **Gestor de flujos Tor (29.25.1)**: `rawtx.tor_streams` (8 por defecto)
   limita los flujos simultáneos por Tor (bloques, sesiones txid y señuelos
   comparten el presupuesto, wallet primero). Ante un rechazo (EAGAIN, 429)

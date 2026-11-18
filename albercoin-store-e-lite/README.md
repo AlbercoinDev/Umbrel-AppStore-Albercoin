@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.26.0-01`
+- Versión: `0.1.0-alpha.29.26.1-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.26.0`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.26.1`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.26.0 conserva las rutas explícitas de Umbrel, el
+La versión 0.1.0-alpha.29.26.1 conserva las rutas explícitas de Umbrel, el
 formato del índice y las identidades onion: no hay reindexado ni migración.
 Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
 límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
@@ -320,7 +320,7 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
 - El planificador ya no tiene modos: e-lite indexa mientras Core descarga y
   pasa a `draining` cuando Core se pausa por backlog. El panel muestra la fase
   y el backlog sin indexar.
-- **Carga de wallets (29.25.0, revisada en 29.26.0)**: camino configurable
+- **Carga de wallets (29.25.0, revisada en 29.26.1)**: camino configurable
   (`rawtx.path`: `auto`/`tx`/`block`), plazo total por petición
   (`wallet_deadline_seconds`, 45 s), intento por txid
   (`txid_attempt_seconds`, 3 s), carrera (`txid_race`), sesiones señuelo
@@ -363,6 +363,13 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   plano y se promueve cuando la wallet lo pide. Una wallet que lee durante una
   reorganización o puesta al día corta espera la siguiente notificación de
   disponibilidad. No hay reindexado ni borrado de `rawtx-cache`.
+- **Reparto de flujos entre lotes txid y bloques (29.26.1)**: cada lote listo
+  y cada descarga de bloque tienen su propia cola FIFO y se turnan al liberarse
+  un flujo Tor, así que una cola de bloques no puede bloquear la vía barata ni
+  una ráfaga de lotes puede bloquear el fallback (AUD-201). Si fallan los
+  servidores de una ronda, la transacción se reintenta hasta tres rondas, cada
+  2 s, mientras la petición tenga tiempo, con el bloque compitiendo al lado.
+  Sigue enviándose solo el txid por Tor con los mismos señuelos.
 - **Gestor de flujos Tor (29.25.1)**: `rawtx.tor_streams` (8 por defecto)
   limita los flujos simultáneos por Tor (bloques, sesiones txid y señuelos
   comparten el presupuesto, wallet primero). Ante un rechazo (EAGAIN, 429)

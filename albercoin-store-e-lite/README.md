@@ -5,7 +5,7 @@ Servidor Electrum 1.4–1.7 autónomo con Bitcoin Core incluido. Puede ejecutar
 independientes por red.
 
 - App: `albercoin-store-e-lite`
-- Versión: `0.1.0-alpha.29.26.3-01`
+- Versión: `0.1.0-alpha.29.26.4-01`
 - Upstream: [AlbercoinDev/e-lite](https://github.com/AlbercoinDev/e-lite)
 - Desarrollador: Albercoin
 
@@ -15,7 +15,7 @@ independientes por red.
 
 ## Qué incluye
 
-- e-lite `0.1.0-alpha.29.26.3`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
+- e-lite `0.1.0-alpha.29.26.4`, verificado por SHA256. Compatible con Electrum 1.4–1.7.
 - Bitcoin Core `32.1` oficial, verificado por SHA256.
 - Tor `16.0.1` (bundle oficial) verificado por SHA256.
 - Un Core, un e-lite, un índice, un certificado TLS y un onion por red.
@@ -225,7 +225,7 @@ conexión rechazada.
 
 ## Configuración
 
-La versión 0.1.0-alpha.29.26.3 conserva las rutas explícitas de Umbrel, el
+La versión 0.1.0-alpha.29.26.4 conserva las rutas explícitas de Umbrel, el
 formato del índice y las identidades onion: no hay reindexado ni migración.
 Los ajustes que e-lite retiró en 29.19.0 (ARC dinámico, memtables adaptativos,
 límite de prefetch, peso cgroup, planificador y ventanas por bloques) ya no se
@@ -357,6 +357,13 @@ No se usa el contenedor Tor de Umbrel ni un `torrc` externo.
   `wallet block:` explica qué activó el respaldo por bloques y cuántos
   operadores por txid estaban aptos. Para cruzarlo con Sparrow, convierte
   los horarios a la misma zona. No se imprimen hashes de la wallet.
+- **Banner de wallet (29.26.4)**: la caja READY tiene 50 columnas, el título
+  `e-lite (Electrum-Lite)` va en su propia línea y el aviso termina en
+  `Wallet ready to use. Enjoy and be careful.`. El banner INDEXING lista
+  versión, estado y red por separado. Ambos empiezan con una línea en blanco
+  para que la etiqueta `Server Banner: ` de Sparrow no desplace el dibujo.
+  No cambia el protocolo ni `banner_file`; una wallet reconectada ve el nuevo
+  banner sin reiniciar el índice.
 - **Presupuesto real de flujos Tor (29.25.2)**: `rawtx.tor_streams` cuenta
   conexiones abiertas de verdad (cada intento de bloque, sesión Electrum y
   petición Esplora-tx), no peticiones; las sesiones txid esperan como mucho

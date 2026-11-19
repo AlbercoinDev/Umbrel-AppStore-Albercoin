@@ -15,8 +15,8 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-E_LITE_VERSION = "0.1.0-alpha.29.26.2"
-E_LITE_SHA256 = "05ccc774b4394488db895dc93166ba3cd460ca4c13b66865cac833aa2cfb8beb"
+E_LITE_VERSION = "0.1.0-alpha.29.26.3"
+E_LITE_SHA256 = "7b51fe2f846d7e974e10a0befc772672bede5963b9f2f7a8d7d5077b57972f4e"
 E_LITE_URL = (
     "https://github.com/AlbercoinDev/e-lite/releases/download/"
     f"v{E_LITE_VERSION}/e-lite_x86_64-unknown-linux-gnu.tar.gz"

@@ -607,8 +607,8 @@ services:
         ipv4_address: $APP_FRIGATE_WEB_IP
 
   frigate:
-    image: debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
-    restart: always
+    image: debian:trixie-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0
+    restart: on-failure
     stop_grace_period: 2m
     command: |
       sh -c '
@@ -780,7 +780,7 @@ services:
       - "${APP_FRIGATE_ELECTRUM_PORT}:${APP_FRIGATE_ELECTRUM_PORT}"
 
   tor:
-    image: getumbrel/tor:0.4.7.8@sha256:2ace83f22501f58857fa9b403009f595137fa2e7986c4fda79d82a8119072b6a
+    image: ghcr.io/getumbrel/tor:0.4.9.11@sha256:e382b8629c0dfef6ceb396b062622d4e4e955b19d6f16b883fd2c0723ad5671a
     user: "1000:1000"
     restart: on-failure
     depends_on:

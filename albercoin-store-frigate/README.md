@@ -31,7 +31,9 @@ Frigate desde Umbrel con sus dependencias disponibles.
 
 - Panel web: puerto de la app `2125`, a través del proxy de Umbrel.
 - Wallets Electrum compatibles: conexión directa al puerto `50005` del nodo.
-- Tor: servicio onion Electrum en `50005`, configurado en `torrc`.
+- Tor: servicio onion Electrum en `50005`, configurado en `torrc`. Usa la
+  imagen `ghcr.io/getumbrel/tor:0.4.9.11`: las versiones 0.4.7 y anteriores ya
+  no pueden validar el consenso de la red y no publican el servicio.
 - La dirección onion se exporta desde `exports.sh` leyendo el hostname del
   servicio; antes de generarse puede aparecer `notyetset.onion`.
 
@@ -138,7 +140,9 @@ generadas porque pueden contener credenciales RPC.
 | `icon.png`, `icon.svg` | Recursos gráficos |
 
 No hay Dockerfile ni imagen propia de esta app. El arranque prepara el runtime
-con un binario fijo para AMD64 o ARM64, comprobado por SHA256.
+con un binario fijo para AMD64 o ARM64, comprobado por SHA256. El panel usa
+`python:3.15-alpine` y el runtime se prepara sobre `debian:trixie-slim`
+(Debian 13); el binario de Frigate incluye su propio runtime Java.
 
 ## Permisos y diagnóstico
 

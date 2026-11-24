@@ -1,20 +1,41 @@
 manifestVersion: 1
 id: albercoin-store-frigate
+storage:
+  dataRoot: data
 category: bitcoin
-name: Frigate
-version: "1.6.1-11"
-tagline: Electrum server for Silent Payments
-icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
+name: Frigate Silent Payments
+version: "1.6.1-12"
+tagline: Servidor Electrum para Silent Payments (BIP352)
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.svg
 description: >-
-  Frigate is an Electrum server for Bitcoin Silent Payments (BIP352).
-  It performs Silent Payments scanning server-side using ephemeral client keys,
-  returning discovered transactions over an extension to the Electrum JSON-RPC
-  protocol.
+  **Primer arranque:** abre el panel y confirma la altura inicial. Frigate no
+  descarga el binario ni empieza a indexar hasta que lo hagas. Puedes usar el
+  historial completo desde Taproot (bloque 709632 en mainnet), una altura
+  concreta o una fecha UTC.
 
 
-  This Umbrel package connects Frigate to your Bitcoin Core node and uses your
-  Electrs app as the backend for non-Silent Payments Electrum requests. Wallets
-  should connect directly to Frigate on port 50005.
+  Frigate es un servidor Electrum para Bitcoin Silent Payments (BIP352).
+  Realiza el escaneo en el servidor con claves efímeras del cliente y devuelve
+  las transacciones encontradas mediante una extensión del protocolo JSON-RPC
+  de Electrum.
+
+
+  Este paquete conecta Frigate con tu nodo Bitcoin Core y usa Electrs como
+  backend para las peticiones Electrum que no son de Silent Payments. Las
+  wallets se conectan al puerto `50005` del nodo; el panel se abre en el puerto
+  de la app y está protegido por el inicio de sesión de Umbrel.
+
+
+  El índice DuckDB, el runtime descargado y las cachés se guardan en el
+  directorio de datos de la app y se excluyen de las copias de seguridad.
+  Cambiar la altura inicial borra y reconstruye el índice.
+releaseNotes: >-
+  Revisión 12 del paquete Umbrel para Frigate 1.6.1. Actualiza el servicio Tor
+  a 0.4.9.11: la red Tor rechaza los clientes 0.4.7 desde julio de 2026 y la
+  dirección .onion no llegaba a publicarse. El runtime se prepara ahora sobre
+  Debian 13 (trixie-slim) y la ficha usa un icono SVG 256×256 para la tienda.
+  No cambia el binario de Frigate, la configuración ni los datos: no hace falta
+  reindexar.
 developer: Sparrow Wallet
 website: https://sparrowwallet.com/
 dependencies:
@@ -24,28 +45,13 @@ repo: https://github.com/sparrowwallet/frigate
 support: https://github.com/sparrowwallet/frigate/issues
 port: 2125
 gallery:
-  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
+  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/gallery/1.png
+  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/gallery/2.png
+  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/gallery/3.png
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: >-
-  Umbrel package revision 11 for Frigate 1.6.1. Actualiza la base Python de
-  3.14-alpine a 3.15-alpine; no cambia el binario de Frigate, la configuración
-  ni los datos.
-
-
-  New installations wait for explicit setup confirmation before starting Frigate.
-  Choose complete history, a custom block height, or find a height by UTC date
-  using the first successful local Bitcoin Core or Electrs search.
-
-
-  Initial indexing temporarily uses a larger cache and DuckDB memory pool, then
-  restarts once into an efficient profile (1M cache, 1GB DuckDB pool, two CPU
-  threads). Existing settings are preserved. Small-server connection and
-  subscription limits and bounded dashboard log reads reduce resource exposure.
-  Memory pool limits are not total application RAM limits. No index rebuild is
-  required for this update.
-submitter: AlbercoinDev
+submitter: Albercoin
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 backupIgnore:
   - data/frigate/db

@@ -164,6 +164,54 @@ class WebTests(unittest.TestCase):
                 server.shutdown()
                 thread.join()
 
+    def test_status_page_has_log_controls_without_meta_refresh(self):
+        self.web["ensure_settings"]()
+        settings = self.web["read_settings"]()
+        settings["SETUP_REQUIRED"] = "false"
+        self.web["write_settings"](settings)
+        self.web["LOG_FILE"].write_text("2026-11-24 10:00:00 [main] INFO ready\n")
+        body = self.web["status_body"]("es")
+        self.assertIn('id="frigate-log"', body)
+        self.assertIn('class="copy-button log-copy"', body)
+        self.assertIn('class="copy-button log-end"', body)
+        self.assertIn('href="/log"', body)
+        self.assertIn("refreshPanel", body)
+        html = self.web["page"]("Frigate", body, "es")
+        self.assertNotIn('http-equiv="refresh"', html)
+
+    def test_log_download_and_widget(self):
+        import urllib.error
+        import urllib.request
+        self.web["ensure_settings"]()
+        settings = self.web["read_settings"]()
+        settings["SETUP_REQUIRED"] = "false"
+        settings["START_HEIGHT"] = "800000"
+        self.web["write_settings"](settings)
+        (self.web["DATA_DIR"] / ".efficient-profile").write_text("1\n")
+        self.web["LOG_FILE"].write_text("line one\nElectrum server listening on tcp://0.0.0.0:50005\n")
+        server = self.web["ThreadingHTTPServer"](("127.0.0.1", 0), self.web["Handler"])
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urllib.request.urlopen(base + "/log") as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn("attachment", response.headers.get("content-disposition", ""))
+            self.assertIn(b"Electrum server listening", response.read())
+        with urllib.request.urlopen(base + "/api/widget/status") as response:
+            payload = json.loads(response.read())
+        self.assertEqual(payload["type"], "three-stats")
+        self.assertEqual(payload["items"][0]["text"], "Listo")
+        self.assertEqual(payload["items"][1]["text"], "100.00%")
+        settings["SETUP_REQUIRED"] = "true"
+        self.web["write_settings"](settings)
+        self.assertEqual(self.web["widget_payload"]()["items"][0]["text"], "Configurando")
+        self.web["LOG_FILE"].unlink()
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(base + "/log")
+        self.assertEqual(error.exception.code, 404)
+
     def test_http_confirmation_and_manual_changes(self):
         self.web["ensure_settings"]()
         server = self.web["ThreadingHTTPServer"](("127.0.0.1", 0), self.web["Handler"])
@@ -206,6 +254,11 @@ trap 'exit 0' TERM
 while true; do sleep 1; done
 ''')
             binary.chmod(0o700)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            getent = fake_bin / "getent"
+            getent.write_text("#!/bin/sh\necho 203.0.113.42 tor\n")
+            getent.chmod(0o755)
             settings = load_web()["DEFAULTS"].copy()
             settings["START_HEIGHT"] = "800000"
             setting_file = data / "settings.env"
@@ -214,6 +267,7 @@ while true; do sleep 1; done
             save()
             script = SHELL.replace("/data/frigate", str(data)).replace('arch="$(dpkg --print-architecture)"', 'arch="amd64"')
             env = dict(os.environ, APP_BITCOIN_NODE_IP="bitcoin", APP_BITCOIN_RPC_PORT="8332", APP_BITCOIN_RPC_USER="test", APP_BITCOIN_RPC_PASS="test", APP_ELECTRS_NODE_IP="electrs", APP_ELECTRS_NODE_PORT="50001", APP_FRIGATE_ELECTRUM_PORT="50005", APP_BITCOIN_NETWORK="mainnet")
+            env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
             process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             try:
                 time.sleep(0.2)
@@ -230,6 +284,7 @@ while true; do sleep 1; done
                 self.assertIn('cacheSize = "1M"', steady)
                 self.assertIn('memoryLimit = "1GB"', steady)
                 self.assertIn("maxConnections = 15", steady)
+                self.assertIn('excludedSubnets = ["127.0.0.1/32", "::1/128", "203.0.113.42/32"]', steady)
                 self.assertIn("startHeight = 800000", steady)
                 self.assertTrue((data / ".efficient-profile").exists())
             finally:

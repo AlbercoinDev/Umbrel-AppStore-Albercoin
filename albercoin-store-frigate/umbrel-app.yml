@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: bitcoin
 name: Frigate Silent Payments
-version: "1.6.1-12"
+version: "1.6.1-13"
 tagline: Servidor Electrum para Silent Payments (BIP352)
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.svg
 description: >-
@@ -30,12 +30,13 @@ description: >-
   directorio de datos de la app y se excluyen de las copias de seguridad.
   Cambiar la altura inicial borra y reconstruye el índice.
 releaseNotes: >-
-  Revisión 12 del paquete Umbrel para Frigate 1.6.1. Actualiza el servicio Tor
-  a 0.4.9.11: la red Tor rechaza los clientes 0.4.7 desde julio de 2026 y la
-  dirección .onion no llegaba a publicarse. El runtime se prepara ahora sobre
-  Debian 13 (trixie-slim) y la ficha usa un icono SVG 256×256 para la tienda.
-  No cambia el binario de Frigate, la configuración ni los datos: no hace falta
-  reindexar.
+  Revisión 13 del paquete Umbrel para Frigate 1.6.1. El panel estrena visor de
+  log con copiar, ir al final y descarga completa, y se actualiza sin recargar
+  la página para no perder el desplazamiento ni la selección. Añade un widget
+  de estado en la pantalla de inicio de Umbrel. La red interna usa nombres de
+  contenedor en lugar de direcciones fijas y la exclusión de Tor se resuelve al
+  arrancar. No cambia el binario de Frigate, la configuración ni el índice: no
+  hace falta reindexar.
 developer: Sparrow Wallet
 website: https://sparrowwallet.com/
 dependencies:
@@ -63,3 +64,22 @@ backupIgnore:
   - data/frigate/*/config.toml
   - data/frigate/frigate.log
   - data/frigate/*/frigate.log
+widgets:
+  - id: "status"
+    type: "three-stats"
+    refresh: "10s"
+    endpoint: "web:80/api/widget/status"
+    link: ""
+    example:
+      type: "three-stats"
+      link: ""
+      items:
+        - title: "Estado"
+          text: "Listo"
+          subtext: "Frigate"
+        - title: "Progreso"
+          text: "100%"
+          subtext: "indexación"
+        - title: "Altura"
+          text: "923,610"
+          subtext: "bloques"

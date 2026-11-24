@@ -102,13 +102,22 @@ cinco personas con varios dispositivos: **no son autenticación ni un límite de
 usuarios**, y pueden necesitar ajustes para wallets grandes. Tor sigue exento
 de límites por IP; los límites globales sí se aplican.
 
-El panel lee como máximo los últimos 128 KiB del log por petición y muestra las
-últimas 35 líneas. Esto limita los picos de RAM del panel, pero no rota el log.
+El panel lee como máximo los últimos 128 KiB del log por petición y muestra
+hasta 1.000 líneas con botones para copiar, ir al final y descargar el archivo
+completo. La página se actualiza cada 5 segundos sin recargar: pausa el refresco
+cuando hay texto seleccionado, el ratón está sobre el log o el foco está dentro
+de él, y conserva la posición de desplazamiento. Esto limita los picos de RAM
+del panel, pero no rota el log.
 
 El panel permite consultar estado y modificar parámetros como altura inicial,
 caché, backend de cómputo y límites. Los ajustes se guardan en
 `data/frigate/settings.env`; al guardarlos se solicita reiniciar Frigate.
-Las credenciales RPC y direcciones de las dependencias las proporciona Umbrel.
+
+La app declara un widget de estado en la pantalla de inicio de Umbrel
+(`three-stats`) con estado, progreso y altura indexada. Lo sirve el panel en
+`/api/widget/status` leyendo solo los ajustes y la cola del log, sin consultar
+Bitcoin Core. Las credenciales RPC y direcciones de las dependencias las
+proporciona Umbrel.
 
 **Cambiar la altura inicial puede eliminar y reconstruir el índice.** No lo
 trates como un simple ajuste visual. Revisa las advertencias del panel antes
@@ -148,7 +157,12 @@ con un binario fijo para AMD64 o ARM64, comprobado por SHA256. El panel usa
 
 El panel lee los datos Tor; el servicio Tor escribe en `${TOR_DATA_DIR}`.
 Frigate recibe credenciales RPC de Bitcoin y accede a Electrs por la red Docker.
-No se declara acceso al socket Docker ni modo privilegiado.
+No se declara acceso al socket Docker ni modo privilegiado. No se fijan
+direcciones IP: los servicios se resuelven por nombre de contenedor y la IP del
+contenedor Tor se resuelve al arrancar para excluirlo de los límites por IP.
+El servicio de Frigate se ejecuta como root dentro del contenedor solo para
+instalar `curl` y `tar` en el primer arranque; no tiene privilegios ni acceso al
+host.
 
 Ante un fallo, consulta primero el panel y los logs de los servicios mediante
 las herramientas de tu instalación Umbrel. Comprueba dependencias, red Bitcoin

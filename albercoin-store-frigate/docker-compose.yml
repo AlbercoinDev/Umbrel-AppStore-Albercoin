@@ -1,7 +1,7 @@
 services:
   app_proxy:
     environment:
-      APP_HOST: $APP_FRIGATE_WEB_IP
+      APP_HOST: albercoin-store-frigate_web_1
       APP_PORT: 80
 
   web:
@@ -66,7 +66,7 @@ services:
                 "restart_requested": "Restart requested. Frigate will reload configuration shortly.",
                 "indexing_progress": "Indexing progress", "progress": "Progress", "start_block": "Start block", "indexed_block": "Indexed block", "chain_tip": "Chain tip",
                 "clearnet": "Clearnet / LAN", "host": "Host", "port": "Port", "clearnet_help": "Use this from wallets on your local network.", "tor_service": "Tor hidden service",
-                "bitcoin_network": "Bitcoin network", "configured_start_block": "Configured start block", "cache_size": "Cache size", "compute_backend": "Compute backend", "log_file": "Log file", "updated": "Updated", "latest_logs": "Latest Frigate log lines:",
+                "bitcoin_network": "Bitcoin network", "configured_start_block": "Configured start block", "cache_size": "Cache size", "compute_backend": "Compute backend", "log_file": "Log file", "updated": "Updated", "latest_logs": "Latest Frigate log lines:", "log_tail": "last 1,000 lines", "log_end": "Go to end", "download_log": "Download",
                 "config_notice": "Changes are written to /data/frigate/settings.env. Saving asks for confirmation and restarts Frigate automatically.", "save_configuration": "Save configuration",
                 "important": "Important:", "start_height_warning": "changing start height deletes the local db/ index on next Frigate restart so it can be rebuilt correctly from the new height. Empty uses Frigate default.",
                 "saved_start_height": "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index during the automatic restart.",
@@ -99,7 +99,7 @@ services:
                 "restart_requested": "Reinicio solicitado. Frigate recargará la configuración en breve.",
                 "indexing_progress": "Progreso de indexación", "progress": "Progreso", "start_block": "Bloque inicial", "indexed_block": "Bloque indexado", "chain_tip": "Punta de cadena",
                 "clearnet": "Clearnet / LAN", "host": "Host", "port": "Puerto", "clearnet_help": "Usa esto desde wallets en tu red local.", "tor_service": "Servicio oculto Tor",
-                "bitcoin_network": "Red Bitcoin", "configured_start_block": "Bloque inicial configurado", "cache_size": "Tamaño de caché", "compute_backend": "Backend de cálculo", "log_file": "Archivo de log", "updated": "Actualizado", "latest_logs": "Últimas líneas del log de Frigate:",
+                "bitcoin_network": "Red Bitcoin", "configured_start_block": "Bloque inicial configurado", "cache_size": "Tamaño de caché", "compute_backend": "Backend de cálculo", "log_file": "Archivo de log", "updated": "Actualizado", "latest_logs": "Últimas líneas del log de Frigate:", "log_tail": "últimas 1.000 líneas", "log_end": "Ir al final", "download_log": "Descargar",
                 "config_notice": "Los cambios se escriben en /data/frigate/settings.env. Al guardar se pedirá confirmación y Frigate se reiniciará automáticamente.", "save_configuration": "Guardar configuración",
                 "important": "Importante:", "start_height_warning": "cambiar la altura inicial borra el índice local db/ en el siguiente reinicio de Frigate para poder reconstruirlo correctamente desde la nueva altura. Vacío usa el valor por defecto de Frigate.",
                 "saved_start_height": "Configuración guardada. La altura inicial cambió, así que Frigate borrará db/ y reconstruirá el índice durante el reinicio automático.",
@@ -200,7 +200,7 @@ services:
             except OSError:
                 return None
 
-        def latest_lines(lines, lang, limit=35):
+        def latest_lines(lines, lang, limit=1000):
             if lines is None:
                 return tr(lang, "no_log")
             return "\n".join(lines[-limit:])
@@ -245,17 +245,16 @@ services:
             return f"{percent:.2f}%", f"{percent:.2f}", start_label, str(indexed_height), str(tip_height)
 
         def page(title, body, lang, refresh=True):
-            refresh_tag = '<meta http-equiv="refresh" content="10">' if refresh else ""
+            # Pages never reload themselves; the status panel refreshes in place.
             return f'''<!doctype html>
         <html lang="{escape(lang)}">
         <head>
           <meta charset="utf-8">
-          {refresh_tag}
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>{escape(title)}</title>
           <style>
             body {{ margin: 0; min-height: 100vh; background: #0b1020; color: #eaf6ff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: grid; place-items: center; padding: 28px 0; }}
-            main {{ width: min(980px, calc(100% - 40px)); padding: 42px; border-radius: 28px; background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); box-shadow: 0 24px 80px rgba(0,0,0,.35); }}
+            main {{ width: min(980px, calc(100% - 124px)); padding: 42px; border-radius: 28px; background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); box-shadow: 0 24px 80px rgba(0,0,0,.35); }}
             h1 {{ margin: 0 0 12px; font-size: clamp(34px, 7vw, 64px); line-height: 1; }}
             h2 {{ margin: 0 0 8px; font-size: 16px; color: #ffffff; }}
             p {{ color: #c6d8e8; font-size: 18px; line-height: 1.6; }}
@@ -283,13 +282,28 @@ services:
             .field {{ display: grid; grid-template-columns: 240px 1fr; gap: 14px 18px; padding: 18px 0; border-top: 1px solid rgba(255,255,255,.1); }}
             .help {{ color: #a9bfd1; font-size: 14px; line-height: 1.45; margin-top: 8px; }}
             .warning {{ border-color: rgba(255,190,92,.36); background: rgba(255,190,92,.1); color: #ffe0a3; }}
+            .logs-head {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }}
+            .logs-head p {{ margin: 0; }}
+            .logs-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+            .logs-actions .copy-button {{ display: inline-block; text-decoration: none; border: 1px solid rgba(92,200,255,.32); background: rgba(92,200,255,.14); color: #9ee3ff; font-weight: 700; }}
             @media (max-width: 760px) {{ .connections, .field {{ grid-template-columns: 1fr; }} dl {{ grid-template-columns: 1fr; }} }}
         </style>
         <script>
           function copyValue(value, button) {{
             function done() {{ const old = button.textContent; button.textContent = '{escape(tr(lang, "copied"))}'; setTimeout(() => button.textContent = old, 1200); }}
-            if (navigator.clipboard && window.isSecureContext) {{ navigator.clipboard.writeText(value).then(done); return; }}
-            const area = document.createElement('textarea'); area.value = value; document.body.appendChild(area); area.select(); document.execCommand('copy'); document.body.removeChild(area); done();
+            function fallback() {{
+              const area = document.createElement('textarea');
+              area.value = value;
+              area.setAttribute('readonly', '');
+              area.style.position = 'fixed';
+              area.style.opacity = '0';
+              document.body.appendChild(area);
+              area.select();
+              try {{ document.execCommand('copy'); done(); }} catch (error) {{}}
+              document.body.removeChild(area);
+            }}
+            if (navigator.clipboard && window.isSecureContext) {{ navigator.clipboard.writeText(value).then(done).catch(fallback); return; }}
+            fallback();
           }}
           function confirmConfigSave(form) {{
             if (form.dataset.setup === 'true') return confirm('{"¿Confirmar la altura elegida e iniciar la indexación? Una altura posterior al inicio puede omitir pagos antiguos." if lang == "es" else "Confirm the selected height and start indexing? A later start height can omit older payments."}');
@@ -330,9 +344,14 @@ services:
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else restart_msg
             progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(log_lines, network, settings["START_HEIGHT"], is_ready, lang)
             progress_bar = f'<div class="progress"><div class="progress-fill" style="width: {escape(progress_value or "35")}%"></div></div>' if progress_value else '<div class="progress progress-indeterminate"><div class="progress-fill"></div></div>'
+            log_text = latest_lines(log_lines, lang)
+            download = ""
+            if log_lines is not None:
+                download = f'<a class="copy-button" href="/log" download="frigate-{escape(network)}.log">{escape(tr(lang, "download_log"))}</a>'
             return f'''
             <h1>Frigate</h1>
             <nav><a href="/">{escape(tr(lang, "status"))}</a><a href="/config">{escape(tr(lang, "configuration"))}</a></nav>
+            <div id="status-panel">
             {msg}
             <div class="status"><span class="dot"></span>{escape(status)}</div>
             <p>{escape(detail)}</p>
@@ -343,7 +362,57 @@ services:
               <div class="connection"><h2>{escape(tr(lang, "tor_service"))}</h2><dl><dt>{escape(tr(lang, "host"))}</dt><dd><div class="copy-row"><code class="endpoint">{escape(onion_host)}</code><button class="copy-button" onclick="copyValue('{escape(onion_host)}', this)">{escape(tr(lang, "copy"))}</button></div></dd><dt>{escape(tr(lang, "port"))}</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">{escape(tr(lang, "copy"))}</button></div></dd></dl><p>{escape(onion_detail)}</p></div>
             </div>
             <div class="card"><dl><dt>{escape(tr(lang, "bitcoin_network"))}</dt><dd><code>{escape(network)}</code></dd><dt>{escape(tr(lang, "configured_start_block"))}</dt><dd><code>{escape(settings["START_HEIGHT"] or tr(lang, "default_suffix"))}</code></dd><dt>{escape(tr(lang, "cache_size"))}</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>{escape(tr(lang, "compute_backend"))}</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>{escape(tr(lang, "log_file"))}</dt><dd><code>{escape(str(lpath))}</code></dd><dt>{escape(tr(lang, "updated"))}</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
-            <div class="card"><p>{escape(tr(lang, "latest_logs"))}</p><pre>{escape(latest_lines(log_lines, lang))}</pre></div>
+            <div class="card logs">
+              <div class="logs-head"><p>{escape(tr(lang, "latest_logs"))} <span class="help">{escape(tr(lang, "log_tail"))}</span></p><div class="logs-actions"><button class="copy-button log-end" type="button">{escape(tr(lang, "log_end"))}</button><button class="copy-button log-copy" type="button">{escape(tr(lang, "copy"))}</button>{download}</div></div>
+              <pre id="frigate-log" tabindex="0">{escape(log_text)}</pre>
+            </div>
+            </div>
+            <script>
+            let logsHover = false;
+            function bindLogs() {{
+              const section = document.querySelector('#status-panel .logs');
+              if (section) {{
+                section.addEventListener('mouseenter', () => {{ logsHover = true; }});
+                section.addEventListener('mouseleave', () => {{ logsHover = false; }});
+              }}
+              const pre = document.getElementById('frigate-log');
+              if (pre) pre.scrollTop = pre.scrollHeight;
+              const copy = document.querySelector('#status-panel .log-copy');
+              if (copy) copy.onclick = () => {{ const el = document.getElementById('frigate-log'); if (el) copyValue(el.innerText, copy); }};
+              const end = document.querySelector('#status-panel .log-end');
+              if (end) end.onclick = () => {{ const el = document.getElementById('frigate-log'); if (el) el.scrollTop = el.scrollHeight; }};
+            }}
+            bindLogs();
+            let refreshing = false;
+            async function refreshPanel() {{
+              if (refreshing) return;
+              refreshing = true;
+              try {{
+                const response = await fetch(window.location.href, {{cache: 'no-store'}});
+                if (!response.ok) return;
+                const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+                const panel = document.getElementById('status-panel');
+                const next = doc.getElementById('status-panel');
+                if (!panel || !next) return;
+                if (logsHover) return;
+                const selection = window.getSelection();
+                if (selection && !selection.isCollapsed && selection.anchorNode && panel.contains(selection.anchorNode)) return;
+                const focused = document.activeElement;
+                if (focused && focused.closest && focused.closest('#status-panel .logs')) return;
+                const pre = document.getElementById('frigate-log');
+                const nextPre = next.querySelector('#frigate-log');
+                const follow = pre ? pre.scrollHeight - pre.clientHeight - pre.scrollTop < 24 : true;
+                const top = pre ? pre.scrollTop : 0;
+                if (pre && nextPre && !follow) nextPre.textContent = pre.textContent;
+                panel.replaceChildren(...next.childNodes);
+                bindLogs();
+                const updated = document.getElementById('frigate-log');
+                if (updated && !follow) updated.scrollTop = top;
+              }} catch (error) {{ /* keep the last visible state */ }}
+              finally {{ refreshing = false; }}
+            }}
+            setInterval(refreshPanel, 5000);
+            </script>
             '''
 
         def config_body(lang, message="", values=None):
@@ -509,6 +578,38 @@ services:
                     return result
             raise ValueError("No se pudo resolver la fecha. Comprueba que Bitcoin Core o Electrs estén disponibles y sincronizados. / Could not resolve date; check backend availability and synchronization.")
 
+        def widget_payload():
+            # Read-only summary for the Umbrel home widget; no backend calls.
+            settings = read_settings()
+            network = os.environ.get("APP_BITCOIN_NETWORK", "mainnet")
+            if settings["SETUP_REQUIRED"] == "true":
+                return {
+                    "type": "three-stats", "refresh": "10s", "link": "",
+                    "items": [
+                        {"title": "Estado", "text": "Configurando", "subtext": "Frigate"},
+                        {"title": "Progreso", "text": "0%", "subtext": "indexación"},
+                        {"title": "Altura", "text": "—", "subtext": "bloques"},
+                    ],
+                }
+            log_lines = read_log(LOG_FILE)
+            status_key, _detail = status_from_log(log_lines)
+            progress_label, _progress_value, _start, _indexed, _tip = progress_info(log_lines, network, settings["START_HEIGHT"], status_key == "status_ready", "es")
+            states = {"status_ready": "Listo", "status_indexing": "Indexando", "status_attention": "Revisar", "status_starting": "Iniciando"}
+            height = "—"
+            for line in reversed(log_lines or []):
+                match = re.search(r"height (\d+)\)", line) or re.search(r"Indexing \d+ blocks \(\d+ to (\d+)\)", line)
+                if match:
+                    height = f"{int(match.group(1)):,}"
+                    break
+            return {
+                "type": "three-stats", "refresh": "10s", "link": "",
+                "items": [
+                    {"title": "Estado", "text": states.get(status_key, "Iniciando"), "subtext": "Frigate"},
+                    {"title": "Progreso", "text": progress_label, "subtext": "indexación"},
+                    {"title": "Altura", "text": height, "subtext": "bloques"},
+                ],
+            }
+
         class Handler(BaseHTTPRequestHandler):
             def language(self):
                 return select_language(self.headers.get("Accept-Language", ""))
@@ -526,6 +627,12 @@ services:
                         self.respond_json({"error": str(error)}, 400)
                     finally:
                         DATE_SEARCH_LOCK.release()
+                    return
+                if urlsplit(self.path).path == "/api/widget/status":
+                    self.respond_json(widget_payload())
+                    return
+                if urlsplit(self.path).path == "/log":
+                    self.send_log()
                     return
                 if self.path.startswith("/config"):
                     self.respond(page(tr(lang, "title_config"), config_body(lang), lang, refresh=False))
@@ -568,6 +675,31 @@ services:
                     message = tr(lang, "saved_restart")
                 self.respond(page(tr(lang, "title_config"), config_body(lang, message), lang, refresh=False))
 
+            def send_log(self):
+                try:
+                    size = LOG_FILE.stat().st_size
+                    stream = LOG_FILE.open("rb")
+                except OSError:
+                    self.send_error(404)
+                    return
+                filename = f'frigate-{os.environ.get("APP_BITCOIN_NETWORK", "mainnet")}.log'
+                with stream:
+                    self.send_response(200)
+                    self.send_header("content-type", "text/plain; charset=utf-8")
+                    self.send_header("content-length", str(size))
+                    self.send_header("content-disposition", f'attachment; filename="{filename}"')
+                    self.send_header("cache-control", "no-store")
+                    self.send_header("x-content-type-options", "nosniff")
+                    self.end_headers()
+                    try:
+                        while True:
+                            chunk = stream.read(65536)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                    except (BrokenPipeError, ConnectionResetError):
+                        return
+
             def respond(self, html):
                 data = html.encode()
                 self.send_response(200)
@@ -602,9 +734,6 @@ services:
       APP_BITCOIN_RPC_PASS: "${APP_BITCOIN_RPC_PASS}"
       APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
       APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
-    networks:
-      default:
-        ipv4_address: $APP_FRIGATE_WEB_IP
 
   frigate:
     image: debian:trixie-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0
@@ -714,6 +843,15 @@ services:
         if [ -n "$${DB_THREADS:-}" ]; then printf "dbThreads = %s\n" "$${DB_THREADS}" >> "$${config_dir}/config.toml"; fi
         if [ -n "$${MEMORY_LIMIT:-}" ]; then printf "memoryLimit = \"%s\"\n" "$${MEMORY_LIMIT}" >> "$${config_dir}/config.toml"; fi
         if [ -n "$${BATCH_SIZE:-}" ]; then printf "batchSize = %s\n" "$${BATCH_SIZE}" >> "$${config_dir}/config.toml"; fi
+        # Resolve the Tor container by name; no static addresses on the shared network.
+        tor_ip="$$(getent ahostsv4 tor 2>/dev/null | cut -d" " -f1 | head -n1 || true)"
+        if [ -z "$${tor_ip:-}" ]; then
+          for _attempt in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 1
+            tor_ip="$$(getent ahostsv4 tor 2>/dev/null | cut -d" " -f1 | head -n1 || true)"
+            if [ -n "$${tor_ip:-}" ]; then break; fi
+          done
+        fi
         {
           printf "%s\n" ""
           printf "%s\n" "[server]"
@@ -726,9 +864,10 @@ services:
           printf "%s\n" "maxConnectionsPerIp = 15"
           printf "%s\n" "maxSubscriptionsPerIp = 10000"
           printf "%s\n" "maxSubscriptions = 25000"
-          if [ -n "$${APP_FRIGATE_TOR_IP:-}" ]; then
-            printf "%s\n" "excludedSubnets = [\"127.0.0.1/32\", \"::1/128\", \"$${APP_FRIGATE_TOR_IP}/32\"]"
+          if [ -n "$${tor_ip:-}" ]; then
+            printf "%s\n" "excludedSubnets = [\"127.0.0.1/32\", \"::1/128\", \"$${tor_ip}/32\"]"
           else
+            echo "Warning: could not resolve the tor container IP; per-IP limits also apply to Tor clients" >&2
             printf "%s\n" "excludedSubnets = [\"127.0.0.1/32\", \"::1/128\"]"
           fi
         } >> "$${config_dir}/config.toml"
@@ -775,7 +914,6 @@ services:
       APP_ELECTRS_NODE_IP: "${APP_ELECTRS_NODE_IP}"
       APP_ELECTRS_NODE_PORT: "${APP_ELECTRS_NODE_PORT}"
       APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
-      APP_FRIGATE_TOR_IP: "${APP_FRIGATE_TOR_IP}"
     ports:
       - "${APP_FRIGATE_ELECTRUM_PORT}:${APP_FRIGATE_ELECTRUM_PORT}"
 
@@ -790,6 +928,3 @@ services:
       - ${TOR_DATA_DIR}:/data
     environment:
       HOME: "/tmp"
-    networks:
-      default:
-        ipv4_address: $APP_FRIGATE_TOR_IP

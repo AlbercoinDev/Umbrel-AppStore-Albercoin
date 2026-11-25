@@ -102,12 +102,20 @@ cinco personas con varios dispositivos: **no son autenticación ni un límite de
 usuarios**, y pueden necesitar ajustes para wallets grandes. Tor sigue exento
 de límites por IP; los límites globales sí se aplican.
 
-El panel lee como máximo los últimos 128 KiB del log por petición y muestra
+El log ya no se borra en cada arranque: se conserva entre reinicios y rota en
+caliente cuando supera 25 MB, manteniendo los últimos 20 MB y solo líneas
+completas. El panel lee como máximo los últimos 128 KiB por petición y muestra
 hasta 1.000 líneas con botones para copiar, ir al final y descargar el archivo
-completo. La página se actualiza cada 5 segundos sin recargar: pausa el refresco
-cuando hay texto seleccionado, el ratón está sobre el log o el foco está dentro
-de él, y conserva la posición de desplazamiento. Esto limita los picos de RAM
-del panel, pero no rota el log.
+completo (con el histórico de ejecuciones anteriores). La página se actualiza
+cada 5 segundos sin recargar: pausa el refresco cuando hay texto seleccionado,
+el ratón está sobre el log o el foco está dentro de él, y conserva la posición
+de desplazamiento. El panel y el widget solo evalúan la ejecución actual, no
+los errores de arranques anteriores.
+
+Si el log deja de recibir escrituras durante 20 minutos con Frigate ya listo,
+un watchdog lo reinicia automáticamente y deja un aviso en el panel; guardar la
+configuración oculta el aviso. Si Frigate termina de forma inesperada, el
+contenedor sale con código 1 para que Docker lo reinicie.
 
 El panel permite consultar estado y modificar parámetros como altura inicial,
 caché, backend de cómputo y límites. Los ajustes se guardan en
@@ -176,6 +184,7 @@ configuraciones o logs sin revisar credenciales y datos privados.
 | No conecta con Bitcoin o Electrs | Que ambas dependencias estén instaladas, arrancadas y accesibles en la red de Umbrel |
 | Progreso inesperado o indexación lenta | Red Bitcoin seleccionada, sincronización del nodo, estado/logs y recursos disponibles; no borrar el índice como primera medida |
 | La wallet no conecta | Host del nodo, puerto Electrum `50005` y compatibilidad del cliente; `2125` es el panel, no Electrum |
+| Frigate dejó de responder y se reinició solo | El watchdog reinicia tras 20 minutos sin actividad en el log; descarga el log completo para revisar la ejecución anterior y guarda la configuración para ocultar el aviso |
 | No aparece dirección onion | Estado del servicio Tor y generación de su hostname; el valor provisional no es una dirección utilizable |
 | Cambiar altura exige reconstrucción | Es un efecto previsto del ajuste; revisar la advertencia antes de guardar y planificar el tiempo de reindexación |
 

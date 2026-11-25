@@ -179,6 +179,36 @@ class WebTests(unittest.TestCase):
         html = self.web["page"]("Frigate", body, "es")
         self.assertNotIn('http-equiv="refresh"', html)
 
+    def test_current_run_filter_and_watchdog_notice(self):
+        import urllib.request
+        self.web["ensure_settings"]()
+        settings = self.web["read_settings"]()
+        settings["SETUP_REQUIRED"] = "false"
+        settings["START_HEIGHT"] = "800000"
+        self.web["write_settings"](settings)
+        root = self.web["DATA_DIR"]
+        (root / ".efficient-profile").write_text("1\n")
+        (root / ".run-start").write_text("2026-11-25 12:00:00\n")
+        self.web["LOG_FILE"].write_text(
+            "2026-11-24 08:00:00,000 INFO [main] c.s.f.e.ElectrumServerRunnable Electrum server listening on tcp://0.0.0.0:50005\n"
+            "2026-11-24 09:00:00,000 ERROR [main] c.s.f.Frigate old failure\n"
+            "2026-11-25 12:00:05,000 INFO [main] c.s.f.e.ElectrumServerRunnable Electrum server listening on tcp://0.0.0.0:50005\n"
+        )
+        body = self.web["status_body"]("es")
+        self.assertIn("Listo", body)
+        self.assertNotIn("Revisar", body)
+        (root / ".watchdog-restart").write_text("2026-11-25 12:30:00\n")
+        body = self.web["status_body"]("es")
+        self.assertIn("se reinició automáticamente", body)
+        server = self.web["ThreadingHTTPServer"](("127.0.0.1", 0), self.web["Handler"])
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/config", data=b"START_HEIGHT=800000") as response:
+            self.assertEqual(response.status, 200)
+        self.assertFalse((root / ".watchdog-restart").exists())
+
     def test_log_download_and_widget(self):
         import urllib.error
         import urllib.request
@@ -234,6 +264,109 @@ class WebTests(unittest.TestCase):
 
 
 class ShellTests(unittest.TestCase):
+    @staticmethod
+    def _prepare(data, binary_script):
+        runtime = data / "runtime/frigate-1.6.1-x86_64/bin"
+        runtime.mkdir(parents=True)
+        binary = runtime / "frigate"
+        binary.write_text(binary_script)
+        binary.chmod(0o700)
+        (data / "settings.env").write_text("START_HEIGHT=\nSETUP_REQUIRED=false\nAUTO_PROFILE=false\n")
+        fake_bin = data.parent / "bin"
+        fake_bin.mkdir(exist_ok=True)
+        getent = fake_bin / "getent"
+        getent.write_text("#!/bin/sh\necho 203.0.113.42 tor\n")
+        getent.chmod(0o755)
+        script = SHELL.replace("/data/frigate", str(data)).replace('arch="$(dpkg --print-architecture)"', 'arch="amd64"')
+        env = dict(os.environ, APP_BITCOIN_NODE_IP="bitcoin", APP_BITCOIN_RPC_PORT="8332", APP_BITCOIN_RPC_USER="test", APP_BITCOIN_RPC_PASS="test", APP_ELECTRS_NODE_IP="electrs", APP_ELECTRS_NODE_PORT="50001", APP_FRIGATE_ELECTRUM_PORT="50005", APP_BITCOIN_NETWORK="mainnet")
+        env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+        return script, env
+
+    @staticmethod
+    def _wait_until(predicate, timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.2)
+        return False
+
+    @staticmethod
+    def _stop(process, data):
+        (data / "stop").write_text("")
+        try:
+            process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+
+    def test_log_rotation_keeps_recent_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            data.mkdir()
+            binary = f'''#!/bin/sh
+echo "new-run-line" >> "{data}/frigate.log"
+while [ ! -f "{data}/stop" ]; do sleep 0.2; done
+exit 0
+'''
+            script, env = self._prepare(data, binary)
+            env["FRIGATE_LOG_MAX_BYTES"] = "1200"
+            env["FRIGATE_LOG_KEEP_BYTES"] = "600"
+            (data / "frigate.log").write_text("\n".join(f"old-line-{i:04d} padding-padding-padding" for i in range(200)) + "\n")
+            process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                self.assertTrue(self._wait_until(lambda: (data / ".run-start").exists()))
+                self.assertTrue(self._wait_until(lambda: (data / "frigate.log").exists() and "new-run-line" in (data / "frigate.log").read_text()))
+                text = (data / "frigate.log").read_text()
+                self.assertIn("old-line-0199", text)
+                self.assertNotIn("old-line-0000", text)
+                self.assertLess((data / "frigate.log").stat().st_size, 2000)
+            finally:
+                self._stop(process, data)
+
+    def test_readiness_ignores_previous_run_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            data.mkdir()
+            binary = f'''#!/bin/sh
+while [ ! -f "{data}/release" ]; do sleep 0.2; done
+echo "$(date '+%Y-%m-%d %H:%M:%S'),000 INFO [main] c.s.f.e.ElectrumServerRunnable Electrum server listening on tcp://0.0.0.0:50005" >> "{data}/frigate.log"
+while [ ! -f "{data}/stop" ]; do sleep 0.2; done
+exit 0
+'''
+            script, env = self._prepare(data, binary)
+            (data / "frigate.log").write_text("2026-11-24 08:00:00,000 INFO [main] c.s.f.e.ElectrumServerRunnable Electrum server listening on tcp://0.0.0.0:50005\n")
+            process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                time.sleep(3)
+                self.assertFalse((data / ".service-ready").exists())
+                (data / "release").write_text("")
+                self.assertTrue(self._wait_until(lambda: (data / ".service-ready").exists()))
+            finally:
+                self._stop(process, data)
+
+    def test_watchdog_restarts_stalled_frigate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            data.mkdir()
+            binary = f'''#!/bin/sh
+echo "start" >> "{data}/runs"
+echo "$(date '+%Y-%m-%d %H:%M:%S'),000 INFO [main] c.s.f.e.ElectrumServerRunnable Electrum server listening on tcp://0.0.0.0:50005" >> "{data}/frigate.log"
+while [ ! -f "{data}/stop" ]; do sleep 0.2; done
+exit 0
+'''
+            script, env = self._prepare(data, binary)
+            env["FRIGATE_WATCHDOG_SECONDS"] = "1"
+            process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                self.assertTrue(self._wait_until(lambda: (data / ".service-ready").exists()))
+                old = time.time() - 120
+                os.utime(data / "frigate.log", (old, old))
+                self.assertTrue(self._wait_until(lambda: (data / ".watchdog-restart").exists()))
+                self.assertTrue(self._wait_until(lambda: (data / "runs").exists() and len((data / "runs").read_text().splitlines()) >= 2))
+            finally:
+                self._stop(process, data)
+
     def test_shell_syntax(self):
         subprocess.run(["sh", "-n"], input=SHELL, text=True, check=True)
 
@@ -276,7 +409,8 @@ while true; do sleep 1; done
                 settings["SETUP_REQUIRED"] = "false"
                 save()
                 stdout, stderr = process.communicate(timeout=15)
-                self.assertEqual(process.returncode, 0, stdout + stderr)
+                self.assertEqual(process.returncode, 1, stdout + stderr)
+                self.assertIn("exited unexpectedly", stderr)
                 initial = (data / "config-0.toml").read_text()
                 steady = (data / "config-1.toml").read_text()
                 self.assertIn('cacheSize = "10M"', initial)

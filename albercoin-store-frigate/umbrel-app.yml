@@ -4,7 +4,7 @@ storage:
   dataRoot: data
 category: bitcoin
 name: Frigate Silent Payments
-version: "1.6.1-13"
+version: "1.6.1-14"
 tagline: Servidor Electrum para Silent Payments (BIP352)
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.svg
 description: >-
@@ -30,13 +30,14 @@ description: >-
   directorio de datos de la app y se excluyen de las copias de seguridad.
   Cambiar la altura inicial borra y reconstruye el índice.
 releaseNotes: >-
-  Revisión 13 del paquete Umbrel para Frigate 1.6.1. El panel estrena visor de
-  log con copiar, ir al final y descarga completa, y se actualiza sin recargar
-  la página para no perder el desplazamiento ni la selección. Añade un widget
-  de estado en la pantalla de inicio de Umbrel. La red interna usa nombres de
-  contenedor en lugar de direcciones fijas y la exclusión de Tor se resuelve al
-  arrancar. No cambia el binario de Frigate, la configuración ni el índice: no
-  hace falta reindexar.
+  Revisión 14 del paquete Umbrel para Frigate 1.6.1. El log deja de borrarse en
+  cada arranque: se conserva, rota en caliente al superar 25 MB manteniendo los
+  últimos 20 MB por líneas completas, y el panel y el widget solo evalúan la
+  ejecución actual. Un watchdog reinicia Frigate si el log deja de recibir
+  actividad durante 20 minutos con el servicio listo, y el panel avisa. Si
+  Frigate termina de forma inesperada, el contenedor sale con código 1 para que
+  Docker lo reinicie. No cambia el binario de Frigate, la configuración ni el
+  índice: no hace falta reindexar.
 developer: Sparrow Wallet
 website: https://sparrowwallet.com/
 dependencies:

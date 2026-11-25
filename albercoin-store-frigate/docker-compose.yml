@@ -67,6 +67,7 @@ services:
                 "indexing_progress": "Indexing progress", "progress": "Progress", "start_block": "Start block", "indexed_block": "Indexed block", "chain_tip": "Chain tip",
                 "clearnet": "Clearnet / LAN", "host": "Host", "port": "Port", "clearnet_help": "Use this from wallets on your local network.", "tor_service": "Tor hidden service",
                 "bitcoin_network": "Bitcoin network", "configured_start_block": "Configured start block", "cache_size": "Cache size", "compute_backend": "Compute backend", "log_file": "Log file", "updated": "Updated", "latest_logs": "Latest Frigate log lines:", "log_tail": "last 1,000 lines", "log_end": "Go to end", "download_log": "Download",
+                "watchdog_restarted": "Frigate stopped responding and was restarted automatically at {time}. The log download keeps the previous run; save the configuration to dismiss this notice.",
                 "config_notice": "Changes are written to /data/frigate/settings.env. Saving asks for confirmation and restarts Frigate automatically.", "save_configuration": "Save configuration",
                 "important": "Important:", "start_height_warning": "changing start height deletes the local db/ index on next Frigate restart so it can be rebuilt correctly from the new height. Empty uses Frigate default.",
                 "saved_start_height": "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index during the automatic restart.",
@@ -100,6 +101,7 @@ services:
                 "indexing_progress": "Progreso de indexación", "progress": "Progreso", "start_block": "Bloque inicial", "indexed_block": "Bloque indexado", "chain_tip": "Punta de cadena",
                 "clearnet": "Clearnet / LAN", "host": "Host", "port": "Puerto", "clearnet_help": "Usa esto desde wallets en tu red local.", "tor_service": "Servicio oculto Tor",
                 "bitcoin_network": "Red Bitcoin", "configured_start_block": "Bloque inicial configurado", "cache_size": "Tamaño de caché", "compute_backend": "Backend de cálculo", "log_file": "Archivo de log", "updated": "Actualizado", "latest_logs": "Últimas líneas del log de Frigate:", "log_tail": "últimas 1.000 líneas", "log_end": "Ir al final", "download_log": "Descargar",
+                "watchdog_restarted": "Frigate dejó de responder y se reinició automáticamente a las {time}. La descarga del log conserva la ejecución anterior; guarda la configuración para ocultar este aviso.",
                 "config_notice": "Los cambios se escriben en /data/frigate/settings.env. Al guardar se pedirá confirmación y Frigate se reiniciará automáticamente.", "save_configuration": "Guardar configuración",
                 "important": "Importante:", "start_height_warning": "cambiar la altura inicial borra el índice local db/ en el siguiente reinicio de Frigate para poder reconstruirlo correctamente desde la nueva altura. Vacío usa el valor por defecto de Frigate.",
                 "saved_start_height": "Configuración guardada. La altura inicial cambió, así que Frigate borrará db/ y reconstruirá el índice durante el reinicio automático.",
@@ -185,6 +187,24 @@ services:
                 return "METRICS_ENABLED"
             return None
 
+        def current_run(lines):
+            # Ignore records from earlier runs now that the log survives restarts.
+            try:
+                start = (DATA_DIR / ".run-start").read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                return lines
+            if re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", start) is None:
+                return lines
+            result = []
+            keep = False
+            for line in lines:
+                stamp = re.match(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)", line)
+                if stamp:
+                    keep = stamp.group(1) >= start
+                if keep:
+                    result.append(line)
+            return result
+
         def read_log(path):
             try:
                 if not path.exists():
@@ -196,12 +216,12 @@ services:
                     stream.seek(max(0, size - 131072))
                     if size > 131072:
                         stream.readline()
-                    return stream.read().decode(errors="replace").splitlines()
+                    return current_run(stream.read().decode(errors="replace").splitlines())
             except OSError:
                 return None
 
         def latest_lines(lines, lang, limit=1000):
-            if lines is None:
+            if not lines:
                 return tr(lang, "no_log")
             return "\n".join(lines[-limit:])
 
@@ -342,6 +362,14 @@ services:
             onion_detail = tr(lang, "onion_ready") if onion_host.endswith(".onion") else tr(lang, "onion_waiting")
             restart_msg = f'<div class="card warning"><p>{escape(tr(lang, "restart_requested"))}</p></div>' if RESTART_FILE.exists() else ""
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else restart_msg
+            watchdog_msg = ""
+            watchdog_file = DATA_DIR / ".watchdog-restart"
+            if watchdog_file.exists():
+                try:
+                    stamp = watchdog_file.read_text(encoding="utf-8", errors="replace").strip()
+                except OSError:
+                    stamp = ""
+                watchdog_msg = f'<div class="card warning"><p>{escape(tr(lang, "watchdog_restarted").format(time=stamp))}</p></div>'
             progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(log_lines, network, settings["START_HEIGHT"], is_ready, lang)
             progress_bar = f'<div class="progress"><div class="progress-fill" style="width: {escape(progress_value or "35")}%"></div></div>' if progress_value else '<div class="progress progress-indeterminate"><div class="progress-fill"></div></div>'
             log_text = latest_lines(log_lines, lang)
@@ -353,6 +381,7 @@ services:
             <nav><a href="/">{escape(tr(lang, "status"))}</a><a href="/config">{escape(tr(lang, "configuration"))}</a></nav>
             <div id="status-panel">
             {msg}
+            {watchdog_msg}
             <div class="status"><span class="dot"></span>{escape(status)}</div>
             <p>{escape(detail)}</p>
             <p class="help">{escape(profile)}</p>
@@ -663,6 +692,7 @@ services:
                 new["SETUP_REQUIRED"] = "false"
                 new["AUTO_PROFILE"] = "true" if old["SETUP_REQUIRED"] == "true" else "false"
                 write_settings(new)
+                (DATA_DIR / ".watchdog-restart").unlink(missing_ok=True)
                 if old["SETUP_REQUIRED"] == "true":
                     message = "Configuración confirmada. Frigate comenzará la indexación desde la altura elegida." if lang == "es" else "Setup confirmed. Frigate will begin indexing from the selected height."
                     self.respond(page(tr(lang, "title_status"), status_body(lang, message), lang))
@@ -778,6 +808,19 @@ services:
         if [ "$${old_dir}" = "$${install_dir}" ]; then continue; fi
         rm -rf "$${old_dir}"
       done
+      # Keep the log across restarts and trim it in place (logback appends with
+      # O_APPEND, so truncating the inode is safe). Keep whole lines only.
+      rotate_log() {
+        target="$$1"
+        [ -f "$${target}" ] || return 0
+        size="$$(stat -c %s "$${target}" 2>/dev/null || echo 0)"
+        if [ "$${size:-0}" -le "$${FRIGATE_LOG_MAX_BYTES:-26214400}" ]; then return 0; fi
+        if tail -c "$${FRIGATE_LOG_KEEP_BYTES:-20971520}" "$${target}" | sed "1d" > "$${target}.tmp"; then
+          cat "$${target}.tmp" > "$${target}"
+          echo "Rotated $${target} from $${size} bytes" >&2
+        fi
+        rm -f "$${target}.tmp"
+      }
       while true; do
         START_HEIGHT="$$(read_setting START_HEIGHT)"
         CACHE_SIZE="$$(read_setting CACHE_SIZE)"
@@ -872,16 +915,35 @@ services:
           fi
         } >> "$${config_dir}/config.toml"
         chmod 600 "$${config_dir}/config.toml"
-        rm -f "$${home_dir}/frigate.log" "$${config_dir}/frigate.log" "$${home_dir}/.service-ready"
+        log_file="$${home_dir}/frigate.log"
+        rotate_log "$${log_file}"
+        log_offset="$$(stat -c %s "$${log_file}" 2>/dev/null || echo 0)"
+        date "+%Y-%m-%d %H:%M:%S" > "$${home_dir}/.run-start"
+        rm -f "$${home_dir}/.service-ready"
         "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args} &
         frigate_pid="$$!"
         restart_requested="0"
+        watchdog_restart="0"
         while kill -0 "$${frigate_pid}" 2>/dev/null; do
-          if [ ! -f "$${home_dir}/.service-ready" ] && grep -q "Electrum server listening" "$${home_dir}/frigate.log" "$${config_dir}/frigate.log" 2>/dev/null; then
+          if [ ! -f "$${home_dir}/.service-ready" ] && tail -c +"$$((log_offset + 1))" "$${log_file}" 2>/dev/null | grep -q "Electrum server listening"; then
             touch "$${home_dir}/.service-ready"
             if [ "$${initial_profile}" = "1" ] && [ "$$(read_setting AUTO_PROFILE)" = "true" ]; then
               touch "$${home_dir}/.efficient-profile"
               touch "$${home_dir}/.restart-requested"
+            fi
+          fi
+          if [ -f "$${home_dir}/.service-ready" ]; then
+            rotate_log "$${log_file}"
+            if [ -f "$${log_file}" ]; then
+              log_age="$$(( $$(date +%s) - $$(stat -c %Y "$${log_file}" 2>/dev/null || date +%s) ))"
+              if [ "$${log_age}" -gt "$${FRIGATE_WATCHDOG_SECONDS:-1200}" ]; then
+                echo "Watchdog: no log activity for $${log_age}s; restarting Frigate" >&2
+                date "+%Y-%m-%d %H:%M:%S" > "$${home_dir}/.watchdog-restart"
+                watchdog_restart="1"
+                kill "$${frigate_pid}" 2>/dev/null || true
+                wait "$${frigate_pid}" 2>/dev/null || true
+                break
+              fi
             fi
           fi
           if [ -f "$${home_dir}/.restart-requested" ]; then
@@ -893,11 +955,12 @@ services:
           fi
           sleep 2
         done
-        if [ "$${restart_requested}" = "1" ]; then
+        if [ "$${restart_requested}" = "1" ] || [ "$${watchdog_restart}" = "1" ]; then
           continue
         fi
-        wait "$${frigate_pid}"
-        exit "$${?}"
+        wait "$${frigate_pid}" 2>/dev/null || true
+        echo "Frigate exited unexpectedly; restarting the container" >&2
+        exit 1
       done
       '
     volumes:

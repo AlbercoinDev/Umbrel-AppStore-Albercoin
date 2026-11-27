@@ -177,11 +177,42 @@ las herramientas de tu instalación Umbrel. Comprueba dependencias, red Bitcoin
 y espacio disponible antes de considerar reconstruir el índice. No compartas
 configuraciones o logs sin revisar credenciales y datos privados.
 
+### Comprobación de red del contenedor
+
+Un contenedor de Docker puede quedarse sin red cuando la red de Docker se
+recrea bajo él (por ejemplo tras una actualización de umbrelOS): el proceso
+sigue vivo, pero pierde la ruta a las demás apps y el DNS interno. En ese
+estado, los logs normales solo repiten errores de conexión.
+
+Desde la revisión 15, el servicio de Frigate comprueba al arrancar la ruta a
+Bitcoin Core y el DNS del contenedor Tor. Si no hay ruta, espera y lo explica
+en el log (`Preflight: no route to Bitcoin Core ... Restart the Frigate app`)
+en vez de dejar a Java fallando en bucle, y escribe `.health.json` en el
+directorio de datos (`data/frigate/.health.json`) con el resultado:
+
+```json
+{"code":"no_route","core":"no_route","tor_dns":"fail","at":"2026-11-27T11:40:00Z"}
+```
+
+El panel compara ese resultado con su propia ruta al nodo y muestra un aviso
+concreto: si el panel alcanza Core pero Frigate no, el problema es del
+contenedor de Frigate y **solo recrearlo lo arregla** (detener y arrancar la
+app desde umbrelOS). También hay un `healthcheck` de Docker: el contenedor
+aparece `unhealthy` mientras no tenga red, no pueda hablar con el nodo o el
+servicio no responda en el puerto de administración local.
+
+La comprobación usa el `adminPort` de Frigate (`50003`), que escucha solo en
+`127.0.0.1` dentro del contenedor y no se publica. Se puede desactivar la
+comprobación previa con `FRIGATE_NET_PREFLIGHT=0`; el `healthcheck` pasará a
+mostrar `unhealthy` si no hay red.
+
 ## Problemas frecuentes
 
 | Situación | Qué comprobar |
 | --- | --- |
 | No conecta con Bitcoin o Electrs | Que ambas dependencias estén instaladas, arrancadas y accesibles en la red de Umbrel |
+| El panel dice «el contenedor de Frigate no tiene red» | El nodo está bien y el problema es de Docker en ese contenedor: detener y arrancar la app desde umbrelOS para recrear sus contenedores. Reiniciar solo el proceso no lo arregla |
+| `unhealthy` en el contenedor de Frigate | Mira la tarjeta «Comprobación de red» del panel: sin ruta al nodo, nodo rechazando RPC, o servicio sin responder en el puerto de administración |
 | Progreso inesperado o indexación lenta | Red Bitcoin seleccionada, sincronización del nodo, estado/logs y recursos disponibles; no borrar el índice como primera medida |
 | La wallet no conecta | Host del nodo, puerto Electrum `50005` y compatibilidad del cliente; `2125` es el panel, no Electrum |
 | Frigate dejó de responder y se reinició solo | El watchdog reinicia tras 20 minutos sin actividad en el log; descarga el log completo para revisar la ejecución anterior y guarda la configuración para ocultar el aviso |
@@ -198,8 +229,10 @@ python3 -m unittest discover -s albercoin-store-frigate/tests -v
 
 Comprueban el código Python y shell real integrado en Compose: asistente,
 preservación de ajustes anteriores, confirmación HTTP, lectura acotada del log,
-búsqueda por fecha y carrera entre backends, protocolo Electrum simulado y
-transición de perfiles con un binario simulado. No descargan ni ejecutan Frigate.
+búsqueda por fecha y carrera entre backends, protocolo Electrum simulado,
+transición de perfiles con un binario simulado, `adminPort` y escritura atómica
+del `config.toml`, comprobación previa de red (con y sin ruta), `healthcheck`
+de Docker y mensajes de diagnóstico del panel. No descargan ni ejecutan Frigate.
 Una prueba funcional requiere un entorno Umbrel con Bitcoin y Electrs: verificar
 instalación detenida, consulta de fechas, primer arranque, transición y
 reconexión de cinco wallets, picos de RAM y actualización sin reindexar.

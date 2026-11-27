@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import signal
 import socketserver
 import subprocess
 import tempfile
@@ -15,6 +16,19 @@ COMPOSE = Path(__file__).resolve().parents[1] / "docker-compose.yml"
 TEXT = COMPOSE.read_text()
 WEB = "\n".join(line[8:] for line in TEXT.split("      - |\n", 1)[1].split("    volumes:\n", 1)[0].splitlines())
 SHELL = "\n".join(line[6:] for line in TEXT.split("    command: |\n", 1)[1].split("    volumes:\n", 1)[0].splitlines()).replace("$$", "$")
+
+
+def _healthcheck():
+    body = TEXT.split("    healthcheck:\n", 1)[1].split("        - >-\n", 1)[1]
+    lines = []
+    for line in body.splitlines():
+        if not line.startswith("          "):
+            break
+        lines.append(line.strip())
+    return " ".join(lines)
+
+
+COMPOSE_HEALTHCHECK = _healthcheck()
 
 
 def load_web():
@@ -263,6 +277,73 @@ class WebTests(unittest.TestCase):
         self.assertTrue(self.web["RESTART_FILE"].exists())
 
 
+    def test_diagnosis_separates_node_from_container(self):
+        diagnosis = self.web["diagnosis"]
+        self.assertIn("no tiene red", diagnosis("es", {"code": "no_route"}, {"core": True}))
+        self.assertIn("no route", diagnosis("en", {"code": "no_host_route"}, {"core": True}))
+        self.assertIn("ni Frigate ni este panel", diagnosis("es", {"code": "no_route"}, {"core": False}))
+        self.assertIn("reinicia", diagnosis("es", {"code": "ok"}, {"core": False}))
+        self.assertIn("Bitcoin Core", diagnosis("es", {"code": "refused"}, {"core": True}))
+        self.assertEqual(diagnosis("es", {"code": "ok"}, {"core": True}), "")
+        self.assertEqual(diagnosis("es", None, {"core": False}), "")
+
+    def test_status_page_and_widget_report_lost_network(self):
+        self.web["ensure_settings"]()
+        settings = self.web["read_settings"]()
+        settings["SETUP_REQUIRED"] = "false"
+        settings["START_HEIGHT"] = "800000"
+        self.web["write_settings"](settings)
+        root = self.web["DATA_DIR"]
+        (root / ".efficient-profile").write_text("1\n")
+        self.web["LOG_FILE"].write_text("2026-11-27 11:00:00,000 INFO [main] c.s.f.e.ElectrumServerRunnable Electrum server listening on tcp://0.0.0.0:50005\n")
+        (root / ".health.json").write_text('{"code":"no_route","core":"no_route","tor_dns":"fail","at":"2026-11-27T11:00:00Z"}\n')
+        self.web.update(web_probe=lambda: {"at": 0.0, "core": True})
+        body = self.web["status_body"]("es")
+        self.assertIn("no tiene red", body)
+        self.assertIn("Comprobación de red", body)
+        self.assertIn("sin ruta", body)
+        self.assertEqual(self.web["widget_payload"]()["items"][0]["text"], "Sin red")
+        (root / ".health.json").write_text('{"code":"ok","core":"ok","tor_dns":"ok","at":"2026-11-27T11:00:00Z"}\n')
+        body = self.web["status_body"]("es")
+        self.assertNotIn("no tiene red", body)
+        self.assertIn("Listo", body)
+        # Older containers write no .health.json; the Java route errors still warn.
+        (root / ".health.json").unlink()
+        self.web["LOG_FILE"].write_text(
+            "2026-11-27 11:00:00,000 INFO [main] c.s.f.Frigate Starting Frigate v1.6.1 on mainnet\n"
+            "2026-11-27 11:00:01,000 ERROR [main] c.s.f.Frigate Fatal error\n"
+            "Caused by: java.net.SocketException: Network is unreachable\n"
+        )
+        body = self.web["status_body"]("es")
+        self.assertIn("no tiene red", body)
+
+    def test_health_check_uses_route_state_and_admin_port(self):
+        import socket
+        self.web["ensure_settings"]()
+        settings = self.web["read_settings"]()
+        settings["SETUP_REQUIRED"] = "false"
+        self.web["write_settings"](settings)
+        root = self.web["DATA_DIR"]
+        log = root / "frigate.log"
+        log.write_text("line\n")
+        command = COMPOSE_HEALTHCHECK.replace("$$", "$").replace("/data/frigate", str(root))
+        health = root / ".health.json"
+        health.write_text('{"code":"no_route","core":"no_route","tor_dns":"fail","at":"now"}\n')
+        self.assertNotEqual(subprocess.run(["sh", "-c", command]).returncode, 0)
+        health.write_text('{"code":"ok","core":"ok","tor_dns":"ok","at":"now"}\n')
+        self.assertEqual(subprocess.run(["sh", "-c", command]).returncode, 0)
+        old = time.time() - 3600
+        os.utime(log, (old, old))
+        listener = socket.socket()
+        self.addCleanup(listener.close)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        admin = command.replace("127.0.0.1/50003", f"127.0.0.1/{listener.getsockname()[1]}")
+        self.assertEqual(subprocess.run(["sh", "-c", admin]).returncode, 0)
+        listener.close()
+        self.assertNotEqual(subprocess.run(["sh", "-c", admin]).returncode, 0)
+
+
 class ShellTests(unittest.TestCase):
     @staticmethod
     def _prepare(data, binary_script):
@@ -278,7 +359,7 @@ class ShellTests(unittest.TestCase):
         getent.write_text("#!/bin/sh\necho 203.0.113.42 tor\n")
         getent.chmod(0o755)
         script = SHELL.replace("/data/frigate", str(data)).replace('arch="$(dpkg --print-architecture)"', 'arch="amd64"')
-        env = dict(os.environ, APP_BITCOIN_NODE_IP="bitcoin", APP_BITCOIN_RPC_PORT="8332", APP_BITCOIN_RPC_USER="test", APP_BITCOIN_RPC_PASS="test", APP_ELECTRS_NODE_IP="electrs", APP_ELECTRS_NODE_PORT="50001", APP_FRIGATE_ELECTRUM_PORT="50005", APP_BITCOIN_NETWORK="mainnet")
+        env = dict(os.environ, APP_BITCOIN_NODE_IP="bitcoin", APP_BITCOIN_RPC_PORT="8332", APP_BITCOIN_RPC_USER="test", APP_BITCOIN_RPC_PASS="test", APP_ELECTRS_NODE_IP="electrs", APP_ELECTRS_NODE_PORT="50001", APP_FRIGATE_ELECTRUM_PORT="50005", APP_BITCOIN_NETWORK="mainnet", FRIGATE_NET_PREFLIGHT="0")
         env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
         return script, env
 
@@ -369,6 +450,93 @@ exit 0
 
     def test_shell_syntax(self):
         subprocess.run(["sh", "-n"], input=SHELL, text=True, check=True)
+        # The whole script is passed as a single-quoted sh -c argument, so an
+        # unescaped quote anywhere inside would silently truncate it.
+        self.assertEqual(SHELL.count("'"), 2)
+
+    @staticmethod
+    def _kill(process):
+        if process.poll() is None:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        try:
+            return process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return process.communicate()
+
+    def test_config_has_admin_port_and_is_written_atomically(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            data.mkdir()
+            binary = f'''#!/bin/sh
+while [ ! -f "{data}/stop" ]; do sleep 0.2; done
+exit 0
+'''
+            script, env = self._prepare(data, binary)
+            process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+            try:
+                self.assertTrue(self._wait_until(lambda: (data / "config.toml").exists()))
+                text = (data / "config.toml").read_text()
+                self.assertIn("[server]", text)
+                self.assertIn("adminPort = 50003", text)
+                self.assertIn("[limits]", text)
+                self.assertFalse((data / "config.toml.tmp").exists())
+                self.assertTrue(self._wait_until(lambda: (data / ".health.json").exists()))
+                health = json.loads((data / ".health.json").read_text())
+                self.assertEqual(health["code"], "ok")
+                self.assertEqual(health["core"], "unknown")
+                self.assertEqual(health["tor_dns"], "ok")
+            finally:
+                self._stop(process, data)
+
+    def test_preflight_no_route_waits_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            data.mkdir()
+            script, env = self._prepare(data, f'''#!/bin/sh
+touch "{data}/binary-ran"
+exit 0
+''')
+            env["FRIGATE_NET_PREFLIGHT"] = "1"
+            fake_bin = Path(env["PATH"].split(os.pathsep)[0])
+            fake_bash = fake_bin / "bash"
+            fake_bash.write_text("#!/bin/sh\necho 'bash: connect: Network is unreachable' >&2\necho 'bash: /dev/tcp/bitcoin/8332: Connection failed.' >&2\nexit 1\n")
+            fake_bash.chmod(0o755)
+            process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+            try:
+                self.assertTrue(self._wait_until(lambda: (data / ".health.json").exists()))
+                health = json.loads((data / ".health.json").read_text())
+                self.assertEqual(health["code"], "no_route")
+                self.assertEqual(health["core"], "no_route")
+                self.assertFalse((data / "config.toml").exists())
+                self.assertFalse((data / "binary-ran").exists())
+            finally:
+                _, stderr = self._kill(process)
+            self.assertIn("Restart the Frigate app", stderr)
+
+    def test_preflight_ok_starts_frigate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            data.mkdir()
+            binary = f'''#!/bin/sh
+echo "started" >> "{data}/runs"
+while [ ! -f "{data}/stop" ]; do sleep 0.2; done
+exit 0
+'''
+            script, env = self._prepare(data, binary)
+            env["FRIGATE_NET_PREFLIGHT"] = "1"
+            fake_bin = Path(env["PATH"].split(os.pathsep)[0])
+            fake_bash = fake_bin / "bash"
+            fake_bash.write_text("#!/bin/sh\nexit 0\n")
+            fake_bash.chmod(0o755)
+            process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+            try:
+                self.assertTrue(self._wait_until(lambda: (data / "runs").exists()))
+                health = json.loads((data / ".health.json").read_text())
+                self.assertEqual(health["code"], "ok")
+                self.assertEqual(health["core"], "ok")
+            finally:
+                self._stop(process, data)
 
     def test_wait_and_one_time_profile_switch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -399,7 +567,7 @@ while true; do sleep 1; done
                 setting_file.write_text("".join(f"{k}={v}\n" for k, v in settings.items()))
             save()
             script = SHELL.replace("/data/frigate", str(data)).replace('arch="$(dpkg --print-architecture)"', 'arch="amd64"')
-            env = dict(os.environ, APP_BITCOIN_NODE_IP="bitcoin", APP_BITCOIN_RPC_PORT="8332", APP_BITCOIN_RPC_USER="test", APP_BITCOIN_RPC_PASS="test", APP_ELECTRS_NODE_IP="electrs", APP_ELECTRS_NODE_PORT="50001", APP_FRIGATE_ELECTRUM_PORT="50005", APP_BITCOIN_NETWORK="mainnet")
+            env = dict(os.environ, APP_BITCOIN_NODE_IP="bitcoin", APP_BITCOIN_RPC_PORT="8332", APP_BITCOIN_RPC_USER="test", APP_BITCOIN_RPC_PASS="test", APP_ELECTRS_NODE_IP="electrs", APP_ELECTRS_NODE_PORT="50001", APP_FRIGATE_ELECTRUM_PORT="50005", APP_BITCOIN_NETWORK="mainnet", FRIGATE_NET_PREFLIGHT="0")
             env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
             process = subprocess.Popen(["sh", "-c", script], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             try:

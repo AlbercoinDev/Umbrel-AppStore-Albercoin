@@ -68,6 +68,23 @@ services:
                 "clearnet": "Clearnet / LAN", "host": "Host", "port": "Port", "clearnet_help": "Use this from wallets on your local network.", "tor_service": "Tor hidden service",
                 "bitcoin_network": "Bitcoin network", "configured_start_block": "Configured start block", "cache_size": "Cache size", "compute_backend": "Compute backend", "log_file": "Log file", "updated": "Updated", "latest_logs": "Latest Frigate log lines:", "log_tail": "last 1,000 lines", "log_end": "Go to end", "download_log": "Download",
                 "watchdog_restarted": "Frigate stopped responding and was restarted automatically at {time}. The log download keeps the previous run; save the configuration to dismiss this notice.",
+                "diag_title": "Diagnosis:",
+                "diag_no_network": "the Frigate container has no network. It has no route to Bitcoin Core while this panel can reach the node, so the node is fine and Docker is the problem. Restart the Frigate app from umbrelOS (stop and start): only recreating its containers fixes this.",
+                "diag_no_backend": "neither Frigate nor this panel can reach Bitcoin Core. Check that the Bitcoin Node app is running; if it just restarted, wait a few minutes.",
+                "diag_core_unreachable": "Frigate cannot talk to Bitcoin Core (connection refused or no answer). The node may be restarting or overloaded.",
+                "diag_panel_no_network": "Frigate can reach Bitcoin Core but this panel cannot. It is this container's network; restart the Frigate app from umbrelOS.",
+                "check_title": "Network check",
+                "check_core": "Frigate to Bitcoin Core",
+                "check_tor": "Tor container DNS",
+                "check_at": "Last probe",
+                "check_panel": "Panel to Bitcoin Core",
+                "check_ok": "ok",
+                "check_no_route": "no route",
+                "check_refused": "refused",
+                "check_timeout": "no answer",
+                "check_error": "error",
+                "check_fail": "fail",
+                "check_unknown": "no data",
                 "config_notice": "Changes are written to /data/frigate/settings.env. Saving asks for confirmation and restarts Frigate automatically.", "save_configuration": "Save configuration",
                 "important": "Important:", "start_height_warning": "changing start height deletes the local db/ index on next Frigate restart so it can be rebuilt correctly from the new height. Empty uses Frigate default.",
                 "saved_start_height": "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index during the automatic restart.",
@@ -102,6 +119,23 @@ services:
                 "clearnet": "Clearnet / LAN", "host": "Host", "port": "Puerto", "clearnet_help": "Usa esto desde wallets en tu red local.", "tor_service": "Servicio oculto Tor",
                 "bitcoin_network": "Red Bitcoin", "configured_start_block": "Bloque inicial configurado", "cache_size": "Tamaño de caché", "compute_backend": "Backend de cálculo", "log_file": "Archivo de log", "updated": "Actualizado", "latest_logs": "Últimas líneas del log de Frigate:", "log_tail": "últimas 1.000 líneas", "log_end": "Ir al final", "download_log": "Descargar",
                 "watchdog_restarted": "Frigate dejó de responder y se reinició automáticamente a las {time}. La descarga del log conserva la ejecución anterior; guarda la configuración para ocultar este aviso.",
+                "diag_title": "Diagnóstico:",
+                "diag_no_network": "el contenedor de Frigate no tiene red. No hay ruta al nodo Bitcoin Core desde ese contenedor, aunque el panel sí lo alcanza, así que el nodo está bien y el problema es de Docker. Reinicia la app Frigate desde umbrelOS (parar y arrancar): solo recrear sus contenedores lo arregla.",
+                "diag_no_backend": "ni Frigate ni este panel alcanzan Bitcoin Core. Comprueba que el nodo Bitcoin esté arrancado; si acaba de reiniciarse, espera unos minutos.",
+                "diag_core_unreachable": "Frigate no puede hablar con Bitcoin Core (conexión rechazada o sin respuesta). Puede estar reiniciando o saturado.",
+                "diag_panel_no_network": "Frigate sí alcanza Bitcoin Core, pero este panel no. Es la red del contenedor del panel; reinicia la app Frigate desde umbrelOS.",
+                "check_title": "Comprobación de red",
+                "check_core": "Frigate → Bitcoin Core",
+                "check_tor": "DNS del contenedor de Tor",
+                "check_at": "Última prueba",
+                "check_panel": "Panel → Bitcoin Core",
+                "check_ok": "correcta",
+                "check_no_route": "sin ruta",
+                "check_refused": "rechazada",
+                "check_timeout": "sin respuesta",
+                "check_error": "error",
+                "check_fail": "falla",
+                "check_unknown": "sin datos",
                 "config_notice": "Los cambios se escriben en /data/frigate/settings.env. Al guardar se pedirá confirmación y Frigate se reiniciará automáticamente.", "save_configuration": "Guardar configuración",
                 "important": "Importante:", "start_height_warning": "cambiar la altura inicial borra el índice local db/ en el siguiente reinicio de Frigate para poder reconstruirlo correctamente desde la nueva altura. Vacío usa el valor por defecto de Frigate.",
                 "saved_start_height": "Configuración guardada. La altura inicial cambió, así que Frigate borrará db/ y reconstruirá el índice durante el reinicio automático.",
@@ -241,6 +275,58 @@ services:
                 return "status_ready", "detail_ready"
             return "status_indexing", "detail_indexing"
 
+        def read_state(name):
+            try:
+                data = json.loads((DATA_DIR / name).read_text(encoding="utf-8", errors="replace"))
+            except (OSError, ValueError):
+                return None
+            return data if isinstance(data, dict) else None
+
+        _WEB_PROBE = {"at": 0.0, "core": None}
+
+        def web_probe():
+            # What this container can reach. A lost Docker endpoint breaks a single
+            # container, so comparing the same TCP probe from both sides separates a
+            # node problem from an app container problem.
+            now = time.monotonic()
+            if now - _WEB_PROBE["at"] < 20:
+                return _WEB_PROBE
+            try:
+                socket.create_connection((os.environ["APP_BITCOIN_NODE_IP"], int(os.environ["APP_BITCOIN_RPC_PORT"])), timeout=2).close()
+                core_ok = True
+            except Exception:
+                core_ok = False
+            _WEB_PROBE.update(at=now, core=core_ok)
+            return _WEB_PROBE
+
+        def log_shows_network_error(lines):
+            # Fallback for installs whose entrypoint could not write .health.json
+            # (for example when the very first download failed without a route).
+            for line in (lines or [])[-200:]:
+                if "Network is unreachable" in line or "No route to host" in line:
+                    return True
+            return False
+
+        def diagnosis(lang, health, probe):
+            code = (health or {}).get("code")
+            if code is None:
+                return ""
+            if code in ("no_route", "no_host_route"):
+                return tr(lang, "diag_no_network") if probe.get("core") else tr(lang, "diag_no_backend")
+            if code == "ok":
+                return "" if probe.get("core") else tr(lang, "diag_panel_no_network")
+            return tr(lang, "diag_core_unreachable")
+
+        def check_rows(lang, health, probe):
+            labels = {"ok": tr(lang, "check_ok"), "no_route": tr(lang, "check_no_route"), "no_host_route": tr(lang, "check_no_route"), "refused": tr(lang, "check_refused"), "timeout": tr(lang, "check_timeout"), "other": tr(lang, "check_error"), "fail": tr(lang, "check_fail")}
+            rows = []
+            if health is not None:
+                rows.append((tr(lang, "check_core"), labels.get(health.get("core"), str(health.get("core") or tr(lang, "check_unknown")))))
+                rows.append((tr(lang, "check_tor"), labels.get(health.get("tor_dns"), str(health.get("tor_dns") or tr(lang, "check_unknown")))))
+                rows.append((tr(lang, "check_at"), str(health.get("at") or tr(lang, "check_unknown"))))
+            rows.append((tr(lang, "check_panel"), tr(lang, "check_ok") if probe.get("core") else tr(lang, "check_no_route")))
+            return rows
+
         def progress_info(lines, network, configured_start_height, is_ready, lang):
             default_start = 709632 if network == "mainnet" else 0
             start_height = int(configured_start_height) if configured_start_height.isdigit() else default_start
@@ -370,6 +456,18 @@ services:
                 except OSError:
                     stamp = ""
                 watchdog_msg = f'<div class="card warning"><p>{escape(tr(lang, "watchdog_restarted").format(time=stamp))}</p></div>'
+            health = read_state(".health.json")
+            if health is None and log_shows_network_error(log_lines):
+                health = {"code": "no_route", "core": "no_route"}
+            probe = web_probe()
+            diagnosis_text = diagnosis(lang, health, probe)
+            diagnosis_card = ""
+            if diagnosis_text:
+                diagnosis_card = f'<div class="card warning"><p><strong>{escape(tr(lang, "diag_title"))}</strong> {escape(diagnosis_text)}</p></div>'
+            checks_card = ""
+            if health is not None:
+                rows = "".join(f'<dt>{escape(key)}</dt><dd><code>{escape(value)}</code></dd>' for key, value in check_rows(lang, health, probe))
+                checks_card = f'<div class="card"><h2>{escape(tr(lang, "check_title"))}</h2><dl>{rows}</dl></div>'
             progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(log_lines, network, settings["START_HEIGHT"], is_ready, lang)
             progress_bar = f'<div class="progress"><div class="progress-fill" style="width: {escape(progress_value or "35")}%"></div></div>' if progress_value else '<div class="progress progress-indeterminate"><div class="progress-fill"></div></div>'
             log_text = latest_lines(log_lines, lang)
@@ -382,10 +480,12 @@ services:
             <div id="status-panel">
             {msg}
             {watchdog_msg}
+            {diagnosis_card}
             <div class="status"><span class="dot"></span>{escape(status)}</div>
             <p>{escape(detail)}</p>
             <p class="help">{escape(profile)}</p>
             <div class="card"><h2>{escape(tr(lang, "indexing_progress"))}</h2>{progress_bar}<dl><dt>{escape(tr(lang, "progress"))}</dt><dd><code>{escape(progress_label)}</code></dd><dt>{escape(tr(lang, "start_block"))}</dt><dd><code>{escape(start_label)}</code></dd><dt>{escape(tr(lang, "indexed_block"))}</dt><dd><code>{escape(indexed_block)}</code></dd><dt>{escape(tr(lang, "chain_tip"))}</dt><dd><code>{escape(tip_block)}</code></dd></dl></div>
+            {checks_card}
             <div class="connections">
               <div class="connection"><h2>{escape(tr(lang, "clearnet"))}</h2><dl><dt>{escape(tr(lang, "host"))}</dt><dd><div class="copy-row"><code class="endpoint">{escape(clearnet_host)}</code><button class="copy-button" onclick="copyValue('{escape(clearnet_host)}', this)">{escape(tr(lang, "copy"))}</button></div></dd><dt>{escape(tr(lang, "port"))}</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">{escape(tr(lang, "copy"))}</button></div></dd></dl><p>{escape(tr(lang, "clearnet_help"))}</p></div>
               <div class="connection"><h2>{escape(tr(lang, "tor_service"))}</h2><dl><dt>{escape(tr(lang, "host"))}</dt><dd><div class="copy-row"><code class="endpoint">{escape(onion_host)}</code><button class="copy-button" onclick="copyValue('{escape(onion_host)}', this)">{escape(tr(lang, "copy"))}</button></div></dd><dt>{escape(tr(lang, "port"))}</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">{escape(tr(lang, "copy"))}</button></div></dd></dl><p>{escape(onion_detail)}</p></div>
@@ -622,6 +722,8 @@ services:
                 }
             log_lines = read_log(LOG_FILE)
             status_key, _detail = status_from_log(log_lines)
+            health = read_state(".health.json")
+            offline = {"no_route": "Sin red", "no_host_route": "Sin red", "refused": "Sin nodo", "timeout": "Sin nodo", "other": "Sin nodo"}.get((health or {}).get("code"))
             progress_label, _progress_value, _start, _indexed, _tip = progress_info(log_lines, network, settings["START_HEIGHT"], status_key == "status_ready", "es")
             states = {"status_ready": "Listo", "status_indexing": "Indexando", "status_attention": "Revisar", "status_starting": "Iniciando"}
             height = "—"
@@ -633,7 +735,7 @@ services:
             return {
                 "type": "three-stats", "refresh": "10s", "link": "",
                 "items": [
-                    {"title": "Estado", "text": states.get(status_key, "Iniciando"), "subtext": "Frigate"},
+                    {"title": "Estado", "text": offline or states.get(status_key, "Iniciando"), "subtext": "Frigate"},
                     {"title": "Progreso", "text": progress_label, "subtext": "indexación"},
                     {"title": "Altura", "text": height, "subtext": "bloques"},
                 ],
@@ -769,6 +871,22 @@ services:
     image: debian:trixie-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0
     restart: on-failure
     stop_grace_period: 2m
+    healthcheck:
+      # Healthy when the loopback admin endpoint answers (Frigate is serving
+      # Electrum) or, while it is still indexing, when the log keeps moving and
+      # the node is reachable. A container whose Docker endpoint died reports
+      # unhealthy instead of looking fine.
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /data/frigate/.health.json &&
+          grep -q '"code":"ok"' /data/frigate/.health.json &&
+          { timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/50003' >/dev/null 2>&1 ||
+          test $$(( $$(date +%s) - $$(stat -c %Y /data/frigate/frigate.log 2>/dev/null || echo 0) )) -lt 600; }
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
     command: |
       sh -c '
       set -eu
@@ -776,6 +894,8 @@ services:
       FRIGATE_VERSION="$${FRIGATE_VERSION:-1.6.1}"
       runtime_dir="/data/frigate/runtime"
       settings_file="/data/frigate/settings.env"
+      home_dir="/data/frigate"
+      admin_port="50003"
       mkdir -p /data/frigate
       read_setting() {
         sed -n "s/^$${1}=//p" "$${settings_file}" | tail -n 1 | tr -d "\r"
@@ -821,6 +941,64 @@ services:
         fi
         rm -f "$${target}.tmp"
       }
+      # A running container keeps its Docker endpoint when the network is recreated
+      # beneath it: no route to the other apps and no Docker DNS, while the process
+      # still runs. Probing connectivity up front (and periodically while Frigate
+      # runs) turns that silent state into one clear log line, .health.json for the
+      # panel and an unhealthy container for Docker.
+      probe_tcp() {
+        _probe_rc=0
+        _probe_err="$$(timeout 4 bash -c "exec 3<>/dev/tcp/$$1/$$2" 2>&1 >/dev/null)" || _probe_rc=$$?
+        if [ "$${_probe_rc}" -eq 0 ]; then printf ok; return 0; fi
+        if [ "$${_probe_rc}" -eq 124 ]; then printf timeout; return 0; fi
+        case "$${_probe_err}" in
+          *"Network is unreachable"*) printf no_route ;;
+          *"No route to host"*) printf no_host_route ;;
+          *"Connection refused"*) printf refused ;;
+          *) printf other ;;
+        esac
+      }
+      tor_dns() {
+        if getent ahostsv4 tor >/dev/null 2>&1; then printf ok; else printf fail; fi
+      }
+      write_health() {
+        printf "{\"code\":\"%s\",\"core\":\"%s\",\"tor_dns\":\"%s\",\"at\":\"%s\"}\n" "$$1" "$$2" "$$3" "$$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$${home_dir}/.health.json.tmp"
+        mv "$${home_dir}/.health.json.tmp" "$${home_dir}/.health.json"
+      }
+      preflight_usable() {
+        [ "$${FRIGATE_NET_PREFLIGHT:-1}" = "1" ] && command -v bash >/dev/null 2>&1
+      }
+      wait_for_core() {
+        if ! preflight_usable; then
+          echo "Preflight: network check disabled or unavailable; starting Frigate without it." >&2
+          write_health ok unknown "$$(tor_dns)"
+          return 0
+        fi
+        _attempt=0
+        while :; do
+          _core="$$(probe_tcp "$${APP_BITCOIN_NODE_IP}" "$${APP_BITCOIN_RPC_PORT}")"
+          _dns="$$(tor_dns)"
+          if [ "$${_core}" = "ok" ]; then
+            write_health ok ok "$${_dns}"
+            return 0
+          fi
+          write_health "$${_core}" "$${_core}" "$${_dns}"
+          _attempt=$$((_attempt + 1))
+          if [ "$${_attempt}" -eq 1 ] || [ $$((_attempt % 12)) -eq 0 ]; then
+            case "$${_core}" in
+              no_route|no_host_route)
+                echo "Preflight: no route to Bitcoin Core ($${_core}). The Frigate container lost its Docker network endpoint; this is not a node problem. Restart the Frigate app from umbrelOS (stop and start): only recreating its containers fixes this." >&2 ;;
+              refused)
+                echo "Preflight: Bitcoin Core refused the RPC connection at $${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_RPC_PORT}. Waiting for the node." >&2 ;;
+              timeout)
+                echo "Preflight: Bitcoin Core did not answer within 4s. Waiting." >&2 ;;
+              *)
+                echo "Preflight: Bitcoin Core is not reachable yet ($${_core}). Waiting." >&2 ;;
+            esac
+          fi
+          sleep 10
+        done
+      }
       while true; do
         START_HEIGHT="$$(read_setting START_HEIGHT)"
         CACHE_SIZE="$$(read_setting CACHE_SIZE)"
@@ -841,7 +1019,10 @@ services:
           if [ "$${MEMORY_LIMIT}" = "1GB" ]; then MEMORY_LIMIT="2GB"; fi
         fi
         network="$${APP_BITCOIN_NETWORK:-mainnet}"
-        home_dir="/data/frigate"
+        # Wait for a working route before writing the config, so a stale Docker
+        # endpoint shows up as one clear line instead of a Java crash loop.
+        rm -f "$${home_dir}/.service-ready"
+        wait_for_core
         config_dir="$${home_dir}"
         network_args=""
         if [ "$${network}" != "mainnet" ]; then
@@ -882,10 +1063,10 @@ services:
           printf "%s\n" "maxLabels = $${MAX_LABELS:-10}"
           printf "%s\n" "maxSubscriptions = $${MAX_SUBSCRIPTIONS:-100}"
           printf "%s\n" "metricsEnabled = $${METRICS_ENABLED:-true}"
-        } > "$${config_dir}/config.toml"
-        if [ -n "$${DB_THREADS:-}" ]; then printf "dbThreads = %s\n" "$${DB_THREADS}" >> "$${config_dir}/config.toml"; fi
-        if [ -n "$${MEMORY_LIMIT:-}" ]; then printf "memoryLimit = \"%s\"\n" "$${MEMORY_LIMIT}" >> "$${config_dir}/config.toml"; fi
-        if [ -n "$${BATCH_SIZE:-}" ]; then printf "batchSize = %s\n" "$${BATCH_SIZE}" >> "$${config_dir}/config.toml"; fi
+        } > "$${config_dir}/config.toml.tmp"
+        if [ -n "$${DB_THREADS:-}" ]; then printf "dbThreads = %s\n" "$${DB_THREADS}" >> "$${config_dir}/config.toml.tmp"; fi
+        if [ -n "$${MEMORY_LIMIT:-}" ]; then printf "memoryLimit = \"%s\"\n" "$${MEMORY_LIMIT}" >> "$${config_dir}/config.toml.tmp"; fi
+        if [ -n "$${BATCH_SIZE:-}" ]; then printf "batchSize = %s\n" "$${BATCH_SIZE}" >> "$${config_dir}/config.toml.tmp"; fi
         # Resolve the Tor container by name; no static addresses on the shared network.
         tor_ip="$$(getent ahostsv4 tor 2>/dev/null | cut -d" " -f1 | head -n1 || true)"
         if [ -z "$${tor_ip:-}" ]; then
@@ -899,6 +1080,7 @@ services:
           printf "%s\n" ""
           printf "%s\n" "[server]"
           printf "%s\n" "tcp = \"tcp://0.0.0.0:$${APP_FRIGATE_ELECTRUM_PORT}\""
+          printf "%s\n" "adminPort = $${admin_port}"
           printf "%s\n" "bannerFile = \"banner.txt\""
           printf "%s\n" "backendElectrumServer = \"tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}\""
           printf "%s\n" ""
@@ -913,8 +1095,11 @@ services:
             echo "Warning: could not resolve the tor container IP; per-IP limits also apply to Tor clients" >&2
             printf "%s\n" "excludedSubnets = [\"127.0.0.1/32\", \"::1/128\"]"
           fi
-        } >> "$${config_dir}/config.toml"
-        chmod 600 "$${config_dir}/config.toml"
+        } >> "$${config_dir}/config.toml.tmp"
+        # Write atomically: a kill between the two redirects used to leave a
+        # truncated config.toml behind.
+        chmod 600 "$${config_dir}/config.toml.tmp"
+        mv "$${config_dir}/config.toml.tmp" "$${config_dir}/config.toml"
         log_file="$${home_dir}/frigate.log"
         rotate_log "$${log_file}"
         log_offset="$$(stat -c %s "$${log_file}" 2>/dev/null || echo 0)"
@@ -924,7 +1109,24 @@ services:
         frigate_pid="$$!"
         restart_requested="0"
         watchdog_restart="0"
+        _ticks=0
+        _last_core="ok"
         while kill -0 "$${frigate_pid}" 2>/dev/null; do
+          # Re-check connectivity every ~30s so a network that dies while Frigate
+          # runs (the case that kept it silent for days) lands in .health.json.
+          _ticks=$$((_ticks + 1))
+          if [ $$((_ticks % 15)) -eq 0 ] && preflight_usable; then
+            _core="$$(probe_tcp "$${APP_BITCOIN_NODE_IP}" "$${APP_BITCOIN_RPC_PORT}")"
+            write_health "$${_core}" "$${_core}" "$$(tor_dns)"
+            if [ "$${_core}" != "$${_last_core}" ]; then
+              if [ "$${_core}" = "ok" ]; then
+                echo "Network check: Bitcoin Core is reachable again." >&2
+              else
+                echo "Network check: Bitcoin Core is $${_core}. Restart the Frigate app from umbrelOS if this persists: only recreating its containers fixes a lost Docker endpoint." >&2
+              fi
+              _last_core="$${_core}"
+            fi
+          fi
           if [ ! -f "$${home_dir}/.service-ready" ] && tail -c +"$$((log_offset + 1))" "$${log_file}" 2>/dev/null | grep -q "Electrum server listening"; then
             touch "$${home_dir}/.service-ready"
             if [ "$${initial_profile}" = "1" ] && [ "$$(read_setting AUTO_PROFILE)" = "true" ]; then
